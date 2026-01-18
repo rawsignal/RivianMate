@@ -5,6 +5,7 @@
 **/.idea/
 .git/
 .gitignore
+.claude/
 *.md
 docs/
 design-prototypes/
