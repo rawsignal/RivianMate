@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore src/RivianMate.Api/RivianMate.Api.csproj
+
+      - name: Build (SelfHosted edition)
+        run: dotnet build src/RivianMate.Api/RivianMate.Api.csproj -c Release -p:Edition=SelfHosted --no-restore
+
+      - name: Build (Pro edition)
+        run: dotnet build src/RivianMate.Api/RivianMate.Api.csproj -c Release -p:Edition=Pro --no-restore
+
+      # - name: Test
+      #   run: dotnet test --no-build --verbosity normal
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image (SelfHosted)
+        run: docker build --build-arg EDITION=SelfHosted -t rivianmate:selfhosted-test .
+
+      - name: Build Docker image (Pro)
+        run: docker build --build-arg EDITION=Pro -t rivianmate:pro-test .

@@ -48,9 +48,9 @@ public class FeatureService
     }
 
     /// <summary>
-    /// Check if running as cloud edition.
+    /// Check if running as Pro edition.
     /// </summary>
-    public bool IsCloud => _licenseService.IsCloud;
+    public bool IsPro => _licenseService.IsPro;
 
     /// <summary>
     /// Check if running as self-hosted edition.

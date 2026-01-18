@@ -31,9 +31,9 @@ public class LicenseInfo
     public bool IsSelfHosted => Edition == Edition.SelfHosted;
 
     /// <summary>
-    /// Whether this is cloud-hosted.
+    /// Whether this is Pro edition.
     /// </summary>
-    public bool IsCloud => Edition == Edition.Cloud;
+    public bool IsPro => Edition == Edition.Pro;
 
     /// <summary>
     /// Check if a specific feature is enabled.
@@ -63,11 +63,11 @@ public class LicenseInfo
     };
 
     /// <summary>
-    /// Cloud edition limits.
+    /// Pro edition limits.
     /// </summary>
-    public static LicenseInfo Cloud() => new()
+    public static LicenseInfo Pro() => new()
     {
-        Edition = Edition.Cloud,
+        Edition = Edition.Pro,
         MaxUsers = int.MaxValue,
         MaxVehiclesPerUser = int.MaxValue,
         MaxRivianAccountsPerUser = int.MaxValue

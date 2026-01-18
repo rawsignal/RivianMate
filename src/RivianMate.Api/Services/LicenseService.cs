@@ -6,6 +6,7 @@ namespace RivianMate.Api.Services;
 
 /// <summary>
 /// Service for checking edition and enforcing limits.
+/// Edition is determined at compile time - Pro code doesn't exist in SelfHosted builds.
 /// </summary>
 public class LicenseService
 {
@@ -15,47 +16,15 @@ public class LicenseService
 
     public LicenseService(
         RivianMateDbContext db,
-        IConfiguration configuration,
-        IWebHostEnvironment environment,
         ILogger<LicenseService> logger)
     {
         _db = db;
         _logger = logger;
 
-        _license = ResolveEdition(configuration, environment);
-        _logger.LogInformation("Running as {Edition} edition", _license.Edition);
-    }
-
-    private static LicenseInfo ResolveEdition(IConfiguration configuration, IWebHostEnvironment environment)
-    {
-        // Development override - allows testing either edition locally
-        if (environment.IsDevelopment())
-        {
-            var devEdition = configuration["Dev:Edition"];
-            if (string.Equals(devEdition, "Cloud", StringComparison.OrdinalIgnoreCase))
-            {
-                return LicenseInfo.Cloud();
-            }
-            if (string.Equals(devEdition, "SelfHosted", StringComparison.OrdinalIgnoreCase))
-            {
-                return LicenseInfo.SelfHosted();
-            }
-        }
-
-        // Cloud edition requires a deployment key that matches our infrastructure
-        // This key is set in cloud deployment and not published in the repository
-        var key = Environment.GetEnvironmentVariable("RM_DK");
-        if (!string.IsNullOrEmpty(key))
-        {
-            var expected = configuration["Internal:DK"];
-            if (!string.IsNullOrEmpty(expected) &&
-                string.Equals(key, expected, StringComparison.Ordinal))
-            {
-                return LicenseInfo.Cloud();
-            }
-        }
-
-        return LicenseInfo.SelfHosted();
+        // Edition is determined at compile time
+        _license = BuildInfo.IsPro ? LicenseInfo.Pro() : LicenseInfo.SelfHosted();
+        _logger.LogInformation("Running as {Edition} edition ({DisplayName})",
+            _license.Edition, BuildInfo.DisplayName);
     }
 
     /// <summary>
@@ -69,9 +38,9 @@ public class LicenseService
     public Edition GetEdition() => _license.Edition;
 
     /// <summary>
-    /// Check if running as cloud edition.
+    /// Check if running as Pro edition.
     /// </summary>
-    public bool IsCloud => _license.IsCloud;
+    public bool IsPro => _license.IsPro;
 
     /// <summary>
     /// Check if running as self-hosted edition.

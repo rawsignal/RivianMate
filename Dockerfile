@@ -2,6 +2,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
+# Edition argument: SelfHosted (default) or Pro
+ARG EDITION=SelfHosted
+
 # Copy project files and restore
 COPY src/RivianMate.Core/RivianMate.Core.csproj RivianMate.Core/
 COPY src/RivianMate.Shared/RivianMate.Shared.csproj RivianMate.Shared/
@@ -10,13 +13,14 @@ COPY src/RivianMate.Api/RivianMate.Api.csproj RivianMate.Api/
 
 RUN dotnet restore RivianMate.Api/RivianMate.Api.csproj
 
-# Copy everything and build
+# Copy everything and build with edition
 COPY src/ .
-RUN dotnet build RivianMate.Api/RivianMate.Api.csproj -c Release -o /app/build
+RUN dotnet build RivianMate.Api/RivianMate.Api.csproj -c Release -p:Edition=${EDITION} -o /app/build
 
 # Publish stage
 FROM build AS publish
-RUN dotnet publish RivianMate.Api/RivianMate.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
+ARG EDITION=SelfHosted
+RUN dotnet publish RivianMate.Api/RivianMate.Api.csproj -c Release -p:Edition=${EDITION} -o /app/publish /p:UseAppHost=false
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime

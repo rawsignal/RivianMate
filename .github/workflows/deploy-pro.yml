@@ -1,0 +1,43 @@
+name: Deploy Pro to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AZURE_CONTAINER_REGISTRY: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+  CONTAINER_APP_NAME: rivianmate-pro
+  RESOURCE_GROUP: rivianmate-prod
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login to Azure Container Registry
+        run: az acr login --name ${{ env.AZURE_CONTAINER_REGISTRY }}
+
+      - name: Build and push Docker image
+        run: |
+          docker build \
+            --build-arg EDITION=Pro \
+            -t ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/rivianmate:${{ github.sha }} \
+            -t ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/rivianmate:latest \
+            .
+          docker push ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/rivianmate:${{ github.sha }}
+          docker push ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/rivianmate:latest
+
+      - name: Deploy to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ env.RESOURCE_GROUP }}
+          containerAppName: ${{ env.CONTAINER_APP_NAME }}
+          imageToDeploy: ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/rivianmate:${{ github.sha }}

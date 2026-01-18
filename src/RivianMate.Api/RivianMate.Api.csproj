@@ -4,6 +4,17 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <!-- Edition: SelfHosted (default) or Pro -->
+    <Edition Condition="'$(Edition)' == ''">SelfHosted</Edition>
+  </PropertyGroup>
+
+  <!-- Define edition constants for conditional compilation -->
+  <PropertyGroup Condition="'$(Edition)' == 'Pro'">
+    <DefineConstants>$(DefineConstants);EDITION_PRO</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Edition)' == 'SelfHosted'">
+    <DefineConstants>$(DefineConstants);EDITION_SELFHOSTED</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

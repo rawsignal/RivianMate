@@ -36,9 +36,9 @@ public static class Features
     };
 
     /// <summary>
-    /// Features included in cloud edition (all features).
+    /// Features included in Pro edition (all features).
     /// </summary>
-    public static readonly HashSet<string> CloudFeatures = new(SelfHostedFeatures)
+    public static readonly HashSet<string> ProFeatures = new(SelfHostedFeatures)
     {
         Notifications,
         ApiAccess,
@@ -49,8 +49,7 @@ public static class Features
     /// </summary>
     public static HashSet<string> GetFeaturesForEdition(Edition edition) => edition switch
     {
-        Edition.SelfHosted => SelfHostedFeatures,
-        Edition.Cloud => CloudFeatures,
+        Edition.Pro => ProFeatures,
         _ => SelfHostedFeatures
     };
 }
