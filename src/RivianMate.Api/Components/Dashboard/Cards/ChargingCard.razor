@@ -1,0 +1,107 @@
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services
+@using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
+
+<CardWrapper Definition="@GetDefinition()">
+    @if (RecentSessions?.Any() == true)
+    {
+        <div class="charging-sessions-list">
+            @foreach (var session in RecentSessions.Take(4))
+            {
+                <div class="charging-session-item">
+                    <div class="charging-list-icon @GetChargeTypeClass(session.ChargeType)">
+                        <Icon Name="@GetChargeTypeIcon(session.ChargeType)" Size="18" />
+                    </div>
+                    <div class="session-details">
+                        <div class="session-header">
+                            <span class="session-location">@(session.LocationName ?? GetChargeTypeName(session.ChargeType))</span>
+                            <span class="session-time">@FormatSessionTime(session.StartTime)</span>
+                        </div>
+                        <div class="session-stats">
+                            <span>+@(session.EnergyAddedKwh?.ToString("0.0") ?? "—") kWh</span>
+                            <span class="session-stat-separator">·</span>
+                            <span>@session.StartBatteryLevel.ToString("0")% → @(session.EndBatteryLevel?.ToString("0") ?? "—")%</span>
+                            <span class="session-stat-separator">·</span>
+                            <span>@FormatDuration(session.StartTime, session.EndTime)</span>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card-empty-state">
+            <Icon Name="zap" Size="48" Style="color: var(--color-text-muted); opacity: 0.5;" />
+            <p>No charging sessions recorded yet</p>
+        </div>
+    }
+</CardWrapper>
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private List<ChargingSession>? RecentSessions => Context?.RecentSessions;
+    private int? VehicleId => Context?.VehicleId;
+    private TimeZoneService? TimeZoneService => Context?.TimeZoneService;
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "charging",
+        Icon = "zap",
+        Title = "Recent Charging",
+        DetailUrl = "/charging",
+        DetailLabel = "View All"
+    };
+
+    private DashboardCardDefinition GetDefinition() => _definition with
+    {
+        DetailUrl = VehicleId.HasValue ? $"/charging/{VehicleId}" : _definition.DetailUrl
+    };
+
+    private static string GetChargeTypeIcon(ChargeType? type) => type switch
+    {
+        ChargeType.DC_Fast => "charge-l3",
+        ChargeType.AC_Level2 => "charge-l2",
+        ChargeType.AC_Level1 => "charge-l1",
+        _ => "charge-l1"
+    };
+
+    private static string GetChargeTypeClass(ChargeType? type) => type switch
+    {
+        ChargeType.DC_Fast => "dcfc",
+        ChargeType.AC_Level2 => "level2",
+        ChargeType.AC_Level1 => "level1",
+        _ => "home"
+    };
+
+    private static string GetChargeTypeName(ChargeType? type) => type switch
+    {
+        ChargeType.DC_Fast => "DC Fast Charge",
+        ChargeType.AC_Level2 => "Level 2",
+        ChargeType.AC_Level1 => "Level 1",
+        _ => "Home"
+    };
+
+    private string FormatSessionTime(DateTime utcTime)
+    {
+        if (TimeZoneService == null)
+            return utcTime.ToString("MMM d, h:mm tt");
+
+        var localTime = TimeZoneService.ToLocalTime(utcTime);
+        var today = TimeZoneService.ToLocalTime(DateTime.UtcNow).Date;
+        if (localTime.Date == today) return $"Today, {localTime:h:mm tt}";
+        if (localTime.Date == today.AddDays(-1)) return $"Yesterday, {localTime:h:mm tt}";
+        return localTime.ToString("MMM d, h:mm tt");
+    }
+
+    private static string FormatDuration(DateTime start, DateTime? end)
+    {
+        if (end == null) return "In progress";
+        var duration = end.Value - start;
+        if (duration.TotalMinutes < 60) return $"{(int)duration.TotalMinutes} min";
+        return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+    }
+}

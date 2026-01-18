@@ -1,0 +1,68 @@
+@using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
+
+<StatusSection Title="Vehicle Specs" Icon="truck">
+    <StatusItem Label="Name" Value="@(Vehicle?.Name ?? "—")" />
+    <StatusItem Label="Model" Value="@FormatModel(Vehicle?.Model)" />
+    <StatusItem Label="Year" Value="@(Vehicle?.Year?.ToString() ?? "—")" />
+    <StatusItem Label="Trim" Value="@FormatTrim(Vehicle?.Trim)" />
+    <StatusItem Label="VIN" Value="@(Vehicle?.Vin ?? "—")" />
+    <StatusItem Label="Battery Pack" Value="@FormatBatteryPack(Vehicle?.BatteryPack)" />
+    <StatusItem Label="Drive Type" Value="@FormatDriveType(Vehicle?.DriveType)" />
+    <StatusItem Label="EPA Range" Value="@FormatEpaRange(Vehicle?.EpaRangeMiles)" />
+    @if (!string.IsNullOrEmpty(Vehicle?.ExteriorColor))
+    {
+        <StatusItem Label="Exterior" Value="@Vehicle.ExteriorColor" />
+    }
+    @if (!string.IsNullOrEmpty(Vehicle?.InteriorColor))
+    {
+        <StatusItem Label="Interior" Value="@Vehicle.InteriorColor" />
+    }
+    @if (!string.IsNullOrEmpty(Vehicle?.WheelConfig))
+    {
+        <StatusItem Label="Wheels" Value="@Vehicle.WheelConfig" />
+    }
+</StatusSection>
+
+@code {
+    [Parameter] public Vehicle? Vehicle { get; set; }
+
+    private static string FormatModel(VehicleModel? model) => model switch
+    {
+        VehicleModel.R1T => "R1T",
+        VehicleModel.R1S => "R1S",
+        VehicleModel.R2 => "R2",
+        VehicleModel.R3 => "R3",
+        _ => "Unknown"
+    };
+
+    private static string FormatTrim(VehicleTrim? trim) => trim switch
+    {
+        VehicleTrim.Explore => "Explore",
+        VehicleTrim.Adventure => "Adventure",
+        VehicleTrim.LaunchEdition => "Launch Edition",
+        _ => "—"
+    };
+
+    private static string FormatBatteryPack(BatteryPackType? pack) => pack switch
+    {
+        BatteryPackType.Standard => "Standard",
+        BatteryPackType.Large => "Large Pack",
+        BatteryPackType.Max => "Max Pack",
+        _ => "—"
+    };
+
+    private static string FormatDriveType(RivianMate.Core.Enums.DriveType? drive) => drive switch
+    {
+        RivianMate.Core.Enums.DriveType.DualMotor => "Dual Motor AWD",
+        RivianMate.Core.Enums.DriveType.QuadMotor => "Quad Motor AWD",
+        RivianMate.Core.Enums.DriveType.TriMotor => "Tri Motor AWD",
+        _ => "—"
+    };
+
+    private static string FormatEpaRange(double? miles)
+    {
+        if (miles == null) return "—";
+        return $"{miles:0} mi";
+    }
+}

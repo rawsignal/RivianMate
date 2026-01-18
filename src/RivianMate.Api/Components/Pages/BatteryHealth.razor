@@ -1,0 +1,420 @@
+@page "/battery-health"
+@page "/battery-health/{VehicleId:int}"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using RivianMate.Api.Components.Shared
+@attribute [Authorize]
+@inject BatteryHealthService BatteryHealthService
+@inject BatteryCareService BatteryCareService
+@inject VehicleService VehicleService
+@inject ILogger<BatteryHealth> Logger
+
+<PageTitle>Battery Health - RivianMate</PageTitle>
+
+<!-- Page Header -->
+<div style="margin-bottom: var(--space-8);">
+    <a href="/" style="font-size: 0.875rem; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+        <Icon Name="chevron-left" Size="16" />
+        Back to Dashboard
+    </a>
+    <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+        <Icon Name="battery" Size="28" Style="color: var(--color-accent);" />
+        Battery Health
+    </h1>
+</div>
+
+@if (_loading)
+{
+    <div class="loading">
+        <p>Loading battery health data...</p>
+    </div>
+}
+else if (_summary == null)
+{
+    <div class="card" style="text-align: center; padding: var(--space-12);">
+        <h3 style="margin-bottom: var(--space-4);">No Battery Data Available</h3>
+        <p>Battery health data will appear here once your vehicle has been polled.</p>
+        <p style="margin-top: var(--space-2);">Make sure you've connected your Rivian account in <a href="settings">Settings</a>.</p>
+    </div>
+}
+else
+{
+    <!-- Main Health Display -->
+    <div class="card mb-8">
+        <div style="display: flex; gap: var(--space-8); align-items: center; flex-wrap: wrap;">
+            <!-- Health Ring -->
+            <div class="health-ring-container" style="width: 200px; height: 200px; flex-shrink: 0;">
+                <svg width="200" height="200" style="transform: rotate(-90deg);">
+                    <circle cx="100" cy="100" r="86" fill="none" stroke="#2D4A3E" stroke-width="14"/>
+                    <circle cx="100" cy="100" r="86" fill="none"
+                            stroke="@GetHealthColor(_summary.CurrentHealthPercent)"
+                            stroke-width="14"
+                            stroke-linecap="round"
+                            stroke-dasharray="@(2 * Math.PI * 86)"
+                            stroke-dashoffset="@(2 * Math.PI * 86 * (1 - _summary.CurrentHealthPercent / 100))"
+                            style="transition: stroke-dashoffset 1s ease-out;"/>
+                </svg>
+                <div class="health-ring-content">
+                    <span class="health-percent">@_summary.CurrentHealthPercent.ToString("0.0")<span class="health-percent-unit">%</span></span>
+                    <span class="health-status" style="color: @GetHealthColor(_summary.CurrentHealthPercent);">@GetHealthStatus(_summary.CurrentHealthPercent)</span>
+                </div>
+            </div>
+
+            <!-- Capacity Info -->
+            <div style="flex: 1; min-width: 300px;">
+                <div class="grid-3 mb-4">
+                    <div class="mini-stat">
+                        <p class="mini-stat-label">Current Capacity</p>
+                        <p class="mini-stat-value">@_summary.CurrentCapacityKwh.ToString("0.0") <span class="mini-stat-unit">kWh</span></p>
+                    </div>
+                    <div class="mini-stat">
+                        <p class="mini-stat-label">Original Capacity</p>
+                        <p class="mini-stat-value">@_summary.OriginalCapacityKwh.ToString("0.0") <span class="mini-stat-unit">kWh</span></p>
+                    </div>
+                    <div class="mini-stat">
+                        <p class="mini-stat-label">Capacity Lost</p>
+                        <p class="mini-stat-value">@_summary.CapacityLostKwh.ToString("0.0") <span class="mini-stat-unit">kWh</span></p>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: var(--space-4); align-items: center;">
+                    <span style="font-size: 0.875rem; color: var(--color-text-muted);">Current Odometer:</span>
+                    <span style="font-weight: 600;">@_summary.CurrentOdometer.ToString("N0") mi</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Projections & Analysis -->
+    <div class="grid-2 mb-6">
+        <!-- Projections Card -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="bar-chart" Size="20" Style="color: var(--color-accent);" />
+                    Projections
+                </h2>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: var(--space-4);">
+                @if (_summary.DegradationRatePer10kMiles.HasValue)
+                {
+                    <div class="projection-item">
+                        <div class="projection-icon blue">
+                            <Icon Name="trend-down" Size="18" />
+                        </div>
+                        <div>
+                            <p class="projection-label">Degradation Rate</p>
+                            <p class="projection-value">@_summary.DegradationRatePer10kMiles.Value.ToString("0.00")% <span>per 10k miles</span></p>
+                        </div>
+                    </div>
+                }
+
+                @if (_summary.ProjectedHealthAt100kMiles.HasValue)
+                {
+                    <div class="projection-item">
+                        <div class="projection-icon yellow">
+                            <Icon Name="target" Size="18" />
+                        </div>
+                        <div>
+                            <p class="projection-label">Projected at 100k miles</p>
+                            <p class="projection-value">~@_summary.ProjectedHealthAt100kMiles.Value.ToString("0.0")%</p>
+                        </div>
+                    </div>
+                }
+
+                <ThresholdProjection CurrentHealthPercent="@_summary.CurrentHealthPercent"
+                                     ProjectedMilesTo70Percent="@_summary.ProjectedMilesTo70Percent"
+                                     Label="Miles to 70% threshold" />
+
+                @if (!_summary.DegradationRatePer10kMiles.HasValue)
+                {
+                    <p class="text-muted">Not enough data to calculate projections. Keep tracking your battery health over time.</p>
+                }
+            </div>
+        </div>
+
+        <!-- Warranty Status Card -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="shield" Size="20" Style="color: var(--color-accent);" />
+                    Warranty Status
+                </h2>
+            </div>
+
+            <!-- Warranty Progress Bar -->
+            <div style="position: relative; height: 12px; background-color: var(--color-border); border-radius: 6px; margin-bottom: var(--space-4); overflow: visible;">
+                <!-- Current Health Fill -->
+                <div style="position: absolute; left: 0; top: 0; height: 100%; width: @Math.Min(_summary.CurrentHealthPercent, 100)%; background-color: @GetHealthColor(_summary.CurrentHealthPercent); border-radius: 6px; transition: width 0.5s ease;"></div>
+
+                <!-- 70% Threshold Marker -->
+                <div style="position: absolute; left: 70%; top: -4px; height: 20px; width: 2px; background-color: var(--color-error);"></div>
+                <span style="position: absolute; left: 70%; top: 20px; transform: translateX(-50%); font-size: 0.75rem; color: var(--color-text-muted);">70%</span>
+            </div>
+
+            <div style="margin-top: var(--space-6);">
+                <p style="font-size: 0.875rem; color: var(--color-text-secondary); margin-bottom: var(--space-3);">
+                    Rivian warrants the battery to retain at least <strong style="color: var(--color-text-primary);">70%</strong>
+                    capacity for <strong style="color: var(--color-text-primary);">8 years</strong> or <strong style="color: var(--color-text-primary);">@_summary.WarrantyMiles.ToString("N0") miles</strong>,
+                    whichever comes first.
+                </p>
+
+                @if (_summary.CurrentHealthPercent >= 70)
+                {
+                    <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); background-color: rgba(74, 222, 128, 0.1); border-radius: var(--radius-md); margin-top: var(--space-4);">
+                        <span style="color: var(--color-success); font-size: 1.25rem;">✓</span>
+                        <span style="color: var(--color-success); font-weight: 500;">Your battery is above the warranty threshold</span>
+                    </div>
+                }
+                else
+                {
+                    <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); background-color: rgba(239, 68, 68, 0.1); border-radius: var(--radius-md); margin-top: var(--space-4);">
+                        <span style="color: var(--color-error); font-size: 1.25rem;">⚠</span>
+                        <span style="color: var(--color-error); font-weight: 500;">Your battery has dropped below the warranty threshold. Contact Rivian support.</span>
+                    </div>
+                }
+
+                @if (_summary.RemainingWarrantyCapacityKwh.HasValue)
+                {
+                    <p style="font-size: 0.875rem; color: var(--color-text-muted); margin-top: var(--space-3);">
+                        Warranty buffer remaining: <strong style="color: var(--color-text-primary);">@_summary.RemainingWarrantyCapacityKwh.Value.ToString("0.0") kWh</strong>
+                    </p>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Capacity Over Time Chart -->
+    <div class="card mb-6">
+        <div class="card-header">
+            <h2 class="card-title">
+                <Icon Name="trend-up" Size="20" Style="color: var(--color-accent);" />
+                Capacity Over Time
+            </h2>
+            @if (_summary.FirstRecordedDate.HasValue)
+            {
+                <span style="font-size: 0.875rem; color: var(--color-text-muted);">Since <LocalTime Value="@_summary.FirstRecordedDate.Value" Format="MMM yyyy" /></span>
+            }
+        </div>
+
+        <LineChart DataPoints="@_healthHistory?.Select(h => new LineChart.ChartDataPoint(h.Timestamp, h.ReportedCapacityKwh)).ToList()"
+                   Mode="LineChart.ChartMode.Detailed"
+                   Unit="kWh"
+                   MaxValue="_summary.OriginalCapacityKwh"
+                   Color="var(--color-success)" />
+
+        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: var(--space-3); text-align: center;">
+            Battery capacity naturally decreases over time. Long-term trends are more meaningful than individual readings.
+        </p>
+    </div>
+
+    <!-- Battery Care Tips -->
+    @if (_careAnalysis != null)
+    {
+        <div class="card mb-6">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="heart" Size="20" Style="color: var(--color-accent);" />
+                    Battery Care Tips
+                </h2>
+                @if (_careAnalysis.CellType != BatteryCellType.Unknown)
+                {
+                    <span class="battery-cell-type-badge @(_careAnalysis.CellType == BatteryCellType.LFP ? "lfp" : "nmc")">
+                        @(_careAnalysis.CellType == BatteryCellType.LFP ? "LFP" : "NMC") Battery
+                    </span>
+                }
+            </div>
+
+            @if (_careAnalysis.CellType != BatteryCellType.Unknown && _careAnalysis.TotalChargeRecords > 0)
+            {
+                <div class="charge-limit-stats">
+                    <div class="charge-stat">
+                        <span class="charge-stat-value">@_careAnalysis.AverageChargeLimit.ToString("0")%</span>
+                        <span class="charge-stat-label">Avg Charge Limit</span>
+                    </div>
+                    <div class="charge-stat">
+                        <span class="charge-stat-value">@_careAnalysis.TotalChargeRecords</span>
+                        <span class="charge-stat-label">Records (30 days)</span>
+                    </div>
+                    @if (_careAnalysis.ChargesAt100Percent > 0)
+                    {
+                        <div class="charge-stat">
+                            <span class="charge-stat-value @(_careAnalysis.CellType == BatteryCellType.NMC && _careAnalysis.PercentTimeAt100 > 20 ? "warning" : "")">
+                                @_careAnalysis.PercentTimeAt100.ToString("0")%
+                            </span>
+                            <span class="charge-stat-label">Time at 100%</span>
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="battery-care-tips">
+                @foreach (var tip in _careAnalysis.Tips.OrderByDescending(t => t.Priority))
+                {
+                    <div class="battery-tip @GetTipClass(tip.Priority) @(tip.IsPersonalized ? "personalized" : "")">
+                        <div class="tip-icon">
+                            <Icon Name="@tip.Icon" Size="20" />
+                        </div>
+                        <div class="tip-content">
+                            <h4 class="tip-title">
+                                @tip.Title
+                                @if (tip.IsPersonalized)
+                                {
+                                    <span class="personalized-badge">Personalized</span>
+                                }
+                            </h4>
+                            <p class="tip-description">@tip.Description</p>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Tracking History -->
+    @if (_summary.FirstRecordedDate.HasValue)
+    {
+        <div class="card mb-6">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="calendar" Size="20" Style="color: var(--color-accent);" />
+                    Tracking History
+                </h2>
+            </div>
+
+            <div class="grid-4">
+                <div class="mini-stat">
+                    <p class="mini-stat-label">First Recorded</p>
+                    <p class="mini-stat-value" style="font-size: 1.125rem;"><LocalTime Value="@_summary.FirstRecordedDate.Value" Format="MMM d, yyyy" /></p>
+                </div>
+                @if (_summary.FirstRecordedOdometer.HasValue)
+                {
+                    <div class="mini-stat">
+                        <p class="mini-stat-label">Starting Odometer</p>
+                        <p class="mini-stat-value">@_summary.FirstRecordedOdometer.Value.ToString("N0") <span class="mini-stat-unit">mi</span></p>
+                    </div>
+                }
+                @if (_summary.FirstRecordedHealth.HasValue)
+                {
+                    <div class="mini-stat">
+                        <p class="mini-stat-label">Starting Health</p>
+                        <p class="mini-stat-value">@_summary.FirstRecordedHealth.Value.ToString("0.0") <span class="mini-stat-unit">%</span></p>
+                    </div>
+                }
+                <div class="mini-stat">
+                    <p class="mini-stat-label">Last Updated</p>
+                    <p class="mini-stat-value" style="font-size: 1.125rem;"><LocalTime Value="@_summary.LastUpdated" /></p>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Info Section -->
+    <div class="card" style="background-color: var(--color-surface-elevated);">
+        <div class="card-header">
+            <h2 class="card-title">
+                <Icon Name="info" Size="20" Style="color: var(--color-accent);" />
+                How Battery Health is Calculated
+            </h2>
+        </div>
+
+        <div style="font-size: 0.875rem; color: var(--color-text-secondary); line-height: 1.7;">
+            <p style="margin-bottom: var(--space-4);">
+                RivianMate calculates battery health using the <code style="background-color: var(--color-surface); padding: 2px 6px; border-radius: 4px;">batteryCapacity</code> field
+                from Rivian's API, which reports the current usable capacity of your battery pack in kWh.
+            </p>
+
+            <div style="background-color: var(--color-surface); padding: var(--space-4); border-radius: var(--radius-md); margin-bottom: var(--space-4); font-family: var(--font-mono);">
+                Battery Health % = (Current Capacity ÷ Original Capacity) × 100
+            </div>
+
+            <p style="margin-bottom: var(--space-3);">
+                Your vehicle's original capacity is determined by its battery pack configuration:
+            </p>
+
+            <ul style="margin-left: var(--space-6); margin-bottom: var(--space-4);">
+                <li><strong style="color: var(--color-text-primary);">Gen 1:</strong> Standard (106 kWh), Large (131 kWh), Max (141 kWh)</li>
+                <li><strong style="color: var(--color-text-primary);">Gen 2:</strong> Standard (92.5 kWh), Large (108.5 kWh), Max (140 kWh)</li>
+            </ul>
+
+            <p style="font-style: italic; color: var(--color-text-muted);">
+                Note: Battery capacity can fluctuate slightly based on temperature and state of charge.
+                Long-term trends are more meaningful than individual readings.
+            </p>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int? VehicleId { get; set; }
+
+    private BatteryHealthSummary? _summary;
+    private List<RivianMate.Core.Entities.BatteryHealthSnapshot>? _healthHistory;
+    private BatteryCareAnalysis? _careAnalysis;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            var targetVehicleId = VehicleId;
+
+            if (!targetVehicleId.HasValue)
+            {
+                var vehicles = await VehicleService.GetAllVehiclesAsync();
+                targetVehicleId = vehicles.FirstOrDefault()?.Id;
+            }
+
+            if (targetVehicleId.HasValue)
+            {
+                _summary = await BatteryHealthService.GetHealthSummaryAsync(targetVehicleId.Value);
+                _healthHistory = await BatteryHealthService.GetHealthHistoryAsync(targetVehicleId.Value);
+                _careAnalysis = await BatteryCareService.GetBatteryCareAnalysisAsync(targetVehicleId.Value);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading battery health data");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string GetHealthColor(double percent) => percent switch
+    {
+        >= 95 => "#4ADE80",
+        >= 90 => "#7DD87D",
+        >= 85 => "#DEB526",
+        >= 80 => "#F59E0B",
+        _ => "#EF4444"
+    };
+
+    private string GetHealthStatus(double percent) => percent switch
+    {
+        >= 95 => "Excellent",
+        >= 90 => "Very Good",
+        >= 85 => "Good",
+        >= 80 => "Fair",
+        _ => "Needs Attention"
+    };
+
+    private string GetTipClass(TipPriority priority) => priority switch
+    {
+        TipPriority.Warning => "tip-warning",
+        TipPriority.Positive => "tip-positive",
+        TipPriority.High => "tip-high",
+        TipPriority.Medium => "tip-medium",
+        _ => "tip-low"
+    };
+}

@@ -1,0 +1,76 @@
+@using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
+
+<StatusSection Title="Charging" Icon="zap">
+    <StatusItem Label="Status" Value="@FormatChargerState(VehicleState?.ChargerState)" StatusClass="@GetChargerStateClass()" />
+    <StatusItem Label="Battery Level" Value="@FormatPercent(VehicleState?.BatteryLevel)" />
+    <StatusItem Label="Charge Limit" Value="@FormatPercent(VehicleState?.BatteryLimit)" />
+    @if (VehicleState?.ChargerState == ChargerState.Charging && VehicleState?.TimeToEndOfCharge > 0)
+    {
+        <StatusItem Label="Time Remaining" Value="@FormatTimeRemaining(VehicleState.TimeToEndOfCharge)" StatusClass="status-active" />
+    }
+    <StatusItem Label="Charge Port" Value="@GetChargePortStatus(VehicleState?.ChargePortOpen)" />
+    @if (!string.IsNullOrEmpty(VehicleState?.ChargerDerateStatus) && VehicleState.ChargerDerateStatus != "none")
+    {
+        <StatusItem Label="Derate Status" Value="@FormatDerateStatus(VehicleState.ChargerDerateStatus)" StatusClass="status-warning" />
+    }
+</StatusSection>
+
+@code {
+    [Parameter] public VehicleState? VehicleState { get; set; }
+
+    private static string FormatChargerState(ChargerState? state) => state switch
+    {
+        ChargerState.Charging => "Charging",
+        ChargerState.Complete => "Complete",
+        ChargerState.Connected => "Connected",
+        ChargerState.ReadyToCharge => "Ready to Charge",
+        ChargerState.Disconnected => "Disconnected",
+        ChargerState.Fault => "Fault",
+        _ => "Unknown"
+    };
+
+    private string GetChargerStateClass() => VehicleState?.ChargerState switch
+    {
+        ChargerState.Charging => "status-charging",
+        ChargerState.Complete => "status-success",
+        ChargerState.Connected => "status-ready",
+        ChargerState.ReadyToCharge => "status-ready",
+        ChargerState.Fault => "status-error",
+        _ => ""
+    };
+
+    private static string FormatPercent(double? value)
+    {
+        if (value == null) return "—";
+        return $"{value:0}%";
+    }
+
+    private static string FormatTimeRemaining(int? minutes)
+    {
+        if (minutes == null || minutes <= 0) return "—";
+        if (minutes < 60) return $"{minutes} min";
+        var hours = minutes.Value / 60;
+        var mins = minutes.Value % 60;
+        return mins > 0 ? $"{hours}h {mins}m" : $"{hours}h";
+    }
+
+    private static string GetChargePortStatus(bool? open) => open switch
+    {
+        true => "Open",
+        false => "Closed",
+        _ => "—"
+    };
+
+    private static string FormatDerateStatus(string? status)
+    {
+        if (string.IsNullOrEmpty(status)) return "—";
+        return status switch
+        {
+            "thermal" => "Thermal limiting",
+            "battery_temp" => "Battery too hot",
+            "cold" => "Battery cold",
+            _ => status.Replace("_", " ")
+        };
+    }
+}

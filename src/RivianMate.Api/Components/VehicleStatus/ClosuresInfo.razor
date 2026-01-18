@@ -1,0 +1,70 @@
+@using RivianMate.Core.Entities
+
+<StatusSection Title="Closures & Security" Icon="lock">
+    <StatusItem Label="Doors" StatusClass="@GetClosureClass(VehicleState?.AllDoorsClosed, VehicleState?.AllDoorsLocked)">
+        @GetDoorStatus()
+    </StatusItem>
+    <StatusItem Label="Windows" Value="@GetWindowStatus()" StatusClass="@(VehicleState?.AllWindowsClosed == false ? "status-warning" : "")" />
+    <StatusItem Label="Frunk" StatusClass="@GetClosureClass(VehicleState?.FrunkClosed, VehicleState?.FrunkLocked)">
+        @GetFrunkStatus()
+    </StatusItem>
+    <StatusItem Label="Liftgate" Value="@GetClosedStatus(VehicleState?.LiftgateClosed)" StatusClass="@(VehicleState?.LiftgateClosed == false ? "status-warning" : "")" />
+    @if (VehicleState?.TonneauClosed != null)
+    {
+        <StatusItem Label="Tonneau" Value="@GetClosedStatus(VehicleState?.TonneauClosed)" StatusClass="@(VehicleState?.TonneauClosed == false ? "status-warning" : "")" />
+    }
+    <StatusItem Label="Charge Port" Value="@GetOpenStatus(VehicleState?.ChargePortOpen)" />
+    <StatusItem Label="Gear Guard" Value="@FormatBool(VehicleState?.GearGuardEnabled)" StatusClass="@(VehicleState?.GearGuardEnabled == true ? "status-active" : "")" />
+</StatusSection>
+
+@code {
+    [Parameter] public VehicleState? VehicleState { get; set; }
+
+    private string GetDoorStatus()
+    {
+        if (VehicleState?.AllDoorsClosed == null) return "—";
+        if (VehicleState.AllDoorsClosed == false) return "Open";
+        if (VehicleState.AllDoorsLocked == true) return "Closed & Locked";
+        if (VehicleState.AllDoorsLocked == false) return "Closed & Unlocked";
+        return "Closed";
+    }
+
+    private string GetFrunkStatus()
+    {
+        if (VehicleState?.FrunkClosed == null) return "—";
+        if (VehicleState.FrunkClosed == false) return "Open";
+        if (VehicleState.FrunkLocked == true) return "Closed & Locked";
+        if (VehicleState.FrunkLocked == false) return "Closed & Unlocked";
+        return "Closed";
+    }
+
+    private static string GetClosedStatus(bool? closed) => closed switch
+    {
+        true => "Closed",
+        false => "Open",
+        _ => "—"
+    };
+
+    private static string GetOpenStatus(bool? open) => open switch
+    {
+        true => "Open",
+        false => "Closed",
+        _ => "—"
+    };
+
+    private static string GetWindowStatus() => "—"; // Would need individual window states
+
+    private static string FormatBool(bool? value) => value switch
+    {
+        true => "Enabled",
+        false => "Disabled",
+        _ => "—"
+    };
+
+    private static string GetClosureClass(bool? closed, bool? locked)
+    {
+        if (closed == false) return "status-warning";
+        if (locked == true) return "status-secure";
+        return "";
+    }
+}

@@ -1,0 +1,35 @@
+@using RivianMate.Api.Components.Shared
+
+<div class="card">
+    @if (Definition.ShowHeader)
+    {
+        <div class="card-header">
+            <h2 class="card-title">
+                <Icon Name="@Definition.Icon" Size="20" Style="color: var(--color-accent);" />
+                @Definition.Title
+            </h2>
+            @if (!string.IsNullOrEmpty(Definition.DetailUrl))
+            {
+                <a href="@Definition.DetailUrl" class="card-link">
+                    @(Definition.DetailLabel ?? "View Details")
+                    <Icon Name="chevron-right" Size="16" />
+                </a>
+            }
+        </div>
+    }
+    @ChildContent
+</div>
+
+@code {
+    /// <summary>
+    /// Card definition containing metadata like icon, title, width, etc.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public DashboardCardDefinition Definition { get; set; } = null!;
+
+    /// <summary>
+    /// The card's content
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,50 @@
+@using RivianMate.Api.Components.Shared
+
+@if (Compact)
+{
+    <div class="bottom-stat-card">
+        <div class="bottom-stat-label">
+            <Icon Name="@_definition.Icon" Size="14" />
+            @_definition.Title
+        </div>
+        <p class="bottom-stat-value">
+            @(Efficiency?.ToString("0.0") ?? "—")
+            @if (Efficiency != null)
+            {
+                <span class="bottom-stat-unit">mi/kWh</span>
+            }
+        </p>
+    </div>
+}
+else
+{
+    <CardWrapper Definition="_definition">
+        <div class="quick-stat">
+            @if (Efficiency != null)
+            {
+                <div class="quick-stat-value">
+                    @Efficiency.Value.ToString("0.0")<span class="quick-stat-unit"> mi/kWh</span>
+                </div>
+            }
+            else
+            {
+                <div class="quick-stat-value muted">—</div>
+            }
+        </div>
+    </CardWrapper>
+}
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private double? Efficiency => Context?.Efficiency;
+    private bool Compact => Context?.IsCompact ?? false;
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "efficiency",
+        Icon = "zap",
+        Title = "Efficiency"
+    };
+}

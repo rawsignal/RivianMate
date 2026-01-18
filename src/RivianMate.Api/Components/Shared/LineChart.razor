@@ -1,0 +1,297 @@
+@* Generic line chart component for any time-series data *@
+
+@if (DataPoints == null || DataPoints.Count < 2)
+{
+    <div class="line-chart-empty @(Mode == ChartMode.Minimal ? "minimal" : "detailed")">
+        <span>@EmptyMessage</span>
+    </div>
+}
+else
+{
+    <div class="line-chart @(Mode == ChartMode.Minimal ? "minimal" : "detailed")">
+        @if (Mode == ChartMode.Detailed)
+        {
+            <!-- Y-axis labels -->
+            <div class="chart-y-axis">
+                <span>@FormatValue(DisplayMax) @Unit</span>
+                <span>@FormatValue((DisplayMax + DisplayMin) / 2) @Unit</span>
+                <span>@FormatValue(DisplayMin) @Unit</span>
+            </div>
+        }
+
+        <div class="chart-area">
+            <svg viewBox="0 0 100 @ViewBoxHeight" preserveAspectRatio="none">
+                @if (Mode == ChartMode.Detailed)
+                {
+                    <!-- Grid lines -->
+                    <g class="chart-grid">
+                        @foreach (var y in GetHorizontalGridLines())
+                        {
+                            <line x1="0" y1="@y" x2="100" y2="@y" vector-effect="non-scaling-stroke" />
+                        }
+                        @foreach (var x in GetVerticalGridLines())
+                        {
+                            <line x1="@x" y1="0" x2="@x" y2="@ViewBoxHeight" vector-effect="non-scaling-stroke" />
+                        }
+                    </g>
+
+                    <!-- Gradient fill for detailed mode -->
+                    <defs>
+                        <linearGradient id="chartFill-@_chartId" x1="0%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stop-color="@Color" stop-opacity="0.3"/>
+                            <stop offset="100%" stop-color="@Color" stop-opacity="0"/>
+                        </linearGradient>
+                    </defs>
+                    <polyline fill="url(#chartFill-@_chartId)" stroke="none" points="@GetFilledAreaPoints()"/>
+                }
+                <polyline fill="none" stroke="@Color" stroke-width="@StrokeWidth" stroke-linecap="round" stroke-linejoin="round"
+                          points="@GetChartPoints()" vector-effect="non-scaling-stroke"/>
+            </svg>
+        </div>
+
+        @if (Mode == ChartMode.Detailed && DataPoints.Count > 0)
+        {
+            <!-- X-axis labels -->
+            <div class="chart-x-axis">
+                @foreach (var label in GetXAxisLabels())
+                {
+                    <span>@label</span>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// The data points to display. Each point has a timestamp and value.
+    /// </summary>
+    [Parameter] public List<ChartDataPoint>? DataPoints { get; set; }
+
+    /// <summary>
+    /// Display mode: Minimal for dashboard cards, Detailed for full pages.
+    /// </summary>
+    [Parameter] public ChartMode Mode { get; set; } = ChartMode.Minimal;
+
+    /// <summary>
+    /// Unit label for Y-axis (e.g., "kWh", "mi", "%").
+    /// </summary>
+    [Parameter] public string Unit { get; set; } = "";
+
+    /// <summary>
+    /// Optional fixed maximum value for Y-axis. If not set, uses data max.
+    /// </summary>
+    [Parameter] public double? MaxValue { get; set; }
+
+    /// <summary>
+    /// Optional fixed minimum value for Y-axis. If not set, uses data min.
+    /// </summary>
+    [Parameter] public double? MinValue { get; set; }
+
+    /// <summary>
+    /// Line and fill color. Defaults to success green.
+    /// </summary>
+    [Parameter] public string Color { get; set; } = "var(--color-success)";
+
+    /// <summary>
+    /// Message shown when there's not enough data.
+    /// </summary>
+    [Parameter] public string EmptyMessage { get; set; } = "Collecting data...";
+
+    /// <summary>
+    /// Number of decimal places for value formatting.
+    /// </summary>
+    [Parameter] public int DecimalPlaces { get; set; } = 0;
+
+    /// <summary>
+    /// Date format for X-axis labels.
+    /// </summary>
+    [Parameter] public string DateFormat { get; set; } = "MMM yyyy";
+
+    private string _chartId = Guid.NewGuid().ToString("N")[..8];
+
+    private int ViewBoxHeight => Mode == ChartMode.Minimal ? 40 : 60;
+    private string StrokeWidth => Mode == ChartMode.Minimal ? "2" : "2.5";
+
+    private double DataMin => DataPoints?.Min(p => p.Value) ?? 0;
+    private double DataMax => DataPoints?.Max(p => p.Value) ?? 100;
+    private double DisplayMin => MinValue ?? DataMin;
+    private double DisplayMax => MaxValue ?? DataMax;
+
+    public enum ChartMode
+    {
+        Minimal,
+        Detailed
+    }
+
+    public record ChartDataPoint(DateTime Timestamp, double Value);
+
+    private string FormatValue(double value)
+    {
+        return DecimalPlaces > 0
+            ? value.ToString($"F{DecimalPlaces}")
+            : value.ToString("0");
+    }
+
+    private string FormatDate(DateTime date) => date.ToString(DateFormat);
+
+    /// <summary>
+    /// Get Y positions for horizontal grid lines (aligned with y-axis labels: top, middle, bottom).
+    /// </summary>
+    private List<string> GetHorizontalGridLines()
+    {
+        var height = ViewBoxHeight;
+        var padding = 4; // Same as detailed mode padding in GetChartPoints
+
+        // Three lines: top (max), middle, bottom (min)
+        var top = padding;
+        var bottom = height - padding;
+        var middle = (top + bottom) / 2.0;
+
+        return new List<string>
+        {
+            FormattableString.Invariant($"{top:F1}"),
+            FormattableString.Invariant($"{middle:F1}"),
+            FormattableString.Invariant($"{bottom:F1}")
+        };
+    }
+
+    /// <summary>
+    /// Get X positions for vertical grid lines (aligned with x-axis labels).
+    /// </summary>
+    private List<string> GetVerticalGridLines()
+    {
+        var labels = GetXAxisLabels();
+        if (labels.Count < 2)
+            return new List<string>();
+
+        var lines = new List<string>();
+        for (int i = 0; i < labels.Count; i++)
+        {
+            // Evenly space the lines across 0-100
+            var x = (i / (double)(labels.Count - 1)) * 100;
+            lines.Add(FormattableString.Invariant($"{x:F1}"));
+        }
+        return lines;
+    }
+
+    /// <summary>
+    /// Generate x-axis labels with appropriate intervals based on the date range.
+    /// </summary>
+    private List<string> GetXAxisLabels()
+    {
+        if (DataPoints == null || DataPoints.Count < 2)
+            return new List<string>();
+
+        var minDate = DataPoints.Min(p => p.Timestamp);
+        var maxDate = DataPoints.Max(p => p.Timestamp);
+        var totalDays = (maxDate - minDate).TotalDays;
+
+        var labels = new List<string>();
+
+        // Determine interval based on date range
+        if (totalDays <= 14)
+        {
+            // Less than 2 weeks: show every few days
+            var interval = Math.Max(1, (int)(totalDays / 5));
+            for (var date = minDate; date <= maxDate; date = date.AddDays(interval))
+            {
+                labels.Add(date.ToString("MMM d"));
+            }
+            if (labels.Count == 0 || labels.Last() != maxDate.ToString("MMM d"))
+                labels.Add(maxDate.ToString("MMM d"));
+        }
+        else if (totalDays <= 90)
+        {
+            // Up to 3 months: show weekly/bi-weekly
+            var interval = totalDays <= 45 ? 7 : 14;
+            for (var date = minDate; date <= maxDate; date = date.AddDays(interval))
+            {
+                labels.Add(date.ToString("MMM d"));
+            }
+            if (labels.Last() != maxDate.ToString("MMM d"))
+                labels.Add(maxDate.ToString("MMM d"));
+        }
+        else if (totalDays <= 365)
+        {
+            // Up to a year: show monthly
+            var current = new DateTime(minDate.Year, minDate.Month, 1);
+            while (current <= maxDate)
+            {
+                labels.Add(current.ToString("MMM yyyy"));
+                current = current.AddMonths(1);
+            }
+        }
+        else
+        {
+            // Over a year: show quarterly or based on data span
+            var months = (int)(totalDays / 30);
+            var interval = Math.Max(2, months / 6); // Aim for ~6 labels
+            var current = new DateTime(minDate.Year, minDate.Month, 1);
+            while (current <= maxDate)
+            {
+                labels.Add(current.ToString("MMM yyyy"));
+                current = current.AddMonths(interval);
+            }
+            // Ensure we have the end date
+            var lastLabel = new DateTime(maxDate.Year, maxDate.Month, 1).ToString("MMM yyyy");
+            if (labels.Last() != lastLabel)
+                labels.Add(lastLabel);
+        }
+
+        // Limit to reasonable number of labels
+        if (labels.Count > 8)
+        {
+            var step = (int)Math.Ceiling(labels.Count / 6.0);
+            labels = labels.Where((_, i) => i % step == 0 || i == labels.Count - 1).ToList();
+        }
+
+        return labels;
+    }
+
+    private string GetChartPoints()
+    {
+        if (DataPoints == null || DataPoints.Count < 2)
+            return "";
+
+        var minValue = DisplayMin;
+        var maxValue = DisplayMax;
+        var minTime = DataPoints.Min(p => p.Timestamp);
+        var maxTime = DataPoints.Max(p => p.Timestamp);
+
+        // Ensure we have a range to work with
+        var valueRange = maxValue - minValue;
+        if (valueRange < 0.001) valueRange = 1;
+
+        var timeRange = (maxTime - minTime).TotalSeconds;
+        if (timeRange < 1) timeRange = 1;
+
+        // Add padding to value range for better visualization
+        var paddedMin = minValue - (valueRange * 0.15);
+        var paddedMax = maxValue + (valueRange * 0.15);
+        var paddedRange = paddedMax - paddedMin;
+
+        var height = ViewBoxHeight;
+        var padding = Mode == ChartMode.Minimal ? 2 : 4;
+
+        return string.Join(" ", DataPoints
+            .OrderBy(p => p.Timestamp)
+            .Select(point =>
+            {
+                var x = ((point.Timestamp - minTime).TotalSeconds / timeRange) * 100;
+                var normalizedValue = (point.Value - paddedMin) / paddedRange;
+                var y = height - (normalizedValue * (height - padding * 2)) - padding;
+                return FormattableString.Invariant($"{x:F1},{y:F1}");
+            }));
+    }
+
+    private string GetFilledAreaPoints()
+    {
+        var linePoints = GetChartPoints();
+        if (string.IsNullOrEmpty(linePoints))
+            return "";
+
+        var height = ViewBoxHeight;
+        return FormattableString.Invariant($"0,{height} {linePoints} 100,{height}");
+    }
+}

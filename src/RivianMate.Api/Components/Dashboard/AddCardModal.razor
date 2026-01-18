@@ -1,0 +1,74 @@
+@using RivianMate.Api.Services
+@using RivianMate.Api.Components.Shared
+
+@if (IsOpen)
+{
+    <div class="modal-overlay" @onclick="Close">
+        <div class="modal-content add-card-modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h2>
+                    <Icon Name="plus" Size="20" Style="color: var(--color-accent);" />
+                    Add Card
+                </h2>
+                <button class="modal-close" @onclick="Close">
+                    <Icon Name="x" Size="20" />
+                </button>
+            </div>
+
+            <div class="modal-body">
+                @if (HiddenCards == null || !HiddenCards.Any())
+                {
+                    <div class="empty-state">
+                        <Icon Name="check" Size="32" Style="color: var(--color-success); opacity: 0.5;" />
+                        <p>All cards are visible!</p>
+                        <p class="text-muted">Hide a card from the dashboard to see it here.</p>
+                    </div>
+                }
+                else
+                {
+                    <p class="modal-description">Select a card to add it back to your dashboard:</p>
+                    <div class="hidden-cards-list">
+                        @foreach (var card in HiddenCards)
+                        {
+                            <button class="hidden-card-item" @onclick="() => RestoreCard(card.CardId)">
+                                <div class="hidden-card-icon">
+                                    <Icon Name="@card.Icon" Size="20" />
+                                </div>
+                                <div class="hidden-card-info">
+                                    <span class="hidden-card-name">@card.Name</span>
+                                    <span class="hidden-card-section">@GetSectionName(card.Section)</span>
+                                </div>
+                                <Icon Name="plus" Size="16" Style="color: var(--color-accent);" />
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnRestoreCard { get; set; }
+    [Parameter] public List<DashboardCardConfig>? HiddenCards { get; set; }
+
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task RestoreCard(string cardId)
+    {
+        await OnRestoreCard.InvokeAsync(cardId);
+    }
+
+    private string GetSectionName(RivianMate.Core.Enums.DashboardSection section) => section switch
+    {
+        RivianMate.Core.Enums.DashboardSection.QuickStats => "Quick Stats",
+        RivianMate.Core.Enums.DashboardSection.MainGrid => "Main Grid",
+        RivianMate.Core.Enums.DashboardSection.BottomStats => "Bottom Stats",
+        _ => "Dashboard"
+    };
+}

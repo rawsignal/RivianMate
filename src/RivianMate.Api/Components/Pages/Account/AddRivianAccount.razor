@@ -1,0 +1,307 @@
+@page "/rivian/add"
+@page "/rivian/connect"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+@attribute [Authorize]
+
+@using RivianMate.Api.Services.Jobs
+@inject RivianAccountService RivianAccountService
+@inject PollingJobManager PollingJobManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavigationManager
+@inject ILogger<AddRivianAccount> Logger
+
+<PageTitle>Connect Rivian Account - RivianMate</PageTitle>
+
+<div class="auth-container">
+    <div class="auth-card" style="max-width: 480px;">
+        <div class="auth-header">
+            <div class="logo-icon"></div>
+            <h1>Connect Rivian Account</h1>
+            <p>Link your Rivian account to start tracking your vehicle</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="alert alert-error">
+                @_errorMessage
+            </div>
+        }
+
+        @if (_step == LoginStep.Credentials)
+        {
+            <EditForm Model="_credentialsModel" OnValidSubmit="SubmitCredentials">
+                <DataAnnotationsValidator />
+
+                <div class="form-group">
+                    <label for="email">Rivian Account Email</label>
+                    <InputText @bind-Value="_credentialsModel.Email" id="email" type="email" placeholder="your-rivian-email@example.com" disabled="@_isLoading" />
+                    <ValidationMessage For="() => _credentialsModel.Email" class="validation-message" />
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Rivian Account Password</label>
+                    <InputText @bind-Value="_credentialsModel.Password" id="password" type="password" placeholder="Your Rivian password" disabled="@_isLoading" />
+                    <ValidationMessage For="() => _credentialsModel.Password" class="validation-message" />
+                </div>
+
+                <div class="info-box">
+                    <Icon Name="shield" Size="16" />
+                    <span><strong>We never store your Rivian password.</strong> Your credentials are sent directly to Rivian's servers, and only the secure authentication tokens Rivian returns are saved.</span>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-full" disabled="@_isLoading">
+                    @if (_isLoading)
+                    {
+                        <span>Connecting...</span>
+                    }
+                    else
+                    {
+                        <span>Connect Account</span>
+                    }
+                </button>
+            </EditForm>
+        }
+        else if (_step == LoginStep.Mfa)
+        {
+            <EditForm Model="_mfaModel" OnValidSubmit="SubmitMfa">
+                <DataAnnotationsValidator />
+
+                <div class="info-box" style="margin-bottom: var(--space-6);">
+                    <Icon Name="lock" Size="16" />
+                    <span>Rivian requires multi-factor authentication. Check your email or SMS messages for a code.</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="otpCode">Verification Code</label>
+                    <InputText @bind-Value="_mfaModel.OtpCode" id="otpCode" type="text" placeholder="Enter 6-digit code" disabled="@_isLoading" autocomplete="one-time-code" />
+                    <ValidationMessage For="() => _mfaModel.OtpCode" class="validation-message" />
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-full" disabled="@_isLoading">
+                    @if (_isLoading)
+                    {
+                        <span>Verifying...</span>
+                    }
+                    else
+                    {
+                        <span>Verify Code</span>
+                    }
+                </button>
+
+                <button type="button" class="btn btn-secondary btn-full" style="margin-top: var(--space-3);" @onclick="ResetToCredentials" disabled="@_isLoading">
+                    Start Over
+                </button>
+            </EditForm>
+        }
+        else if (_step == LoginStep.Syncing)
+        {
+            <div style="text-align: center; padding: var(--space-6) 0;">
+                <div class="loading-spinner"></div>
+                <p style="margin-top: var(--space-4); color: var(--color-text-muted);">Syncing your vehicles...</p>
+            </div>
+        }
+        else if (_step == LoginStep.Success)
+        {
+            <div style="text-align: center;">
+                <div style="width: 64px; height: 64px; margin: 0 auto var(--space-4); background-color: rgba(34, 197, 94, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                    <Icon Name="check" Size="32" Style="color: var(--color-success);" />
+                </div>
+                <h2 style="margin-bottom: var(--space-2);">Account Connected!</h2>
+                <p style="color: var(--color-text-muted); margin-bottom: var(--space-6);">
+                    Found @_syncedVehicleCount vehicle@(_syncedVehicleCount != 1 ? "s" : "") in your Rivian account.
+                </p>
+                <button type="button" class="btn btn-primary btn-full" @onclick="GoToDashboard">
+                    Go to Dashboard
+                </button>
+            </div>
+        }
+
+        @if (_step == LoginStep.Credentials || _step == LoginStep.Mfa)
+        {
+            <div class="auth-footer">
+                <p><a href="/">Cancel and return to Dashboard</a></p>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private enum LoginStep { Credentials, Mfa, Syncing, Success }
+    private LoginStep _step = LoginStep.Credentials;
+
+    private CredentialsModel _credentialsModel = new();
+    private MfaModel _mfaModel = new();
+    private RivianLoginSession? _session;
+    private string? _errorMessage;
+    private bool _isLoading;
+    private int _syncedVehicleCount;
+    private Guid _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (Guid.TryParse(userIdClaim, out var userId))
+        {
+            _userId = userId;
+        }
+    }
+
+    private async Task SubmitCredentials()
+    {
+        _errorMessage = null;
+        _isLoading = true;
+
+        try
+        {
+            _session = await RivianAccountService.BeginLoginAsync(
+                _credentialsModel.Email,
+                _credentialsModel.Password);
+
+            if (_session.RequiresMfa)
+            {
+                _step = LoginStep.Mfa;
+            }
+            else
+            {
+                await CompleteAccountSetup();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to begin Rivian login");
+            _errorMessage = GetFriendlyErrorMessage(ex.Message);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SubmitMfa()
+    {
+        if (_session == null)
+        {
+            _errorMessage = "Session expired. Please start over.";
+            return;
+        }
+
+        _errorMessage = null;
+        _isLoading = true;
+
+        try
+        {
+            _session = await RivianAccountService.CompleteMfaLoginAsync(_session, _mfaModel.OtpCode);
+            await CompleteAccountSetup();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to complete MFA login");
+            _errorMessage = GetFriendlyErrorMessage(ex.Message);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task CompleteAccountSetup()
+    {
+        if (_session == null)
+            return;
+
+        _step = LoginStep.Syncing;
+        StateHasChanged();
+
+        try
+        {
+            // Create the account
+            var account = await RivianAccountService.CreateAccountFromSessionAsync(_userId, _session);
+
+            // Sync vehicles
+            var vehicles = await RivianAccountService.SyncVehiclesAsync(account);
+            _syncedVehicleCount = vehicles.Count;
+
+            // Trigger immediate poll now that vehicles exist
+            if (vehicles.Count > 0)
+            {
+                PollingJobManager.TriggerImmediatePoll(account.Id);
+            }
+
+            _step = LoginStep.Success;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to complete account setup");
+            _errorMessage = "Failed to sync vehicles: " + GetFriendlyErrorMessage(ex.Message);
+            _step = LoginStep.Credentials;
+        }
+    }
+
+    private void ResetToCredentials()
+    {
+        _step = LoginStep.Credentials;
+        _session = null;
+        _mfaModel = new MfaModel();
+        _errorMessage = null;
+    }
+
+    private void GoToDashboard()
+    {
+        NavigationManager.NavigateTo("/", forceLoad: true);
+    }
+
+    private string GetFriendlyErrorMessage(string message)
+    {
+        if (message.Contains("invalid", StringComparison.OrdinalIgnoreCase) &&
+            message.Contains("password", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Invalid email or password. Please check your credentials.";
+        }
+
+        if (message.Contains("rate limit", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Too many requests. Please wait a few minutes and try again.";
+        }
+
+        // Be specific about OTP errors - don't match any message containing "code"
+        if (message.Contains("OTP", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("otpCode", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("verification code", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("invalid code", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Invalid verification code. Please try again.";
+        }
+
+        if (message.Contains("not authenticated", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("unauthorized", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("session expired", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Authentication failed. Please try logging in again.";
+        }
+
+        return message;
+    }
+
+    private sealed class CredentialsModel
+    {
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email format")]
+        public string Email { get; set; } = "";
+
+        [Required(ErrorMessage = "Password is required")]
+        public string Password { get; set; } = "";
+    }
+
+    private sealed class MfaModel
+    {
+        [Required(ErrorMessage = "Verification code is required")]
+        [StringLength(10, MinimumLength = 4, ErrorMessage = "Enter a valid code")]
+        public string OtpCode { get; set; } = "";
+    }
+}

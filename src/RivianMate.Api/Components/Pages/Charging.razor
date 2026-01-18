@@ -1,0 +1,533 @@
+@page "/charging"
+@page "/charging/{VehicleId:int}"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
+@attribute [Authorize]
+@inject VehicleService VehicleService
+@inject TimeZoneService TimeZoneService
+@inject SettingsService SettingsService
+@inject IJSRuntime JS
+@inject ILogger<Charging> Logger
+@implements IAsyncDisposable
+
+<PageTitle>Charging - RivianMate</PageTitle>
+
+<!-- Page Header -->
+<div style="margin-bottom: var(--space-8);">
+    <a href="/" style="font-size: 0.875rem; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+        <Icon Name="chevron-left" Size="16" />
+        Back to Dashboard
+    </a>
+    <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+        <Icon Name="zap" Size="28" Style="color: var(--color-accent);" />
+        Charging History
+    </h1>
+</div>
+
+@if (_loading)
+{
+    <div class="loading">
+        <p>Loading charging sessions...</p>
+    </div>
+}
+else if (_sessions == null || !_sessions.Any())
+{
+    <div class="card" style="text-align: center; padding: var(--space-12);">
+        <Icon Name="zap" Size="64" Style="color: var(--color-text-muted); opacity: 0.3; margin-bottom: var(--space-4);" />
+        <h3 style="margin-bottom: var(--space-4);">No Charging Sessions Recorded</h3>
+        <p>Charging data will appear here once RivianMate detects your vehicle charging.</p>
+        <p style="margin-top: var(--space-2); color: var(--color-text-muted);">Sessions are automatically tracked when your vehicle is plugged in.</p>
+    </div>
+}
+else
+{
+    <!-- Summary Stats -->
+    <div class="card mb-6">
+        <div class="grid-5">
+            <div class="mini-stat">
+                <p class="mini-stat-label">Total Sessions</p>
+                <p class="mini-stat-value">@_sessions.Count</p>
+            </div>
+            <div class="mini-stat">
+                <p class="mini-stat-label">Total Energy</p>
+                <p class="mini-stat-value">@_totalEnergy.ToString("N0") <span class="mini-stat-unit">kWh</span></p>
+            </div>
+            <div class="mini-stat">
+                <p class="mini-stat-label">Total Cost</p>
+                <p class="mini-stat-value">@FormatCost(_totalCost)</p>
+            </div>
+            <div class="mini-stat">
+                <p class="mini-stat-label">Home Charges</p>
+                <p class="mini-stat-value">@_homeCharges</p>
+            </div>
+            <div class="mini-stat">
+                <p class="mini-stat-label">DC Fast Charges</p>
+                <p class="mini-stat-value">@_dcfcCharges</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <!-- Charging Sessions List -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="list" Size="20" Style="color: var(--color-accent);" />
+                    All Sessions
+                </h2>
+            </div>
+
+            <div class="charging-list-full">
+                @foreach (var session in _sessions)
+                {
+                    <div class="charging-list-item @(_selectedSession?.Id == session.Id ? "selected" : "")" @onclick="() => SelectSession(session)">
+                        <div class="charging-list-icon @GetChargeTypeClass(session.ChargeType)">
+                            <Icon Name="@GetChargeTypeIcon(session.ChargeType)" Size="18" />
+                        </div>
+                        <div class="charging-list-content">
+                            <div class="charging-list-header">
+                                <span class="charging-list-energy">+@(session.EnergyAddedKwh?.ToString("0.0") ?? "—") kWh</span>
+                                <span class="charging-list-date">@FormatSessionDate(session.StartTime)</span>
+                            </div>
+                            <div class="charging-list-meta">
+                                <span>@(session.LocationName ?? GetChargeTypeName(session.ChargeType))</span>
+                                <span>·</span>
+                                <span>@session.StartBatteryLevel.ToString("0")% → @(session.EndBatteryLevel?.ToString("0") ?? "—")%</span>
+                            </div>
+                        </div>
+                        <div class="charging-list-chevron">
+                            <Icon Name="chevron-right" Size="16" />
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Session Details -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="info" Size="20" Style="color: var(--color-accent);" />
+                    Session Details
+                </h2>
+            </div>
+
+            @if (_selectedSession == null)
+            {
+                <div class="session-details-empty">
+                    <Icon Name="mouse-pointer" Size="48" Style="color: var(--color-text-muted); opacity: 0.3;" />
+                    <p>Select a session to view details</p>
+                </div>
+            }
+            else
+            {
+                <div class="session-details">
+                    <!-- Location -->
+                    <div class="session-detail-section">
+                        <h4>
+                            <Icon Name="map-pin" Size="16" />
+                            Location
+                        </h4>
+                        <div class="session-detail-grid">
+                            <div class="session-detail-item">
+                                <span class="session-detail-label">Location</span>
+                                <span class="session-detail-value">@(_selectedSession.LocationName ?? "Unknown")</span>
+                            </div>
+                            <div class="session-detail-item">
+                                <span class="session-detail-label">Type</span>
+                                <span class="session-detail-value">
+                                    @if (_selectedSession.IsHomeCharging == true)
+                                    {
+                                        <span class="badge badge-home">Home</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-@GetChargeTypeClass(_selectedSession.ChargeType)">@GetChargeTypeName(_selectedSession.ChargeType)</span>
+                                    }
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Time -->
+                    <div class="session-detail-section">
+                        <h4>
+                            <Icon Name="clock" Size="16" />
+                            Time
+                        </h4>
+                        <div class="session-detail-grid">
+                            <div class="session-detail-item">
+                                <span class="session-detail-label">Started</span>
+                                <span class="session-detail-value">@FormatDateTime(_selectedSession.StartTime)</span>
+                            </div>
+                            <div class="session-detail-item">
+                                <span class="session-detail-label">Ended</span>
+                                <span class="session-detail-value">@(_selectedSession.EndTime.HasValue ? FormatDateTime(_selectedSession.EndTime.Value) : "In Progress")</span>
+                            </div>
+                            <div class="session-detail-item">
+                                <span class="session-detail-label">Duration</span>
+                                <span class="session-detail-value">@FormatDuration(_selectedSession.StartTime, _selectedSession.EndTime)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Energy & Power -->
+                    <div class="session-detail-section">
+                        <h4>
+                            <Icon Name="zap" Size="16" />
+                            Energy & Power
+                        </h4>
+                        <div class="session-detail-grid">
+                            <div class="session-detail-item">
+                                <span class="session-detail-label">Energy Added</span>
+                                <span class="session-detail-value">@(_selectedSession.EnergyAddedKwh?.ToString("0.0") ?? "—") kWh</span>
+                            </div>
+                            <div class="session-detail-item">
+                                <span class="session-detail-label">Peak Power</span>
+                                <span class="session-detail-value">@(_selectedSession.PeakPowerKw?.ToString("0") ?? "—") kW</span>
+                            </div>
+                            <div class="session-detail-item">
+                                <span class="session-detail-label">Average Power</span>
+                                <span class="session-detail-value">@(_selectedSession.AveragePowerKw?.ToString("0.0") ?? "—") kW</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cost -->
+                    @{
+                        var sessionCost = GetSessionCost(_selectedSession);
+                        var isEstimated = IsEstimatedCost(_selectedSession);
+                    }
+                    @if (sessionCost.HasValue || _selectedSession.IsHomeCharging == true)
+                    {
+                        <div class="session-detail-section">
+                            <h4>
+                                <Icon Name="dollar-sign" Size="16" />
+                                Cost@(isEstimated ? " (Estimated)" : "")
+                            </h4>
+                            <div class="session-detail-grid">
+                                <div class="session-detail-item">
+                                    <span class="session-detail-label">@(isEstimated ? "Est. Cost" : "Cost")</span>
+                                    <span class="session-detail-value session-cost">@FormatCost(sessionCost)</span>
+                                </div>
+                                @if (isEstimated)
+                                {
+                                    <div class="session-detail-item">
+                                        <span class="session-detail-label">Your Rate</span>
+                                        <span class="session-detail-value">@_homeElectricityRate.ToString("C3")/kWh</span>
+                                    </div>
+                                }
+                            </div>
+                            @if (isEstimated)
+                            {
+                                <p style="margin-top: var(--space-2); font-size: 0.7rem; color: var(--color-text-muted);">
+                                    Estimated using your home electricity rate. Configure in Settings.
+                                </p>
+                            }
+                        </div>
+                    }
+                    else if (_selectedSession.ChargeType == ChargeType.DC_Fast)
+                    {
+                        <div class="session-detail-section">
+                            <h4>
+                                <Icon Name="dollar-sign" Size="16" />
+                                Cost
+                            </h4>
+                            <p style="font-size: 0.875rem; color: var(--color-text-muted);">
+                                Cost data not available from charging network.
+                            </p>
+                        </div>
+                    }
+
+                    <!-- Battery -->
+                    <div class="session-detail-section">
+                        <h4>
+                            <Icon Name="battery" Size="16" />
+                            Battery
+                        </h4>
+                        <div class="session-detail-grid">
+                            <div class="session-detail-item">
+                                <span class="session-detail-label">Start Level</span>
+                                <span class="session-detail-value">@_selectedSession.StartBatteryLevel.ToString("0")%</span>
+                            </div>
+                            <div class="session-detail-item">
+                                <span class="session-detail-label">End Level</span>
+                                <span class="session-detail-value">@(_selectedSession.EndBatteryLevel?.ToString("0") ?? "—")%</span>
+                            </div>
+                            <div class="session-detail-item">
+                                <span class="session-detail-label">Charge Limit</span>
+                                <span class="session-detail-value">@(_selectedSession.ChargeLimit?.ToString("0") ?? "—")%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Range -->
+                    @if (_selectedSession.RangeAdded.HasValue || _selectedSession.StartRangeEstimate.HasValue)
+                    {
+                        <div class="session-detail-section">
+                            <h4>
+                                <Icon Name="map" Size="16" />
+                                Range
+                            </h4>
+                            <div class="session-detail-grid">
+                                @if (_selectedSession.StartRangeEstimate.HasValue)
+                                {
+                                    <div class="session-detail-item">
+                                        <span class="session-detail-label">Start Range</span>
+                                        <span class="session-detail-value">@_selectedSession.StartRangeEstimate.Value.ToString("0") mi</span>
+                                    </div>
+                                }
+                                @if (_selectedSession.EndRangeEstimate.HasValue)
+                                {
+                                    <div class="session-detail-item">
+                                        <span class="session-detail-label">End Range</span>
+                                        <span class="session-detail-value">@_selectedSession.EndRangeEstimate.Value.ToString("0") mi</span>
+                                    </div>
+                                }
+                                @if (_selectedSession.RangeAdded.HasValue)
+                                {
+                                    <div class="session-detail-item">
+                                        <span class="session-detail-label">Range Added</span>
+                                        <span class="session-detail-value">+@_selectedSession.RangeAdded.Value.ToString("0") mi</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Map -->
+                    <div class="session-detail-section">
+                        <h4>
+                            <Icon Name="map-pin" Size="16" />
+                            Charge Location
+                        </h4>
+                        @if (_selectedSession.Latitude.HasValue && _selectedSession.Longitude.HasValue)
+                        {
+                            <div id="charge-map" class="charge-map-container"></div>
+                        }
+                        else
+                        {
+                            <div class="charge-map-empty">
+                                <Icon Name="map-pin" Size="32" Style="color: var(--color-text-muted); opacity: 0.3;" />
+                                <p>No location data available</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int? VehicleId { get; set; }
+
+    private List<ChargingSession>? _sessions;
+    private ChargingSession? _selectedSession;
+    private bool _loading = true;
+    private bool _mapInitialized;
+    private bool _pendingMapUpdate;
+    private double _totalEnergy;
+    private int _homeCharges;
+    private int _dcfcCharges;
+    private double _totalCost;
+
+    // Home electricity rate for estimating home charging cost (loaded from settings)
+    private double _homeElectricityRate = 0.15; // $/kWh default
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingMapUpdate && _selectedSession?.Latitude != null && _selectedSession?.Longitude != null)
+        {
+            _pendingMapUpdate = false;
+
+            try
+            {
+                if (!_mapInitialized)
+                {
+                    await JS.InvokeVoidAsync("chargeMap.initialize", "charge-map");
+                    _mapInitialized = true;
+                }
+
+                await JS.InvokeVoidAsync("chargeMap.setMarker",
+                    _selectedSession.Latitude.Value,
+                    _selectedSession.Longitude.Value,
+                    _selectedSession.LocationName ?? GetChargeTypeName(_selectedSession.ChargeType),
+                    GetChargeTypeClass(_selectedSession.ChargeType));
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error initializing or updating charge map");
+            }
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            // Load home electricity rate from settings (for estimating home charging cost)
+            _homeElectricityRate = await SettingsService.GetDoubleAsync(SettingKeys.HomeElectricityRate, 0.15);
+
+            var targetVehicleId = VehicleId;
+
+            if (!targetVehicleId.HasValue)
+            {
+                var vehicles = await VehicleService.GetAllVehiclesAsync();
+                targetVehicleId = vehicles.FirstOrDefault()?.Id;
+            }
+
+            if (targetVehicleId.HasValue)
+            {
+                _sessions = await VehicleService.GetChargingSessionsAsync(targetVehicleId.Value);
+
+                if (_sessions?.Any() == true)
+                {
+                    _totalEnergy = _sessions.Sum(s => s.EnergyAddedKwh ?? 0);
+                    _homeCharges = _sessions.Count(s => s.IsHomeCharging == true);
+                    _dcfcCharges = _sessions.Count(s => s.ChargeType == ChargeType.DC_Fast);
+                    _totalCost = _sessions.Sum(s => GetSessionCost(s) ?? 0);
+
+                    if (_sessions.FirstOrDefault() is { } firstSession)
+                    {
+                        await SelectSessionAsync(firstSession);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading charging sessions");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SelectSessionAsync(ChargingSession session)
+    {
+        _selectedSession = session;
+
+        if (session.Latitude.HasValue && session.Longitude.HasValue)
+        {
+            _pendingMapUpdate = true;
+        }
+
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    private void SelectSession(ChargingSession session)
+    {
+        _ = SelectSessionAsync(session);
+    }
+
+    private string FormatSessionDate(DateTime utcTime)
+    {
+        var localTime = TimeZoneService.ToLocalTime(utcTime);
+        var today = TimeZoneService.ToLocalTime(DateTime.UtcNow).Date;
+        if (localTime.Date == today) return "Today";
+        if (localTime.Date == today.AddDays(-1)) return "Yesterday";
+        return localTime.ToString("MMM d, yyyy");
+    }
+
+    private string FormatDateTime(DateTime utcTime)
+    {
+        var localTime = TimeZoneService.ToLocalTime(utcTime);
+        return localTime.ToString("MMM d, yyyy h:mm tt");
+    }
+
+    private static string FormatDuration(DateTime start, DateTime? end)
+    {
+        if (end == null) return "In progress";
+        var duration = end.Value - start;
+        if (duration.TotalMinutes < 60) return $"{(int)duration.TotalMinutes} min";
+        return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+    }
+
+    private static string GetChargeTypeIcon(ChargeType? type) => type switch
+    {
+        ChargeType.DC_Fast => "charge-l3",
+        ChargeType.AC_Level2 => "charge-l2",
+        ChargeType.AC_Level1 => "charge-l1",
+        _ => "charge-l1"
+    };
+
+    private static string GetChargeTypeClass(ChargeType? type) => type switch
+    {
+        ChargeType.DC_Fast => "dcfc",
+        ChargeType.AC_Level2 => "level2",
+        ChargeType.AC_Level1 => "level1",
+        _ => "home"
+    };
+
+    private static string GetChargeTypeName(ChargeType? type) => type switch
+    {
+        ChargeType.DC_Fast => "DC Fast Charge",
+        ChargeType.AC_Level2 => "Level 2",
+        ChargeType.AC_Level1 => "Level 1",
+        _ => "Home"
+    };
+
+    /// <summary>
+    /// Get the cost for a charging session.
+    /// Uses API-provided cost if available, otherwise estimates for home charging only.
+    /// </summary>
+    private double? GetSessionCost(ChargingSession session)
+    {
+        // Use API-provided cost if available
+        if (session.Cost.HasValue)
+            return session.Cost.Value;
+
+        // Only estimate cost for home charging (we know the rate)
+        if (session.IsHomeCharging == true && session.EnergyAddedKwh > 0)
+        {
+            // Energy from API is net energy delivered to battery
+            return session.EnergyAddedKwh.Value * _homeElectricityRate;
+        }
+
+        // No cost available for non-home charging without API data
+        return null;
+    }
+
+    /// <summary>
+    /// Check if the cost is from the API or estimated.
+    /// </summary>
+    private bool IsEstimatedCost(ChargingSession session)
+    {
+        return !session.Cost.HasValue && session.IsHomeCharging == true;
+    }
+
+    private string FormatCost(double? cost)
+    {
+        if (!cost.HasValue || cost < 0.01) return "—";
+        return cost.Value.ToString("C2");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_mapInitialized)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("chargeMap.dispose");
+            }
+            catch
+            {
+                // Ignore errors during disposal
+            }
+        }
+    }
+}

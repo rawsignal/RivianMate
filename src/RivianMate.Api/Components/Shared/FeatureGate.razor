@@ -1,0 +1,32 @@
+@using RivianMate.Core.Licensing
+@inject FeatureService FeatureService
+
+@* Feature gate component - shows content only if feature is enabled *@
+
+@if (!_loading && _isEnabled)
+{
+    @ChildContent
+}
+
+@code {
+    /// <summary>
+    /// The feature to check.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public string Feature { get; set; } = "";
+
+    /// <summary>
+    /// Content to show when feature is enabled.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private bool _loading = true;
+    private bool _isEnabled;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isEnabled = await FeatureService.IsEnabledAsync(Feature);
+        _loading = false;
+    }
+}

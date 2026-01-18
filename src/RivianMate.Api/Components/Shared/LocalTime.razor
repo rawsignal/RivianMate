@@ -1,0 +1,55 @@
+@inject TimeZoneService TimeZoneService
+
+@*
+    Displays a UTC DateTime in the user's local timezone.
+
+    Usage:
+    <LocalTime Value="@someUtcDateTime" />
+    <LocalTime Value="@someUtcDateTime" Format="HH:mm" />
+    <LocalTime Value="@someUtcDateTime" Relative="true" />
+*@
+
+@if (Value.HasValue)
+{
+    @if (Relative)
+    {
+        var (relative, full) = TimeZoneService.FormatRelativeWithFull(Value.Value);
+        <time datetime="@Value.Value.ToString("o")" title="@full">@relative</time>
+    }
+    else
+    {
+        var formatted = TimeZoneService.FormatLocal(Value.Value, Format);
+        <time datetime="@Value.Value.ToString("o")">@formatted</time>
+    }
+}
+else
+{
+    <span class="text-muted">@Fallback</span>
+}
+
+@code {
+    /// <summary>
+    /// The UTC DateTime to display.
+    /// </summary>
+    [Parameter]
+    public DateTime? Value { get; set; }
+
+    /// <summary>
+    /// Custom format string (e.g., "HH:mm", "MMM d, yyyy").
+    /// Default is "g" (short date + short time).
+    /// </summary>
+    [Parameter]
+    public string? Format { get; set; }
+
+    /// <summary>
+    /// Display as relative time (e.g., "5 minutes ago").
+    /// </summary>
+    [Parameter]
+    public bool Relative { get; set; }
+
+    /// <summary>
+    /// Fallback text when Value is null.
+    /// </summary>
+    [Parameter]
+    public string Fallback { get; set; } = "-";
+}

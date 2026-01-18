@@ -1,0 +1,779 @@
+@page "/"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Components.Dashboard
+@using RivianMate.Core.Enums
+@attribute [Authorize]
+@inject VehicleService VehicleService
+@inject BatteryHealthService BatteryHealthService
+@inject RivianAccountService RivianAccountService
+@inject DashboardConfigService DashboardConfigService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavigationManager
+@inject ILogger<Home> Logger
+@inject TimeZoneService TimeZoneService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Dashboard - RivianMate</PageTitle>
+
+<!-- Vehicle Header with Edit Mode Toggle -->
+<div class="vehicle-header">
+    <div class="vehicle-icon">
+        @if (_vehicle?.ImageData?.Length > 0)
+        {
+            <img src="/api/vehicles/@_vehicle.Id/image" alt="@_vehicle.Name" class="vehicle-image" />
+        }
+        else
+        {
+            <Icon Name="car" Size="28" Style="color: var(--color-accent);" />
+        }
+    </div>
+    <div class="vehicle-info-wrapper">
+        @if (_vehicles?.Count > 1)
+        {
+            <button class="vehicle-selector-btn" @onclick="ToggleVehicleSelector" @onclick:stopPropagation="true">
+                <div class="vehicle-info">
+                    <h1>@GetVehicleTitle()</h1>
+                    <p>@GetVehicleSpecs()</p>
+                </div>
+                <Icon Name="@(_showVehicleSelector ? "chevron-up" : "chevron-down")" Size="20" Class="vehicle-selector-chevron" />
+            </button>
+
+            @if (_showVehicleSelector)
+            {
+                <div class="vehicle-selector-dropdown">
+                    @foreach (var vehicle in _vehicles)
+                    {
+                        <button class="vehicle-option @(vehicle.Id == _vehicle?.Id ? "selected" : "")"
+                                @onclick="() => SelectVehicleAsync(vehicle)">
+                            @if (vehicle.ImageData?.Length > 0)
+                            {
+                                <img src="/api/vehicles/@vehicle.Id/image" alt="@vehicle.Name" class="vehicle-option-image" />
+                            }
+                            else
+                            {
+                                <Icon Name="car" Size="20" />
+                            }
+                            <div class="vehicle-option-info">
+                                <span class="vehicle-option-name">@GetVehicleDisplayName(vehicle)</span>
+                                <span class="vehicle-option-details">@GetVehicleOptionDetails(vehicle)</span>
+                            </div>
+                            @if (vehicle.Id == _vehicle?.Id)
+                            {
+                                <Icon Name="check" Size="16" Class="vehicle-option-check" />
+                            }
+                        </button>
+                    }
+                </div>
+            }
+        }
+        else
+        {
+            <div class="vehicle-info">
+                <h1>@GetVehicleTitle()</h1>
+                <p>@GetVehicleSpecs()</p>
+            </div>
+        }
+    </div>
+    <div class="header-actions-right">
+        <button class="edit-toggle-btn @(_editMode ? "active" : "")" @onclick="ToggleEditMode" title="@(_editMode ? "Done editing" : "Customize dashboard")">
+            <Icon Name="@(_editMode ? "check" : "settings")" Size="20" />
+            @if (_editMode)
+            {
+                <span>Done</span>
+            }
+        </button>
+    </div>
+</div>
+<div class="vehicle-status">
+    <span class="status-dot @(_isOnline ? "" : "offline")"></span>
+    <span>@(_isOnline ? "Online" : "Offline") · Last updated @GetLastUpdatedText()</span>
+</div>
+
+@if (_editMode && _hiddenCards?.Any() == true)
+{
+    <div class="add-card-bar">
+        <button class="add-card-btn" @onclick="OpenAddCardModal">
+            <Icon Name="plus" Size="16" />
+            Add Card (@_hiddenCards.Count hidden)
+        </button>
+    </div>
+}
+
+<!-- Quick Stats Grid -->
+<div class="grid-3 mb-6 @(_editMode ? "edit-mode-section" : "")" style="margin-top: var(--space-6);"
+     @ondragover="HandleSectionDragOver"
+     @ondragover:preventDefault="true"
+     @ondrop="() => HandleSectionDrop(DashboardSection.QuickStats)"
+     @ondrop:preventDefault="true">
+    @foreach (var card in GetDisplayCards(DashboardSection.QuickStats))
+    {
+        @if (card.IsPlaceholder)
+        {
+            <div class="dashboard-card-placeholder"
+                 @ondragover:preventDefault="true"
+                 @ondrop="() => HandleSectionDrop(DashboardSection.QuickStats)"
+                 @ondrop:preventDefault="true">
+                <div class="placeholder-inner stat-card"></div>
+            </div>
+        }
+        else
+        {
+            <DashboardCard CardId="@card.CardId"
+                           EditMode="_editMode"
+                           IsDragging="@(_draggingCardId == card.CardId)"
+                           OnHide="HandleHideCard"
+                           OnDragStart="HandleDragStart"
+                           OnDragEnd="HandleDragEnd"
+                           OnDragEnter="HandleDragEnter"
+                           OnDrop="HandleDrop">
+                @RenderCard(card.CardId, DashboardSection.QuickStats)
+            </DashboardCard>
+        }
+    }
+</div>
+
+<!-- Main Content Grid -->
+<div class="grid-4 mb-6 @(_editMode ? "edit-mode-section" : "")"
+     @ondragover="HandleSectionDragOver"
+     @ondragover:preventDefault="true"
+     @ondrop="() => HandleSectionDrop(DashboardSection.MainGrid)"
+     @ondrop:preventDefault="true">
+    @foreach (var card in GetDisplayCards(DashboardSection.MainGrid))
+    {
+        @if (card.IsPlaceholder)
+        {
+            <div class="dashboard-card-placeholder @(card.ColSpan > 1 ? "col-span-2" : "")"
+                 @ondragover:preventDefault="true"
+                 @ondrop="() => HandleSectionDrop(DashboardSection.MainGrid)"
+                 @ondrop:preventDefault="true">
+                <div class="placeholder-inner card"></div>
+            </div>
+        }
+        else
+        {
+            <DashboardCard CardId="@card.CardId"
+                           EditMode="_editMode"
+                           ColSpan="@card.ColSpan"
+                           IsDragging="@(_draggingCardId == card.CardId)"
+                           OnHide="HandleHideCard"
+                           OnDragStart="HandleDragStart"
+                           OnDragEnd="HandleDragEnd"
+                           OnDragEnter="HandleDragEnter"
+                           OnDrop="HandleDrop">
+                @RenderCard(card.CardId, DashboardSection.MainGrid)
+            </DashboardCard>
+        }
+    }
+</div>
+
+<!-- Bottom Stats Row -->
+<div class="bottom-stats @(_editMode ? "edit-mode-section" : "")"
+     @ondragover="HandleSectionDragOver"
+     @ondragover:preventDefault="true"
+     @ondrop="() => HandleSectionDrop(DashboardSection.BottomStats)"
+     @ondrop:preventDefault="true">
+    @foreach (var card in GetDisplayCards(DashboardSection.BottomStats))
+    {
+        @if (card.IsPlaceholder)
+        {
+            <div class="dashboard-card-placeholder"
+                 @ondragover:preventDefault="true"
+                 @ondrop="() => HandleSectionDrop(DashboardSection.BottomStats)"
+                 @ondrop:preventDefault="true">
+                <div class="placeholder-inner bottom-stat-card"></div>
+            </div>
+        }
+        else
+        {
+            <DashboardCard CardId="@card.CardId"
+                           EditMode="_editMode"
+                           IsDragging="@(_draggingCardId == card.CardId)"
+                           OnHide="HandleHideCard"
+                           OnDragStart="HandleDragStart"
+                           OnDragEnd="HandleDragEnd"
+                           OnDragEnter="HandleDragEnter"
+                           OnDrop="HandleDrop">
+                @RenderCard(card.CardId, DashboardSection.BottomStats)
+            </DashboardCard>
+        }
+    }
+</div>
+
+<!-- Add Card Modal -->
+<AddCardModal IsOpen="_showAddCardModal"
+              HiddenCards="_hiddenCards"
+              OnClose="CloseAddCardModal"
+              OnRestoreCard="HandleRestoreCard" />
+
+@code {
+    private List<RivianMate.Core.Entities.Vehicle>? _vehicles;
+    private RivianMate.Core.Entities.Vehicle? _vehicle;
+    private RivianMate.Core.Entities.VehicleState? _currentState;
+    private BatteryHealthSummary? _healthSummary;
+    private List<RivianMate.Core.Entities.BatteryHealthSnapshot>? _healthHistory;
+    private List<RivianMate.Core.Entities.ChargingSession>? _recentSessions;
+    private List<RivianMate.Core.Entities.Drive>? _recentDrives;
+    private double? _efficiency;
+    private bool _isOnline = false;
+    private Guid _userId;
+
+    // Vehicle selector state
+    private bool _showVehicleSelector = false;
+
+    // Edit mode state
+    private bool _editMode = false;
+    private bool _showAddCardModal = false;
+    private List<DashboardCardConfig>? _cardConfigs;
+    private List<DashboardCardConfig>? _hiddenCards;
+
+    // Drag and drop state
+    private string? _draggingCardId;
+    private string? _hoverTargetCardId;
+
+    // Display card helper record
+    private record DisplayCard(string CardId, int ColSpan, bool IsPlaceholder);
+
+    private bool _initialLoadComplete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get current user ID
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdClaim, out _userId))
+            {
+                return;
+            }
+
+            // Check if user has any linked Rivian accounts
+            var hasAccounts = await RivianAccountService.HasAnyAccountsAsync(_userId);
+            if (!hasAccounts)
+            {
+                // Redirect to connect Rivian account page
+                NavigationManager.NavigateTo("/rivian/connect", forceLoad: true);
+                return;
+            }
+
+            // Load dashboard configuration
+            await LoadDashboardConfig();
+
+            // Get vehicles for this user
+            _vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
+
+            // Default to first vehicle (localStorage check happens in OnAfterRenderAsync)
+            _vehicle = _vehicles.FirstOrDefault();
+
+            if (_vehicle != null)
+            {
+                await LoadVehicleDataAsync();
+            }
+            else
+            {
+                Logger.LogWarning("No vehicles found for user {UserId}", _userId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading dashboard data");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_initialLoadComplete && _vehicles?.Count > 1)
+        {
+            _initialLoadComplete = true;
+
+            // Now JS interop is available - check for saved vehicle selection
+            var savedVehicle = await GetLastSelectedVehicleAsync();
+            if (savedVehicle != null && savedVehicle.Id != _vehicle?.Id)
+            {
+                _vehicle = savedVehicle;
+                await LoadVehicleDataAsync();
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task LoadDashboardConfig()
+    {
+        _cardConfigs = await DashboardConfigService.GetUserConfigAsync(_userId);
+        _hiddenCards = await DashboardConfigService.GetHiddenCardsAsync(_userId);
+    }
+
+    private async Task LoadVehicleDataAsync()
+    {
+        if (_vehicle == null) return;
+
+        Logger.LogInformation(
+            "Loading data for vehicle: Id={Id}, Name={Name}, Model={Model}",
+            _vehicle.Id, _vehicle.Name, _vehicle.Model);
+
+        _currentState = await VehicleService.GetLatestStateAsync(_vehicle.Id);
+        _healthSummary = await BatteryHealthService.GetHealthSummaryAsync(_vehicle.Id);
+        _healthHistory = await BatteryHealthService.GetHealthHistoryAsync(
+            _vehicle.Id,
+            DateTime.UtcNow.AddMonths(-12));
+        _recentSessions = await VehicleService.GetRecentChargingSessionsAsync(_vehicle.Id, 4);
+        _recentDrives = await VehicleService.GetRecentDrivesAsync(_vehicle.Id, 4);
+        _efficiency = await VehicleService.GetAverageEfficiencyAsync(_vehicle.Id);
+
+        // Determine online status from power state and last update time
+        _isOnline = DetermineOnlineStatus();
+    }
+
+    private async Task SelectVehicleAsync(RivianMate.Core.Entities.Vehicle vehicle)
+    {
+        if (vehicle.Id == _vehicle?.Id)
+        {
+            _showVehicleSelector = false;
+            return;
+        }
+
+        _vehicle = vehicle;
+        _showVehicleSelector = false;
+
+        // Save selection to localStorage
+        await SaveSelectedVehicleAsync(vehicle.Id);
+
+        await LoadVehicleDataAsync();
+    }
+
+    private void ToggleVehicleSelector()
+    {
+        _showVehicleSelector = !_showVehicleSelector;
+    }
+
+    private string GetVehicleDisplayName(RivianMate.Core.Entities.Vehicle vehicle)
+    {
+        if (!string.IsNullOrEmpty(vehicle.Name))
+            return vehicle.Name;
+
+        var model = GetModelNameForVehicle(vehicle);
+        return vehicle.Year.HasValue ? $"{vehicle.Year} {model}" : model;
+    }
+
+    private string GetVehicleOptionDetails(RivianMate.Core.Entities.Vehicle vehicle)
+    {
+        var parts = new List<string>();
+
+        var model = GetModelNameForVehicle(vehicle);
+        var isKnownModel = model != "Rivian";
+
+        if (vehicle.Year.HasValue)
+            parts.Add(vehicle.Year.Value.ToString());
+
+        if (isKnownModel && string.IsNullOrEmpty(vehicle.Name))
+            { } // Model already shown in name
+        else if (isKnownModel)
+            parts.Add(model);
+
+        if (!string.IsNullOrEmpty(vehicle.ExteriorColor))
+            parts.Add(vehicle.ExteriorColor);
+
+        return parts.Count > 0 ? string.Join(" · ", parts) : "";
+    }
+
+    private List<DashboardCardConfig> GetVisibleCards(DashboardSection section)
+    {
+        if (_cardConfigs == null) return new();
+        return _cardConfigs
+            .Where(c => c.Section == section && c.IsVisible)
+            .OrderBy(c => c.Order)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Gets cards for display with preview ordering during drag operations.
+    /// Shows a placeholder where the dragged card will land.
+    /// </summary>
+    private List<DisplayCard> GetDisplayCards(DashboardSection section)
+    {
+        var cards = GetVisibleCards(section);
+        var result = new List<DisplayCard>();
+
+        // If not dragging, or dragging card is not in this section, just return normal order
+        var draggingCard = _draggingCardId != null ? cards.FirstOrDefault(c => c.CardId == _draggingCardId) : null;
+        if (draggingCard == null || string.IsNullOrEmpty(_hoverTargetCardId))
+        {
+            foreach (var card in cards)
+            {
+                result.Add(new DisplayCard(card.CardId, card.ColSpan, false));
+            }
+            return result;
+        }
+
+        // Check if hover target is in this section
+        var hoverCard = cards.FirstOrDefault(c => c.CardId == _hoverTargetCardId);
+        if (hoverCard == null)
+        {
+            foreach (var card in cards)
+            {
+                result.Add(new DisplayCard(card.CardId, card.ColSpan, false));
+            }
+            return result;
+        }
+
+        // Build the preview order with placeholder
+        foreach (var card in cards)
+        {
+            // Skip the dragging card in its original position - it will be shown as placeholder
+            if (card.CardId == _draggingCardId)
+            {
+                continue;
+            }
+
+            // Before the hover target, insert the placeholder
+            if (card.CardId == _hoverTargetCardId && _draggingCardId != null)
+            {
+                result.Add(new DisplayCard(_draggingCardId, draggingCard.ColSpan, true)); // Placeholder
+            }
+
+            result.Add(new DisplayCard(card.CardId, card.ColSpan, false));
+        }
+
+        // If hover target is the dragging card itself (hovering back to original position),
+        // make sure we still have the placeholder
+        if (_hoverTargetCardId == _draggingCardId && !result.Any(r => r.IsPlaceholder))
+        {
+            // Find where to insert based on original position
+            var originalIndex = cards.FindIndex(c => c.CardId == _draggingCardId);
+            if (originalIndex >= 0 && originalIndex < result.Count)
+            {
+                result.Insert(originalIndex, new DisplayCard(_draggingCardId, draggingCard.ColSpan, true));
+            }
+            else
+            {
+                result.Add(new DisplayCard(_draggingCardId, draggingCard.ColSpan, true));
+            }
+        }
+
+        return result;
+    }
+
+    private void ToggleEditMode()
+    {
+        _editMode = !_editMode;
+        if (!_editMode)
+        {
+            // Clear drag state when exiting edit mode
+            _draggingCardId = null;
+            _hoverTargetCardId = null;
+        }
+    }
+
+    private void OpenAddCardModal()
+    {
+        _showAddCardModal = true;
+    }
+
+    private void CloseAddCardModal()
+    {
+        _showAddCardModal = false;
+    }
+
+    private async Task HandleHideCard(string cardId)
+    {
+        await DashboardConfigService.SetCardVisibilityAsync(_userId, cardId, false);
+        await LoadDashboardConfig();
+    }
+
+    private async Task HandleRestoreCard(string cardId)
+    {
+        await DashboardConfigService.SetCardVisibilityAsync(_userId, cardId, true);
+        await LoadDashboardConfig();
+        _showAddCardModal = false;
+    }
+
+    private void HandleDragStart(string cardId)
+    {
+        _draggingCardId = cardId;
+        _hoverTargetCardId = cardId; // Start with self as target
+    }
+
+    private async Task HandleDragEnd()
+    {
+        // Commit the reorder when drag ends (drop may not fire if dropping on placeholder)
+        await CommitReorder();
+    }
+
+    private void HandleDragEnter(string cardId)
+    {
+        if (_draggingCardId == null) return;
+
+        // Only allow reordering within the same section
+        var draggingCard = _cardConfigs?.FirstOrDefault(c => c.CardId == _draggingCardId);
+        var targetCard = _cardConfigs?.FirstOrDefault(c => c.CardId == cardId);
+
+        if (draggingCard != null && targetCard != null && draggingCard.Section == targetCard.Section)
+        {
+            _hoverTargetCardId = cardId;
+            StateHasChanged();
+        }
+    }
+
+    private void HandleSectionDragOver(DragEventArgs e)
+    {
+        // Allow drop in section
+        e.DataTransfer.DropEffect = "move";
+    }
+
+    private async Task HandleSectionDrop(DashboardSection section)
+    {
+        // This handles drops on the section container or placeholder
+        // Just commit whatever reorder state we have
+        await CommitReorder();
+    }
+
+    private async Task HandleDrop(string targetCardId)
+    {
+        // Update hover target and commit
+        if (_draggingCardId != null)
+        {
+            var draggingCard = _cardConfigs?.FirstOrDefault(c => c.CardId == _draggingCardId);
+            var targetCard = _cardConfigs?.FirstOrDefault(c => c.CardId == targetCardId);
+
+            if (draggingCard != null && targetCard != null && draggingCard.Section == targetCard.Section)
+            {
+                _hoverTargetCardId = targetCardId;
+            }
+        }
+        await CommitReorder();
+    }
+
+    private async Task CommitReorder()
+    {
+        // Only reorder if we have a valid drag operation with a different target
+        if (_draggingCardId == null || _hoverTargetCardId == null || _draggingCardId == _hoverTargetCardId)
+        {
+            _draggingCardId = null;
+            _hoverTargetCardId = null;
+            return;
+        }
+
+        // Find the section of the cards
+        var draggingCard = _cardConfigs?.FirstOrDefault(c => c.CardId == _draggingCardId);
+        var hoverCard = _cardConfigs?.FirstOrDefault(c => c.CardId == _hoverTargetCardId);
+
+        if (draggingCard == null || hoverCard == null || draggingCard.Section != hoverCard.Section)
+        {
+            _draggingCardId = null;
+            _hoverTargetCardId = null;
+            return;
+        }
+
+        // Get current order for this section
+        var sectionCards = GetVisibleCards(draggingCard.Section);
+        var orderedIds = sectionCards.Select(c => c.CardId).ToList();
+
+        // Remove dragging card from its current position
+        orderedIds.Remove(_draggingCardId);
+
+        // Insert at new position (before hover target)
+        var targetIndex = orderedIds.IndexOf(_hoverTargetCardId);
+        if (targetIndex >= 0)
+        {
+            orderedIds.Insert(targetIndex, _draggingCardId);
+        }
+        else
+        {
+            orderedIds.Add(_draggingCardId);
+        }
+
+        // Save new order
+        await DashboardConfigService.ReorderCardsAsync(_userId, draggingCard.Section, orderedIds);
+        await LoadDashboardConfig();
+
+        _draggingCardId = null;
+        _hoverTargetCardId = null;
+    }
+
+    // Dynamic card rendering
+    private DashboardContext CreateContext(DashboardSection section) => new()
+    {
+        VehicleState = _currentState,
+        VehicleId = _vehicle?.Id,
+        HealthSummary = _healthSummary,
+        HealthHistory = _healthHistory,
+        RecentSessions = _recentSessions,
+        RecentDrives = _recentDrives,
+        Efficiency = _efficiency,
+        TimeZoneService = TimeZoneService,
+        Section = section
+    };
+
+    private RenderFragment RenderCard(string cardId, DashboardSection section) => builder =>
+    {
+        var componentType = DashboardCardComponentRegistry.GetComponentType(cardId);
+        if (componentType == null)
+        {
+            // Fallback for unknown cards
+            var cssClass = section == DashboardSection.BottomStats ? "bottom-stat-card" : "card";
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "class", cssClass);
+            builder.OpenElement(2, "p");
+            builder.AddContent(3, $"Unknown card: {cardId}");
+            builder.CloseElement();
+            builder.CloseElement();
+            return;
+        }
+
+        builder.OpenComponent(0, componentType);
+        builder.AddAttribute(1, "Context", CreateContext(section));
+        builder.CloseComponent();
+    };
+
+    // Helper methods
+    private bool DetermineOnlineStatus()
+    {
+        if (_currentState == null) return false;
+
+        // Consider online if we have recent data (within 10 minutes) and vehicle is not sleeping
+        var timeSinceUpdate = DateTime.UtcNow - _currentState.Timestamp;
+        var hasRecentData = timeSinceUpdate.TotalMinutes < 10;
+
+        var isAwake = _currentState.PowerState != RivianMate.Core.Enums.PowerState.Sleep
+                   && _currentState.PowerState != RivianMate.Core.Enums.PowerState.Unknown;
+
+        return hasRecentData && isAwake;
+    }
+
+    private string GetVehicleTitle()
+    {
+        var name = _vehicle?.Name;
+        var color = _vehicle?.ExteriorColor;
+        var model = GetModelName();
+
+        // Use name if available, otherwise fall back to model
+        var title = !string.IsNullOrEmpty(name) ? name : model;
+
+        // Add color if available
+        if (!string.IsNullOrEmpty(color))
+        {
+            title += $" · {color}";
+        }
+
+        return title;
+    }
+
+    private string GetVehicleSpecs()
+    {
+        var parts = new List<string>();
+
+        // Year
+        if (_vehicle?.Year.HasValue == true)
+            parts.Add(_vehicle.Year.Value.ToString());
+
+        // Model
+        if (_vehicle != null)
+            parts.Add(GetModelName());
+
+        // Trim
+        var trim = GetTrimName();
+        if (!string.IsNullOrEmpty(trim))
+            parts.Add(trim);
+
+        // Drive type
+        var drive = GetDriveTypeName();
+        if (!string.IsNullOrEmpty(drive))
+            parts.Add(drive);
+
+        // Battery pack
+        var battery = GetBatteryPackName();
+        if (!string.IsNullOrEmpty(battery))
+            parts.Add(battery);
+
+        return parts.Count > 0 ? string.Join(" · ", parts) : "Rivian";
+    }
+
+    private string GetModelName() => GetModelNameForVehicle(_vehicle);
+
+    private static string GetModelNameForVehicle(RivianMate.Core.Entities.Vehicle? vehicle) => vehicle?.Model switch
+    {
+        RivianMate.Core.Enums.VehicleModel.R1T => "R1T",
+        RivianMate.Core.Enums.VehicleModel.R1S => "R1S",
+        _ => "Rivian"
+    };
+
+    private string? GetBatteryPackName() => _vehicle?.BatteryPack switch
+    {
+        RivianMate.Core.Enums.BatteryPackType.Standard => "Standard Pack",
+        RivianMate.Core.Enums.BatteryPackType.Large => "Large Pack",
+        RivianMate.Core.Enums.BatteryPackType.Max => "Max Pack",
+        _ => null
+    };
+
+    private string? GetDriveTypeName() => _vehicle?.DriveType switch
+    {
+        RivianMate.Core.Enums.DriveType.DualMotor => "Dual Motor",
+        RivianMate.Core.Enums.DriveType.QuadMotor => "Quad Motor",
+        RivianMate.Core.Enums.DriveType.TriMotor => "Tri Motor",
+        _ => null
+    };
+
+    private string? GetTrimName() => _vehicle?.Trim switch
+    {
+        RivianMate.Core.Enums.VehicleTrim.Explore => "Explore",
+        RivianMate.Core.Enums.VehicleTrim.Adventure => "Adventure",
+        RivianMate.Core.Enums.VehicleTrim.LaunchEdition => "Launch Edition",
+        RivianMate.Core.Enums.VehicleTrim.Ascend => "Ascend",
+        _ => null
+    };
+
+    private string GetLastUpdatedText()
+    {
+        if (_currentState?.Timestamp == null) return "just now";
+        return TimeZoneService.FormatRelative(_currentState.Timestamp);
+    }
+
+    // LocalStorage key for remembering selected vehicle
+    private const string SelectedVehicleKey = "rivianmate_selectedVehicleId";
+
+    private async Task<RivianMate.Core.Entities.Vehicle?> GetLastSelectedVehicleAsync()
+    {
+        if (_vehicles == null || _vehicles.Count == 0)
+            return null;
+
+        try
+        {
+            var savedIdStr = await JSRuntime.InvokeAsync<string?>("rivianMate.storage.get", SelectedVehicleKey);
+            if (int.TryParse(savedIdStr, out var savedId))
+            {
+                // Find the vehicle in the user's list (validates it still exists and belongs to user)
+                var vehicle = _vehicles.FirstOrDefault(v => v.Id == savedId);
+                if (vehicle != null)
+                {
+                    Logger.LogDebug("Restored last selected vehicle: {VehicleId}", savedId);
+                    return vehicle;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // JS interop can fail during prerendering or if localStorage is unavailable
+            Logger.LogDebug(ex, "Could not restore last selected vehicle from localStorage");
+        }
+
+        return null;
+    }
+
+    private async Task SaveSelectedVehicleAsync(int vehicleId)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("rivianMate.storage.set", SelectedVehicleKey, vehicleId.ToString());
+            Logger.LogDebug("Saved selected vehicle to localStorage: {VehicleId}", vehicleId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Could not save selected vehicle to localStorage");
+        }
+    }
+
+}

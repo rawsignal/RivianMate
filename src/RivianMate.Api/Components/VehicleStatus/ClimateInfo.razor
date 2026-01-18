@@ -1,0 +1,32 @@
+@using RivianMate.Core.Entities
+
+<StatusSection Title="Climate" Icon="thermometer">
+    <StatusItem Label="Cabin Temp" Value="@FormatTemperature(VehicleState?.CabinTemperature)" />
+    <StatusItem Label="Target Temp" Value="@FormatTemperature(VehicleState?.ClimateTargetTemp)" />
+    <StatusItem Label="Preconditioning" Value="@FormatBool(VehicleState?.IsPreconditioningActive)" StatusClass="@(VehicleState?.IsPreconditioningActive == true ? "status-active" : "")" />
+    <StatusItem Label="Defrost" Value="@FormatBool(VehicleState?.IsDefrostActive)" StatusClass="@(VehicleState?.IsDefrostActive == true ? "status-active" : "")" />
+    <StatusItem Label="Pet Mode" Value="@FormatBool(VehicleState?.IsPetModeActive)" StatusClass="@(VehicleState?.IsPetModeActive == true ? "status-warning" : "")" />
+</StatusSection>
+
+@code {
+    [Parameter] public VehicleState? VehicleState { get; set; }
+    [Parameter] public bool UseFahrenheit { get; set; } = true;
+
+    private string FormatTemperature(double? celsius)
+    {
+        if (celsius == null) return "—";
+        if (UseFahrenheit)
+        {
+            var fahrenheit = celsius.Value * 9 / 5 + 32;
+            return $"{fahrenheit:0}°F";
+        }
+        return $"{celsius:0}°C";
+    }
+
+    private static string FormatBool(bool? value) => value switch
+    {
+        true => "On",
+        false => "Off",
+        _ => "—"
+    };
+}

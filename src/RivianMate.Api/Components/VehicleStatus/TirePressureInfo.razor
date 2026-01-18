@@ -1,0 +1,59 @@
+@using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
+
+<StatusSection Title="Tire Pressure" Icon="circle">
+    <div class="tire-grid">
+        <div class="tire-row">
+            <div class="tire-item @GetTireClass(VehicleState?.TirePressureStatusFrontLeft)">
+                <span class="tire-label">FL</span>
+                <span class="tire-value">@FormatPressure(VehicleState?.TirePressureFrontLeft)</span>
+                <span class="tire-status">@GetTireStatusIcon(VehicleState?.TirePressureStatusFrontLeft)</span>
+            </div>
+            <div class="tire-item @GetTireClass(VehicleState?.TirePressureStatusFrontRight)">
+                <span class="tire-label">FR</span>
+                <span class="tire-value">@FormatPressure(VehicleState?.TirePressureFrontRight)</span>
+                <span class="tire-status">@GetTireStatusIcon(VehicleState?.TirePressureStatusFrontRight)</span>
+            </div>
+        </div>
+        <div class="tire-row">
+            <div class="tire-item @GetTireClass(VehicleState?.TirePressureStatusRearLeft)">
+                <span class="tire-label">RL</span>
+                <span class="tire-value">@FormatPressure(VehicleState?.TirePressureRearLeft)</span>
+                <span class="tire-status">@GetTireStatusIcon(VehicleState?.TirePressureStatusRearLeft)</span>
+            </div>
+            <div class="tire-item @GetTireClass(VehicleState?.TirePressureStatusRearRight)">
+                <span class="tire-label">RR</span>
+                <span class="tire-value">@FormatPressure(VehicleState?.TirePressureRearRight)</span>
+                <span class="tire-status">@GetTireStatusIcon(VehicleState?.TirePressureStatusRearRight)</span>
+            </div>
+        </div>
+    </div>
+</StatusSection>
+
+@code {
+    [Parameter] public VehicleState? VehicleState { get; set; }
+
+    private static string FormatPressure(double? psi)
+    {
+        if (psi == null) return "—";
+        return $"{psi:0} psi";
+    }
+
+    private static string GetTireClass(TirePressureStatus? status) => status switch
+    {
+        TirePressureStatus.Ok => "tire-ok",
+        TirePressureStatus.Low => "tire-low",
+        TirePressureStatus.High => "tire-high",
+        TirePressureStatus.Critical => "tire-critical",
+        _ => ""
+    };
+
+    private static string GetTireStatusIcon(TirePressureStatus? status) => status switch
+    {
+        TirePressureStatus.Ok => "",
+        TirePressureStatus.Low => "Low",
+        TirePressureStatus.High => "High",
+        TirePressureStatus.Critical => "Critical",
+        _ => ""
+    };
+}

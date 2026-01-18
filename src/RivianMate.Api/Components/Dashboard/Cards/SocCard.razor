@@ -1,0 +1,90 @@
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
+
+<CardWrapper Definition="_definition">
+    @if (VehicleState?.BatteryLevel != null)
+    {
+        <div class="quick-stat">
+            <div class="quick-stat-value">
+                @VehicleState.BatteryLevel.Value.ToString("0.0")<span class="quick-stat-unit">%</span>
+            </div>
+            <div class="quick-stat-bar">
+                <div class="quick-stat-bar-fill" style="width: @VehicleState.BatteryLevel%; background-color: @GetBatteryColor(VehicleState.BatteryLevel.Value);"></div>
+            </div>
+            <p class="quick-stat-subtext" style="color: @GetChargingStatusColor();">
+                @GetChargingStatusText()
+            </p>
+        </div>
+    }
+    else
+    {
+        <div class="quick-stat">
+            <div class="quick-stat-value muted">—</div>
+        </div>
+    }
+</CardWrapper>
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private VehicleState? VehicleState => Context?.VehicleState;
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "soc",
+        Icon = "battery-charging",
+        Title = "State of Charge"
+    };
+
+    private static string GetBatteryColor(double level) => level switch
+    {
+        >= 60 => "var(--color-success)",
+        >= 20 => "var(--color-accent)",
+        _ => "var(--color-error)"
+    };
+
+    private string GetChargingStatusText()
+    {
+        var state = VehicleState?.ChargerState ?? ChargerState.Unknown;
+        return state switch
+        {
+            ChargerState.Charging => GetChargingWithTimeText(),
+            ChargerState.Complete => "Charging complete",
+            ChargerState.Connected => "Plugged in",
+            ChargerState.ReadyToCharge => "Ready to charge",
+            ChargerState.Fault => "Charging fault",
+            ChargerState.Disconnected => "Not plugged in",
+            _ => "Not plugged in"
+        };
+    }
+
+    private string GetChargingWithTimeText()
+    {
+        var minutes = VehicleState?.TimeToEndOfCharge;
+        if (minutes == null || minutes <= 0)
+            return "Charging...";
+
+        if (minutes < 60)
+            return $"Charging · {minutes} min remaining";
+
+        var hours = minutes.Value / 60;
+        var mins = minutes.Value % 60;
+        return mins > 0
+            ? $"Charging · {hours}h {mins}m remaining"
+            : $"Charging · {hours}h remaining";
+    }
+
+    private string GetChargingStatusColor()
+    {
+        var state = VehicleState?.ChargerState ?? ChargerState.Unknown;
+        return state switch
+        {
+            ChargerState.Charging => "var(--color-success)",
+            ChargerState.Complete => "var(--color-success)",
+            ChargerState.Fault => "var(--color-error)",
+            _ => "var(--color-text-muted)"
+        };
+    }
+}

@@ -1,0 +1,90 @@
+@using RivianMate.Api.Components.Shared
+
+<div class="dashboard-card-wrapper @GetWrapperClasses()"
+     draggable="@(EditMode ? "true" : "false")"
+     @ondragstart="HandleDragStart"
+     @ondragstart:stopPropagation="true"
+     @ondragend="HandleDragEnd"
+     @ondragenter="HandleDragEnter"
+     @ondragenter:preventDefault="true"
+     @ondragover="HandleDragOver"
+     @ondragover:preventDefault="true"
+     @ondrop="HandleDrop"
+     @ondrop:preventDefault="true">
+
+    @if (EditMode)
+    {
+        <div class="card-edit-controls">
+            <div class="drag-handle" title="Drag to reorder">
+                <Icon Name="grip" Size="16" />
+            </div>
+            <button class="hide-button" @onclick="HandleHide" @onclick:stopPropagation="true" title="Hide card">
+                <Icon Name="x" Size="16" />
+            </button>
+        </div>
+    }
+
+    <div class="card-content-wrapper">
+        @ChildContent
+    </div>
+
+</div>
+
+@code {
+    [Parameter] public string CardId { get; set; } = "";
+    [Parameter] public bool EditMode { get; set; }
+    [Parameter] public int ColSpan { get; set; } = 1;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback<string> OnHide { get; set; }
+    [Parameter] public EventCallback<string> OnDragStart { get; set; }
+    [Parameter] public EventCallback OnDragEnd { get; set; }
+    [Parameter] public EventCallback<string> OnDragEnter { get; set; }
+    [Parameter] public EventCallback<string> OnDrop { get; set; }
+    [Parameter] public bool IsDragging { get; set; }
+
+    private string GetWrapperClasses()
+    {
+        var classes = new List<string>();
+        if (EditMode) classes.Add("edit-mode");
+        if (IsDragging) classes.Add("dragging");
+        if (ColSpan > 1) classes.Add($"col-span-{ColSpan}");
+        return string.Join(" ", classes);
+    }
+
+    private async Task HandleHide()
+    {
+        await OnHide.InvokeAsync(CardId);
+    }
+
+    private async Task HandleDragStart(DragEventArgs e)
+    {
+        if (!EditMode) return;
+        e.DataTransfer.EffectAllowed = "move";
+        // Note: We track the dragged card ID through parent state instead of DataTransfer
+        // since Blazor's DataTransfer is read-only
+        await OnDragStart.InvokeAsync(CardId);
+    }
+
+    private async Task HandleDragEnd(DragEventArgs e)
+    {
+        await OnDragEnd.InvokeAsync();
+    }
+
+    private async Task HandleDragEnter(DragEventArgs e)
+    {
+        if (!EditMode) return;
+        await OnDragEnter.InvokeAsync(CardId);
+    }
+
+    private void HandleDragOver(DragEventArgs e)
+    {
+        if (!EditMode) return;
+        e.DataTransfer.DropEffect = "move";
+    }
+
+    private async Task HandleDrop(DragEventArgs e)
+    {
+        if (!EditMode) return;
+        await OnDrop.InvokeAsync(CardId);
+    }
+}

@@ -1,0 +1,324 @@
+@page "/profile"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+@attribute [Authorize]
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject AccountService AccountService
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ILogger<Profile> Logger
+
+<PageTitle>Profile - RivianMate</PageTitle>
+
+<div style="max-width: 600px;">
+    <div style="margin-bottom: var(--space-8);">
+        <a href="/" style="font-size: 0.875rem; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+            <Icon Name="chevron-left" Size="16" />
+            Back to Dashboard
+        </a>
+        <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+            <Icon Name="user" Size="28" Style="color: var(--color-accent);" />
+            Profile Settings
+        </h1>
+    </div>
+
+    @if (_user == null)
+    {
+        <div class="loading">Loading...</div>
+    }
+    else
+    {
+        <!-- Profile Info Card -->
+        <div class="card mb-6">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="user" Size="20" Style="color: var(--color-accent);" />
+                    Account Information
+                </h2>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_profileMessage))
+            {
+                <div class="alert @(_profileSuccess ? "alert-success" : "alert-error")" style="margin-bottom: var(--space-4);">
+                    @_profileMessage
+                </div>
+            }
+
+            <EditForm Model="ProfileInput" OnValidSubmit="UpdateProfile" FormName="profile">
+                <DataAnnotationsValidator />
+
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" value="@_user.Email" disabled class="input-disabled" />
+                    <span class="input-hint">Email cannot be changed</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="displayName">Display Name</label>
+                    <InputText @bind-Value="ProfileInput.DisplayName" id="displayName" type="text" placeholder="Your name" />
+                    <ValidationMessage For="() => ProfileInput.DisplayName" class="validation-message" />
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </EditForm>
+        </div>
+
+        <!-- Change Password Card -->
+        <div class="card mb-6">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="lock" Size="20" Style="color: var(--color-accent);" />
+                    Change Password
+                </h2>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_passwordMessage))
+            {
+                <div class="alert @(_passwordSuccess ? "alert-success" : "alert-error")" style="margin-bottom: var(--space-4);">
+                    @_passwordMessage
+                </div>
+            }
+
+            <EditForm Model="PasswordInput" OnValidSubmit="ChangePassword" FormName="password">
+                <DataAnnotationsValidator />
+
+                <div class="form-group">
+                    <label for="currentPassword">Current Password</label>
+                    <InputText @bind-Value="PasswordInput.CurrentPassword" id="currentPassword" type="password" placeholder="Enter current password" />
+                    <ValidationMessage For="() => PasswordInput.CurrentPassword" class="validation-message" />
+                </div>
+
+                <div class="form-group">
+                    <label for="newPassword">New Password</label>
+                    <InputText @bind-Value="PasswordInput.NewPassword" id="newPassword" type="password" placeholder="Enter new password" />
+                    <ValidationMessage For="() => PasswordInput.NewPassword" class="validation-message" />
+                    <div class="password-requirements">
+                        Must be at least 12 characters with uppercase, lowercase, number, and special character.
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmNewPassword">Confirm New Password</label>
+                    <InputText @bind-Value="PasswordInput.ConfirmNewPassword" id="confirmNewPassword" type="password" placeholder="Confirm new password" />
+                    <ValidationMessage For="() => PasswordInput.ConfirmNewPassword" class="validation-message" />
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <button type="submit" class="btn btn-primary">Update Password</button>
+                </div>
+            </EditForm>
+        </div>
+
+        <!-- Account Stats Card -->
+        <div class="card mb-6">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="info" Size="20" Style="color: var(--color-accent);" />
+                    Account Details
+                </h2>
+            </div>
+
+            <div class="profile-stats">
+                <div class="profile-stat">
+                    <span class="profile-stat-label">Member Since</span>
+                    <span class="profile-stat-value"><LocalTime Value="@_user.CreatedAt" Format="MMMM d, yyyy" /></span>
+                </div>
+                @if (_user.LastLoginAt.HasValue)
+                {
+                    <div class="profile-stat">
+                        <span class="profile-stat-label">Last Login</span>
+                        <span class="profile-stat-value"><LocalTime Value="@_user.LastLoginAt.Value" Format="MMMM d, yyyy 'at' h:mm tt" /></span>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Danger Zone Card -->
+        <div class="card danger-card">
+            <div class="card-header">
+                <h2 class="card-title" style="color: var(--color-error);">
+                    <Icon Name="alert-triangle" Size="20" Style="color: var(--color-error);" />
+                    Danger Zone
+                </h2>
+            </div>
+
+            <p style="color: var(--color-text-muted); margin-bottom: var(--space-4);">
+                Deleting your account will permanently remove all your data, including linked Rivian accounts, vehicles, charging history, drive logs, and battery health records. This cannot be undone.
+            </p>
+
+            @if (_showDeleteConfirm)
+            {
+                <div class="delete-confirm">
+                    <p style="color: var(--color-error); font-weight: 500; margin-bottom: var(--space-4);">
+                        Are you sure? This action cannot be undone.
+                    </p>
+                    <div style="display: flex; gap: var(--space-3);">
+                        <button @onclick="DeleteAccount" class="btn btn-danger" disabled="@_isDeleting">
+                            @if (_isDeleting)
+                            {
+                                <span>Deleting...</span>
+                            }
+                            else
+                            {
+                                <span>Yes, Delete My Account</span>
+                            }
+                        </button>
+                        <button @onclick="() => _showDeleteConfirm = false" class="btn btn-secondary" disabled="@_isDeleting">Cancel</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <button @onclick="() => _showDeleteConfirm = true" class="btn btn-danger-outline">Delete Account</button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private ApplicationUser? _user;
+    private string? _profileMessage;
+    private bool _profileSuccess;
+    private string? _passwordMessage;
+    private bool _passwordSuccess;
+    private bool _showDeleteConfirm;
+    private bool _isDeleting;
+
+    [SupplyParameterFromForm(FormName = "profile")]
+    private ProfileModel ProfileInput { get; set; } = new();
+
+    [SupplyParameterFromForm(FormName = "password")]
+    private PasswordModel PasswordInput { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _user = await UserManager.GetUserAsync(authState.User);
+
+        if (_user != null)
+        {
+            ProfileInput.DisplayName = _user.DisplayName ?? "";
+        }
+    }
+
+    private async Task UpdateProfile()
+    {
+        if (_user == null) return;
+
+        _user.DisplayName = ProfileInput.DisplayName;
+        var result = await UserManager.UpdateAsync(_user);
+
+        if (result.Succeeded)
+        {
+            _profileMessage = "Profile updated successfully.";
+            _profileSuccess = true;
+            Logger.LogInformation("User {UserId} updated their profile.", _user.Id);
+        }
+        else
+        {
+            _profileMessage = string.Join(" ", result.Errors.Select(e => e.Description));
+            _profileSuccess = false;
+        }
+    }
+
+    private async Task ChangePassword()
+    {
+        if (_user == null) return;
+
+        var result = await UserManager.ChangePasswordAsync(
+            _user,
+            PasswordInput.CurrentPassword,
+            PasswordInput.NewPassword);
+
+        if (result.Succeeded)
+        {
+            _passwordMessage = "Password changed successfully.";
+            _passwordSuccess = true;
+            PasswordInput = new PasswordModel();
+            Logger.LogInformation("User {UserId} changed their password.", _user.Id);
+
+            // Refresh sign-in to update security stamp
+            await SignInManager.RefreshSignInAsync(_user);
+        }
+        else
+        {
+            _passwordMessage = string.Join(" ", result.Errors.Select(e => e.Description));
+            _passwordSuccess = false;
+        }
+    }
+
+    private async Task DeleteAccount()
+    {
+        if (_user == null) return;
+
+        _isDeleting = true;
+        _profileMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            // Store user ID for logging before deletion
+            var userId = _user.Id;
+
+            var result = await AccountService.DeleteAccountAsync(_user);
+
+            if (result.Succeeded)
+            {
+                Logger.LogInformation("User {UserId} deleted their account and all associated data.", userId);
+
+                // Redirect to logout page which will clear the auth cookie during HTTP context
+                // We can't clear the cookie from SignalR context, so we need the logout page to do it
+                NavigationManager.NavigateTo("/logout?accountDeleted=true", forceLoad: true);
+                return;
+            }
+            else
+            {
+                _profileMessage = "Failed to delete account: " + string.Join(", ", result.Errors.Select(e => e.Description));
+                _profileSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error deleting account for user {UserId}", _user.Id);
+            _profileMessage = "An error occurred while deleting your account. Please try again.";
+            _profileSuccess = false;
+        }
+        finally
+        {
+            _isDeleting = false;
+        }
+    }
+
+    private sealed class ProfileModel
+    {
+        [Required(ErrorMessage = "Display name is required")]
+        [StringLength(100, ErrorMessage = "Display name cannot exceed 100 characters")]
+        public string DisplayName { get; set; } = "";
+    }
+
+    private sealed class PasswordModel
+    {
+        [Required(ErrorMessage = "Current password is required")]
+        [DataType(DataType.Password)]
+        public string CurrentPassword { get; set; } = "";
+
+        [Required(ErrorMessage = "New password is required")]
+        [StringLength(100, MinimumLength = 12, ErrorMessage = "Password must be at least 12 characters")]
+        [DataType(DataType.Password)]
+        public string NewPassword { get; set; } = "";
+
+        [Required(ErrorMessage = "Please confirm your new password")]
+        [DataType(DataType.Password)]
+        [Compare(nameof(NewPassword), ErrorMessage = "Passwords do not match")]
+        public string ConfirmNewPassword { get; set; } = "";
+    }
+}

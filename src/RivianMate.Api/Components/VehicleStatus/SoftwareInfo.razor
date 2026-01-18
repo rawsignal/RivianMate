@@ -1,0 +1,51 @@
+@using RivianMate.Core.Entities
+
+<StatusSection Title="Software" Icon="cpu">
+    <StatusItem Label="Current Version" Value="@FormatVersion(VehicleState?.OtaCurrentVersion)" />
+    @if (!string.IsNullOrEmpty(VehicleState?.OtaAvailableVersion) && VehicleState?.OtaAvailableVersion != VehicleState?.OtaCurrentVersion)
+    {
+        <StatusItem Label="Available Update" Value="@FormatVersion(VehicleState?.OtaAvailableVersion)" StatusClass="status-update" />
+    }
+    <StatusItem Label="Update Status" Value="@FormatOtaStatus(VehicleState?.OtaStatus)" StatusClass="@GetOtaStatusClass()" />
+    @if (VehicleState?.OtaInstallProgress > 0 && VehicleState?.OtaInstallProgress < 100)
+    {
+        <StatusItem Label="Install Progress" Value="@($"{VehicleState.OtaInstallProgress}%")" />
+    }
+</StatusSection>
+
+@code {
+    [Parameter] public VehicleState? VehicleState { get; set; }
+
+    private static string FormatVersion(string? version)
+    {
+        if (string.IsNullOrEmpty(version)) return "—";
+        // Format version like "2024.03.01" if it's a date-based version
+        return version;
+    }
+
+    private static string FormatOtaStatus(string? status)
+    {
+        if (string.IsNullOrEmpty(status)) return "—";
+        return status switch
+        {
+            "idle" => "Up to date",
+            "available" => "Update available",
+            "downloading" => "Downloading",
+            "ready_to_install" => "Ready to install",
+            "installing" => "Installing",
+            "scheduled" => "Scheduled",
+            "failed" => "Failed",
+            _ => status.Replace("_", " ")
+        };
+    }
+
+    private string GetOtaStatusClass() => VehicleState?.OtaStatus switch
+    {
+        "available" => "status-update",
+        "ready_to_install" => "status-update",
+        "downloading" => "status-active",
+        "installing" => "status-active",
+        "failed" => "status-error",
+        _ => ""
+    };
+}

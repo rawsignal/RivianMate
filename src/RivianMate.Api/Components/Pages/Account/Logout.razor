@@ -1,0 +1,65 @@
+@page "/logout"
+@using Microsoft.AspNetCore.Identity
+@using RivianMate.Core.Entities
+
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager NavigationManager
+@inject ILogger<Logout> Logger
+
+<PageTitle>Sign Out - RivianMate</PageTitle>
+
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <div class="logo-icon"></div>
+            <h1>Sign Out</h1>
+            <p>Are you sure you want to sign out?</p>
+        </div>
+
+        <form method="post" action="/logout" @formname="logout-form" @onsubmit="LogoutUser">
+            <AntiforgeryToken />
+            <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+                <button type="submit" class="btn btn-primary btn-full">Sign Out</button>
+                <a href="/" class="btn btn-secondary btn-full" style="text-align: center;">Return to Dashboard</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    [SupplyParameterFromQuery(Name = "accountDeleted")]
+    private string? AccountDeleted { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (HttpContext == null) return;
+
+        // Auto-logout if account was deleted - this comes from Profile page after deletion
+        if (AccountDeleted == "true")
+        {
+            await SignInManager.SignOutAsync();
+            Logger.LogInformation("User session cleared after account deletion.");
+            HttpContext.Response.Redirect("/login?deleted=true");
+            return;
+        }
+
+        // If this is a POST request, the form was submitted
+        if (HttpContext.Request.Method == "POST")
+        {
+            await LogoutUser();
+        }
+    }
+
+    private async Task LogoutUser()
+    {
+        if (HttpContext != null)
+        {
+            await SignInManager.SignOutAsync();
+            Logger.LogInformation("User logged out.");
+            HttpContext.Response.Redirect("/login");
+        }
+    }
+}

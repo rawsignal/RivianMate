@@ -1,0 +1,21 @@
+@using RivianMate.Api.Components.Shared
+
+<div class="status-section @(Compact ? "compact" : "")">
+    <h4 class="status-section-header">
+        @if (!string.IsNullOrEmpty(Icon))
+        {
+            <Icon Name="@Icon" Size="18" Style="color: var(--color-accent);" />
+        }
+        @Title
+    </h4>
+    <div class="status-section-content">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

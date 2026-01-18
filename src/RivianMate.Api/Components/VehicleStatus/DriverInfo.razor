@@ -1,0 +1,12 @@
+@using RivianMate.Core.Entities
+
+@if (!string.IsNullOrEmpty(VehicleState?.ActiveDriverName))
+{
+    <StatusSection Title="Driver" Icon="user">
+        <StatusItem Label="Active Driver" Value="@VehicleState.ActiveDriverName" />
+    </StatusSection>
+}
+
+@code {
+    [Parameter] public VehicleState? VehicleState { get; set; }
+}

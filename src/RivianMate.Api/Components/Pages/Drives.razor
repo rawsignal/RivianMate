@@ -1,0 +1,433 @@
+@page "/drives"
+@page "/drives/{VehicleId:int}"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+@attribute [Authorize]
+@inject VehicleService VehicleService
+@inject TimeZoneService TimeZoneService
+@inject IJSRuntime JS
+@inject ILogger<Drives> Logger
+@implements IAsyncDisposable
+
+<PageTitle>Drives - RivianMate</PageTitle>
+
+<!-- Page Header -->
+<div style="margin-bottom: var(--space-8);">
+    <a href="/" style="font-size: 0.875rem; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+        <Icon Name="chevron-left" Size="16" />
+        Back to Dashboard
+    </a>
+    <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+        <Icon Name="navigation" Size="28" Style="color: var(--color-accent);" />
+        Drives
+    </h1>
+</div>
+
+@if (_loading)
+{
+    <div class="loading">
+        <p>Loading drives...</p>
+    </div>
+}
+else if (_drives == null || !_drives.Any())
+{
+    <div class="card" style="text-align: center; padding: var(--space-12);">
+        <Icon Name="navigation" Size="64" Style="color: var(--color-text-muted); opacity: 0.3; margin-bottom: var(--space-4);" />
+        <h3 style="margin-bottom: var(--space-4);">No Drives Recorded</h3>
+        <p>Drive data will appear here once RivianMate detects your vehicle in motion.</p>
+        <p style="margin-top: var(--space-2); color: var(--color-text-muted);">Drives are automatically tracked when your vehicle is in Drive or Reverse.</p>
+    </div>
+}
+else
+{
+    <!-- Summary Stats -->
+    <div class="card mb-6">
+        <div class="grid-4">
+            <div class="mini-stat">
+                <p class="mini-stat-label">Total Drives</p>
+                <p class="mini-stat-value">@_drives.Count</p>
+            </div>
+            <div class="mini-stat">
+                <p class="mini-stat-label">Total Distance</p>
+                <p class="mini-stat-value">@_totalDistance.ToString("N0") <span class="mini-stat-unit">mi</span></p>
+            </div>
+            <div class="mini-stat">
+                <p class="mini-stat-label">Total Energy</p>
+                <p class="mini-stat-value">@_totalEnergy.ToString("N0") <span class="mini-stat-unit">kWh</span></p>
+            </div>
+            <div class="mini-stat">
+                <p class="mini-stat-label">Avg Efficiency</p>
+                <p class="mini-stat-value">@(_avgEfficiency?.ToString("0.0") ?? "—") <span class="mini-stat-unit">mi/kWh</span></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <!-- Drives List -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="list" Size="20" Style="color: var(--color-accent);" />
+                    All Drives
+                </h2>
+            </div>
+
+            <div class="drives-list-full">
+                @foreach (var drive in _drives)
+                {
+                    <div class="drive-list-item @(_selectedDrive?.Id == drive.Id ? "selected" : "")" @onclick="() => SelectDrive(drive)">
+                        <div class="drive-list-icon">
+                            <Icon Name="navigation" Size="18" />
+                        </div>
+                        <div class="drive-list-content">
+                            <div class="drive-list-header">
+                                <span class="drive-list-distance">@(drive.DistanceMiles?.ToString("0.0") ?? "—") mi</span>
+                                <span class="drive-list-date">@FormatDriveDate(drive.StartTime)</span>
+                            </div>
+                            <div class="drive-list-meta">
+                                @FormatDuration(drive.StartTime, drive.EndTime)
+                                @if (drive.EfficiencyMilesPerKwh.HasValue)
+                                {
+                                    <span>·</span>
+                                    <span>@drive.EfficiencyMilesPerKwh.Value.ToString("0.0") mi/kWh</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="drive-list-chevron">
+                            <Icon Name="chevron-right" Size="16" />
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Drive Details -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="info" Size="20" Style="color: var(--color-accent);" />
+                    Drive Details
+                </h2>
+            </div>
+
+            @if (_selectedDrive == null)
+            {
+                <div class="drive-details-empty">
+                    <Icon Name="mouse-pointer" Size="48" Style="color: var(--color-text-muted); opacity: 0.3;" />
+                    <p>Select a drive to view details</p>
+                </div>
+            }
+            else
+            {
+                <div class="drive-details">
+                    <!-- Time -->
+                    <div class="drive-detail-section">
+                        <h4>
+                            <Icon Name="clock" Size="16" />
+                            Time
+                        </h4>
+                        <div class="drive-detail-grid">
+                            <div class="drive-detail-item">
+                                <span class="drive-detail-label">Started</span>
+                                <span class="drive-detail-value">@FormatDateTime(_selectedDrive.StartTime)</span>
+                            </div>
+                            <div class="drive-detail-item">
+                                <span class="drive-detail-label">Ended</span>
+                                <span class="drive-detail-value">@(_selectedDrive.EndTime.HasValue ? FormatDateTime(_selectedDrive.EndTime.Value) : "In Progress")</span>
+                            </div>
+                            <div class="drive-detail-item">
+                                <span class="drive-detail-label">Duration</span>
+                                <span class="drive-detail-value">@FormatDuration(_selectedDrive.StartTime, _selectedDrive.EndTime)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Distance & Speed -->
+                    <div class="drive-detail-section">
+                        <h4>
+                            <Icon Name="map-pin" Size="16" />
+                            Distance & Speed
+                        </h4>
+                        <div class="drive-detail-grid">
+                            <div class="drive-detail-item">
+                                <span class="drive-detail-label">Distance</span>
+                                <span class="drive-detail-value">@(_selectedDrive.DistanceMiles?.ToString("0.0") ?? "—") mi</span>
+                            </div>
+                            <div class="drive-detail-item">
+                                <span class="drive-detail-label">Average Speed</span>
+                                <span class="drive-detail-value">@(_selectedDrive.AverageSpeedMph?.ToString("0") ?? "—") mph</span>
+                            </div>
+                            <div class="drive-detail-item">
+                                <span class="drive-detail-label">Max Speed</span>
+                                <span class="drive-detail-value">@(_selectedDrive.MaxSpeedMph?.ToString("0") ?? "—") mph</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Energy & Efficiency -->
+                    <div class="drive-detail-section">
+                        <h4>
+                            <Icon Name="zap" Size="16" />
+                            Energy & Efficiency
+                        </h4>
+                        <div class="drive-detail-grid">
+                            <div class="drive-detail-item">
+                                <span class="drive-detail-label">Energy Used</span>
+                                <span class="drive-detail-value">@(_selectedDrive.EnergyUsedKwh?.ToString("0.0") ?? "—") kWh</span>
+                            </div>
+                            <div class="drive-detail-item">
+                                <span class="drive-detail-label">Efficiency</span>
+                                <span class="drive-detail-value">@(_selectedDrive.EfficiencyMilesPerKwh?.ToString("0.0") ?? "—") mi/kWh</span>
+                            </div>
+                            <div class="drive-detail-item">
+                                <span class="drive-detail-label">Consumption</span>
+                                <span class="drive-detail-value">@(_selectedDrive.EfficiencyWhPerMile?.ToString("0") ?? "—") Wh/mi</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Battery -->
+                    <div class="drive-detail-section">
+                        <h4>
+                            <Icon Name="battery" Size="16" />
+                            Battery
+                        </h4>
+                        <div class="drive-detail-grid">
+                            <div class="drive-detail-item">
+                                <span class="drive-detail-label">Start Level</span>
+                                <span class="drive-detail-value">@_selectedDrive.StartBatteryLevel.ToString("0")%</span>
+                            </div>
+                            <div class="drive-detail-item">
+                                <span class="drive-detail-label">End Level</span>
+                                <span class="drive-detail-value">@(_selectedDrive.EndBatteryLevel?.ToString("0") ?? "—")%</span>
+                            </div>
+                            <div class="drive-detail-item">
+                                <span class="drive-detail-label">Battery Used</span>
+                                <span class="drive-detail-value">@((_selectedDrive.StartBatteryLevel - (_selectedDrive.EndBatteryLevel ?? _selectedDrive.StartBatteryLevel)).ToString("0"))%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (_selectedDrive.ElevationGain.HasValue || _selectedDrive.DriveMode != null)
+                    {
+                        <!-- Additional Info -->
+                        <div class="drive-detail-section">
+                            <h4>
+                                <Icon Name="settings" Size="16" />
+                                Additional Info
+                            </h4>
+                            <div class="drive-detail-grid">
+                                @if (_selectedDrive.ElevationGain.HasValue)
+                                {
+                                    <div class="drive-detail-item">
+                                        <span class="drive-detail-label">Elevation Gain</span>
+                                        <span class="drive-detail-value">@((_selectedDrive.ElevationGain.Value * 3.28084).ToString("0")) ft</span>
+                                    </div>
+                                }
+                                @if (_selectedDrive.DriveMode != null)
+                                {
+                                    <div class="drive-detail-item">
+                                        <span class="drive-detail-label">Drive Mode</span>
+                                        <span class="drive-detail-value">@_selectedDrive.DriveMode</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Route Map -->
+                    <div class="drive-detail-section">
+                        <h4>
+                            <Icon Name="map" Size="16" />
+                            Route Map
+                            @if (_positionCount > 0)
+                            {
+                                <span style="font-weight: normal; font-size: 0.75rem; color: var(--color-text-muted); margin-left: var(--space-2);">
+                                    (@_positionCount GPS points)
+                                </span>
+                            }
+                        </h4>
+                        @if (_positionCount > 0)
+                        {
+                            <div id="drive-map" class="drive-map-container"></div>
+                            <p style="margin-top: var(--space-2); font-size: 0.7rem; color: var(--color-text-muted);">
+                                Route colored by speed: <span style="color: #22c55e;">slow</span> to <span style="color: #ef4444;">fast</span>
+                            </p>
+                        }
+                        else
+                        {
+                            <div class="drive-map-empty">
+                                <Icon Name="map-pin" Size="32" Style="color: var(--color-text-muted); opacity: 0.3;" />
+                                <p>No GPS data available for this drive</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int? VehicleId { get; set; }
+
+    private List<Drive>? _drives;
+    private Drive? _selectedDrive;
+    private List<Position>? _positions;
+    private int _positionCount;
+    private bool _loading = true;
+    private bool _mapInitialized;
+    private bool _pendingMapUpdate;
+    private double _totalDistance;
+    private double _totalEnergy;
+    private double? _avgEfficiency;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Initialize or update the map after render when we have positions
+        if (_pendingMapUpdate && _positions != null && _positions.Count > 0)
+        {
+            _pendingMapUpdate = false;
+
+            try
+            {
+                // Initialize map if not already done
+                if (!_mapInitialized)
+                {
+                    await JS.InvokeVoidAsync("driveMap.initialize", "drive-map");
+                    _mapInitialized = true;
+                }
+
+                // Draw the route
+                var positionData = _positions.Select(p => new
+                {
+                    latitude = p.Latitude,
+                    longitude = p.Longitude,
+                    altitude = p.Altitude,
+                    speed = p.Speed,
+                    heading = p.Heading,
+                    batteryLevel = p.BatteryLevel
+                }).ToArray();
+
+                await JS.InvokeVoidAsync("driveMap.drawRoute", (object)positionData);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error initializing or updating map");
+            }
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            var targetVehicleId = VehicleId;
+
+            if (!targetVehicleId.HasValue)
+            {
+                var vehicles = await VehicleService.GetAllVehiclesAsync();
+                targetVehicleId = vehicles.FirstOrDefault()?.Id;
+            }
+
+            if (targetVehicleId.HasValue)
+            {
+                _drives = await VehicleService.GetDrivesAsync(targetVehicleId.Value);
+
+                // Calculate summary stats
+                if (_drives?.Any() == true)
+                {
+                    _totalDistance = _drives.Sum(d => d.DistanceMiles ?? 0);
+                    _totalEnergy = _drives.Sum(d => d.EnergyUsedKwh ?? 0);
+                    _avgEfficiency = _totalEnergy > 0 ? _totalDistance / _totalEnergy : null;
+
+                    // Select the first drive by default
+                    if (_drives.FirstOrDefault() is { } firstDrive)
+                    {
+                        await SelectDriveAsync(firstDrive);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading drives data");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SelectDriveAsync(Drive drive)
+    {
+        _selectedDrive = drive;
+
+        // Load positions for map display
+        _positions = await VehicleService.GetDrivePositionsAsync(drive.Id);
+        _positionCount = _positions.Count;
+
+        // Flag that we need to update the map after render
+        if (_positionCount > 0)
+        {
+            _pendingMapUpdate = true;
+        }
+
+        // Trigger re-render
+        StateHasChanged();
+    }
+
+    private void SelectDrive(Drive drive)
+    {
+        // Fire-and-forget async call for click handler
+        _ = SelectDriveAsync(drive);
+    }
+
+    private string FormatDriveDate(DateTime utcTime)
+    {
+        var localTime = TimeZoneService.ToLocalTime(utcTime);
+        var today = TimeZoneService.ToLocalTime(DateTime.UtcNow).Date;
+        if (localTime.Date == today) return "Today";
+        if (localTime.Date == today.AddDays(-1)) return "Yesterday";
+        return localTime.ToString("MMM d, yyyy");
+    }
+
+    private string FormatDateTime(DateTime utcTime)
+    {
+        var localTime = TimeZoneService.ToLocalTime(utcTime);
+        return localTime.ToString("MMM d, yyyy h:mm tt");
+    }
+
+    private static string FormatDuration(DateTime start, DateTime? end)
+    {
+        if (end == null) return "In progress";
+        var duration = end.Value - start;
+        if (duration.TotalMinutes < 60) return $"{(int)duration.TotalMinutes} min";
+        return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_mapInitialized)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("driveMap.dispose");
+            }
+            catch
+            {
+                // Ignore errors during disposal (component might already be gone)
+            }
+        }
+    }
+}

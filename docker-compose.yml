@@ -1,0 +1,45 @@
+services:
+  rivianmate:
+    build: .
+    container_name: rivianmate
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=rivianmate
+      - POSTGRES_USER=rivianmate
+      - POSTGRES_PASSWORD=rivianmate
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  db:
+    image: postgres:16-alpine
+    container_name: rivianmate-db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"  # Expose for local debugging
+    environment:
+      - POSTGRES_DB=rivianmate
+      - POSTGRES_USER=rivianmate
+      - POSTGRES_PASSWORD=rivianmate
+    volumes:
+      - rivianmate-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rivianmate -d rivianmate"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  rivianmate-db:
+    name: rivianmate-db

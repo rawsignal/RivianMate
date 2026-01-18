@@ -1,0 +1,31 @@
+@using RivianMate.Api.Components.Shared
+
+<div class="status-item @(Highlight ? "status-item-highlight" : "")">
+    <span class="status-item-label">
+        @if (!string.IsNullOrEmpty(Icon))
+        {
+            <Icon Name="@Icon" Size="14" />
+        }
+        @Label
+    </span>
+    <span class="status-item-value @(Muted ? "muted" : "") @StatusClass">
+        @if (ChildContent != null)
+        {
+            @ChildContent
+        }
+        else
+        {
+            @(Value ?? "—")
+        }
+    </span>
+</div>
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public bool Muted { get; set; }
+    [Parameter] public bool Highlight { get; set; }
+    [Parameter] public string? StatusClass { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,53 @@
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+
+<CardWrapper Definition="_definition">
+    @if (VehicleState?.RangeEstimate != null)
+    {
+        <div class="quick-stat">
+            <div class="quick-stat-value">
+                @VehicleState.RangeEstimate.Value.ToString("0")<span class="quick-stat-unit">mi</span>
+            </div>
+            @if (!string.IsNullOrEmpty(VehicleState.DriveMode))
+            {
+                <p class="quick-stat-subtext">
+                    @FormatDriveMode(VehicleState.DriveMode)
+                </p>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="quick-stat">
+            <div class="quick-stat-value muted">—</div>
+        </div>
+    }
+</CardWrapper>
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private VehicleState? VehicleState => Context?.VehicleState;
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "range",
+        Icon = "map-pin",
+        Title = "Estimated Range"
+    };
+
+    private static string FormatDriveMode(string? mode) => mode switch
+    {
+        "everyday" => "All-Purpose Mode",
+        "sport" => "Sport Mode",
+        "conserve" => "Conserve Mode",
+        "off_road_auto" => "Off-Road Auto",
+        "off_road_rock" => "Rock Crawl Mode",
+        "off_road_rally" => "Rally Mode",
+        "off_road_drift" => "Drift Mode",
+        "off_road_sand" => "Sand Mode",
+        "towing" => "Towing Mode",
+        _ => mode?.Replace("_", " ") ?? ""
+    };
+}

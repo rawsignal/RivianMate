@@ -1,0 +1,58 @@
+@using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
+
+<StatusSection Title="Power & Drive" Icon="power">
+    <StatusItem Label="Power State" Value="@FormatPowerState(VehicleState?.PowerState)" StatusClass="@GetPowerStateClass()" />
+    <StatusItem Label="Gear" Value="@FormatGearStatus(VehicleState?.GearStatus)" />
+    <StatusItem Label="Drive Mode" Value="@FormatDriveMode(VehicleState?.DriveMode)" />
+</StatusSection>
+
+@code {
+    [Parameter] public VehicleState? VehicleState { get; set; }
+
+    private static string FormatPowerState(PowerState? state) => state switch
+    {
+        PowerState.Ready => "Ready",
+        PowerState.Go => "Driving",
+        PowerState.Sleep => "Asleep",
+        PowerState.Standby => "Standby",
+        PowerState.Charging => "Charging",
+        _ => "Unknown"
+    };
+
+    private string GetPowerStateClass() => VehicleState?.PowerState switch
+    {
+        PowerState.Ready => "status-ready",
+        PowerState.Go => "status-active",
+        PowerState.Sleep => "status-sleep",
+        PowerState.Charging => "status-charging",
+        _ => ""
+    };
+
+    private static string FormatGearStatus(GearStatus? status) => status switch
+    {
+        GearStatus.Park => "Park",
+        GearStatus.Drive => "Drive",
+        GearStatus.Reverse => "Reverse",
+        GearStatus.Neutral => "Neutral",
+        _ => "Unknown"
+    };
+
+    private static string FormatDriveMode(string? mode)
+    {
+        if (string.IsNullOrEmpty(mode)) return "—";
+        return mode switch
+        {
+            "everyday" => "All-Purpose",
+            "sport" => "Sport",
+            "conserve" => "Conserve",
+            "off_road_auto" => "Off-Road Auto",
+            "off_road_rock" => "Rock Crawl",
+            "off_road_rally" => "Rally",
+            "off_road_drift" => "Drift",
+            "off_road_sand" => "Sand",
+            "towing" => "Towing",
+            _ => mode.Replace("_", " ")
+        };
+    }
+}

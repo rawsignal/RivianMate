@@ -1,0 +1,49 @@
+@* Reusable component for displaying the 70% warranty threshold projection *@
+
+<div class="projection-item">
+    <div class="projection-icon @GetIconClass()">
+        <Icon Name="shield-check" Size="18" />
+    </div>
+    <div>
+        <p class="projection-label">@Label</p>
+        <p class="projection-value">@GetDisplayValue()</p>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Current battery health percentage
+    /// </summary>
+    [Parameter, EditorRequired]
+    public double CurrentHealthPercent { get; set; }
+
+    /// <summary>
+    /// Projected miles until 70% threshold (null if not calculable or already below)
+    /// </summary>
+    [Parameter]
+    public double? ProjectedMilesTo70Percent { get; set; }
+
+    /// <summary>
+    /// Label text (defaults to "70% Threshold")
+    /// </summary>
+    [Parameter]
+    public string Label { get; set; } = "70% Threshold";
+
+    private string GetIconClass()
+    {
+        return CurrentHealthPercent <= 70 ? "red" : "green";
+    }
+
+    private string GetDisplayValue()
+    {
+        // If already at or below 70%, show that clearly
+        if (CurrentHealthPercent <= 70)
+            return "Below threshold";
+
+        // If we have a projection, show it
+        if (ProjectedMilesTo70Percent.HasValue)
+            return $"~{ProjectedMilesTo70Percent.Value:N0} mi";
+
+        return "—";
+    }
+}

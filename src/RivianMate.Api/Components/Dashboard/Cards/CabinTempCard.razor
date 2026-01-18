@@ -1,0 +1,57 @@
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+
+@if (Compact)
+{
+    <div class="bottom-stat-card">
+        <div class="bottom-stat-label">
+            <Icon Name="@_definition.Icon" Size="14" />
+            @_definition.Title
+        </div>
+        <p class="bottom-stat-value">
+            @(VehicleState?.CabinTemperature != null ? GetFahrenheit(VehicleState.CabinTemperature.Value) : "—")
+            @if (VehicleState?.CabinTemperature != null)
+            {
+                <span class="bottom-stat-unit">°F</span>
+            }
+        </p>
+    </div>
+}
+else
+{
+    <CardWrapper Definition="_definition">
+        <div class="quick-stat">
+            @if (VehicleState?.CabinTemperature != null)
+            {
+                <div class="quick-stat-value">
+                    @GetFahrenheit(VehicleState.CabinTemperature.Value)<span class="quick-stat-unit">°F</span>
+                </div>
+            }
+            else
+            {
+                <div class="quick-stat-value muted">—</div>
+            }
+        </div>
+    </CardWrapper>
+}
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private VehicleState? VehicleState => Context?.VehicleState;
+    private bool Compact => Context?.IsCompact ?? false;
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "cabin-temp",
+        Icon = "thermometer",
+        Title = "Cabin Temp"
+    };
+
+    private static string GetFahrenheit(double celsius)
+    {
+        var fahrenheit = (celsius * 9 / 5) + 32;
+        return fahrenheit.ToString("0");
+    }
+}

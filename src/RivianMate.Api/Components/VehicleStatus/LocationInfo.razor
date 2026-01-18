@@ -1,0 +1,58 @@
+@using RivianMate.Core.Entities
+
+<StatusSection Title="Location" Icon="map-pin">
+    @if (VehicleState?.Latitude != null && VehicleState?.Longitude != null)
+    {
+        <StatusItem Label="Coordinates" Value="@FormatCoordinates(VehicleState.Latitude, VehicleState.Longitude)" />
+        @if (VehicleState.Altitude != null)
+        {
+            <StatusItem Label="Altitude" Value="@($"{VehicleState.Altitude:0} m")" />
+        }
+        @if (VehicleState.Speed != null && VehicleState.Speed > 0)
+        {
+            <StatusItem Label="Speed" Value="@FormatSpeed(VehicleState.Speed)" />
+        }
+        @if (VehicleState.Heading != null)
+        {
+            <StatusItem Label="Heading" Value="@FormatHeading(VehicleState.Heading)" />
+        }
+    }
+    else
+    {
+        <StatusItem Label="Location" Value="Not available" Muted="true" />
+    }
+</StatusSection>
+
+@code {
+    [Parameter] public VehicleState? VehicleState { get; set; }
+
+    private static string FormatCoordinates(double? lat, double? lng)
+    {
+        if (lat == null || lng == null) return "—";
+        return $"{lat:0.0000}°, {lng:0.0000}°";
+    }
+
+    private static string FormatSpeed(double? metersPerSecond)
+    {
+        if (metersPerSecond == null) return "—";
+        var mph = metersPerSecond.Value * 2.237; // m/s to mph
+        return $"{mph:0} mph";
+    }
+
+    private static string FormatHeading(double? degrees)
+    {
+        if (degrees == null) return "—";
+        var direction = degrees.Value switch
+        {
+            >= 337.5 or < 22.5 => "N",
+            >= 22.5 and < 67.5 => "NE",
+            >= 67.5 and < 112.5 => "E",
+            >= 112.5 and < 157.5 => "SE",
+            >= 157.5 and < 202.5 => "S",
+            >= 202.5 and < 247.5 => "SW",
+            >= 247.5 and < 292.5 => "W",
+            _ => "NW"
+        };
+        return $"{degrees:0}° ({direction})";
+    }
+}

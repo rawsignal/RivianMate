@@ -1,0 +1,46 @@
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services
+
+<CardWrapper Definition="_definition">
+    @if (HealthSummary != null)
+    {
+        <div class="quick-stat">
+            <div class="quick-stat-value" style="color: @GetHealthColor(HealthSummary.CurrentHealthPercent);">
+                @HealthSummary.CurrentHealthPercent.ToString("0.0")<span class="quick-stat-unit">%</span>
+            </div>
+            <p class="quick-stat-subtext">
+                @HealthSummary.CurrentCapacityKwh.ToString("0.0") of @HealthSummary.OriginalCapacityKwh.ToString("0.0") kWh
+            </p>
+        </div>
+    }
+    else
+    {
+        <div class="quick-stat">
+            <div class="quick-stat-value muted">—</div>
+            <p class="quick-stat-subtext">No health data yet</p>
+        </div>
+    }
+</CardWrapper>
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private BatteryHealthSummary? HealthSummary => Context?.HealthSummary;
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "health-summary",
+        Icon = "heart",
+        Title = "Battery Health"
+    };
+
+    private static string GetHealthColor(double percent) => percent switch
+    {
+        >= 95 => "var(--color-success)",
+        >= 90 => "var(--color-success)",
+        >= 85 => "var(--color-accent)",
+        >= 80 => "var(--color-warning)",
+        _ => "var(--color-error)"
+    };
+}

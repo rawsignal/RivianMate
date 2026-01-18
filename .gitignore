@@ -1,0 +1,106 @@
+# Build outputs
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+
+# .NET
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+**/PublishProfiles/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.rsuser
+[Dd]esktop[Ii]ni
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# User-specific files
+*.DotSettings.user
+
+# NuGet
+**/packages/*
+!**/packages/build/
+*.nuget.props
+*.nuget.targets
+NuGet.Config
+
+# Test results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.trx
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+*.TestResults.xml
+
+# NCrunch
+_NCrunch_*
+.*crunch*.local.xml
+nCrunchTemp_*
+
+# SQLite databases (dev)
+*.db
+*.db-shm
+*.db-wal
+
+# Entity Framework migrations (keep the files, ignore generated designer)
+# Actually, we want to keep these, so don't ignore
+
+# Logs
+*.log
+nlog-*.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows shortcuts
+*.lnk
+
+# Secrets and local config
+appsettings.*.local.json
+secrets.json
+*.pfx
+*.p12
+
+# Docker
+docker-compose.override.yml
+
+# Claude Code
+.claude/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*~
+
+# Generated documentation
+_site/
+docs/_site/

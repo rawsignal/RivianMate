@@ -1,0 +1,181 @@
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services
+@using RivianMate.Core.Entities
+
+<CardWrapper Definition="@GetDefinition()">
+    @if (HealthSummary != null)
+    {
+        <div class="battery-health-content">
+            <!-- Health Ring -->
+            <div class="health-ring-small">
+                <svg width="180" height="180" style="transform: rotate(-90deg);">
+                    <circle cx="90" cy="90" r="78" fill="none" stroke="#2D4A3E" stroke-width="12"/>
+                    <circle cx="90" cy="90" r="78" fill="none"
+                            stroke="@GetHealthColor(HealthSummary.CurrentHealthPercent)"
+                            stroke-width="12"
+                            stroke-linecap="round"
+                            stroke-dasharray="@(2 * Math.PI * 78)"
+                            stroke-dashoffset="@(2 * Math.PI * 78 * (1 - HealthSummary.CurrentHealthPercent / 100))"
+                            style="transition: stroke-dashoffset 1s ease-out;"/>
+                </svg>
+                <div class="health-ring-content">
+                    <span class="health-percent">@HealthSummary.CurrentHealthPercent.ToString("0.0")<span class="health-percent-unit">%</span></span>
+                    <span class="health-status">@GetHealthStatus(HealthSummary.CurrentHealthPercent)</span>
+                </div>
+            </div>
+
+            <!-- Projections -->
+            <div class="projections-grid">
+                <div class="projection-item">
+                    <div class="projection-icon blue">
+                        <Icon Name="trend-down" Size="18" />
+                    </div>
+                    <div>
+                        <p class="projection-label">Degradation</p>
+                        <p class="projection-value">@(HealthSummary.DegradationRatePer10kMiles != null ? $"{HealthSummary.DegradationRatePer10kMiles:0.00}%/10k mi" : "—")</p>
+                    </div>
+                </div>
+                <div class="projection-item">
+                    <div class="projection-icon yellow">
+                        <Icon Name="target" Size="18" />
+                    </div>
+                    <div>
+                        <p class="projection-label">At 100k miles</p>
+                        <p class="projection-value">@(HealthSummary.ProjectedHealthAt100kMiles != null ? $"~{HealthSummary.ProjectedHealthAt100kMiles:0.0}%" : "—")</p>
+                    </div>
+                </div>
+                <ThresholdProjection CurrentHealthPercent="@HealthSummary.CurrentHealthPercent"
+                                     ProjectedMilesTo70Percent="@HealthSummary.ProjectedMilesTo70Percent" />
+            </div>
+        </div>
+
+        <!-- Capacity Chart -->
+        <div class="capacity-chart-section">
+            <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-2);">
+                <p class="mini-stat-label">Capacity Over Time</p>
+                @if (HealthHistory?.Count >= 2)
+                {
+                    <span style="font-size: 0.75rem; color: var(--color-text-muted);">Last 12 months</span>
+                }
+                else
+                {
+                    <span style="font-size: 0.75rem; color: var(--color-text-muted);">Collecting data...</span>
+                }
+            </div>
+            @if (HealthHistory?.Count >= 2)
+            {
+                <LineChart DataPoints="@HealthHistory.Select(h => new LineChart.ChartDataPoint(h.Timestamp, h.ReportedCapacityKwh)).ToList()"
+                           Mode="LineChart.ChartMode.Minimal"
+                           Unit="kWh"
+                           MaxValue="HealthSummary.OriginalCapacityKwh"
+                           Color="var(--color-success)" />
+            }
+            else
+            {
+                <LineChart DataPoints="@(new List<LineChart.ChartDataPoint>())"
+                           Mode="LineChart.ChartMode.Minimal"
+                           Unit="kWh"
+                           Color="var(--color-success)" />
+            }
+        </div>
+    }
+    else
+    {
+        <div class="battery-health-content">
+            <!-- Health Ring - Empty State -->
+            <div class="health-ring-small">
+                <svg width="180" height="180" style="transform: rotate(-90deg);">
+                    <circle cx="90" cy="90" r="78" fill="none" stroke="#2D4A3E" stroke-width="12"/>
+                </svg>
+                <div class="health-ring-content">
+                    <span class="health-percent" style="color: var(--color-text-muted);">—<span class="health-percent-unit">%</span></span>
+                    <span class="health-status">Collecting data...</span>
+                </div>
+            </div>
+
+            <!-- Projections - Empty State -->
+            <div class="projections-grid">
+                <div class="projection-item">
+                    <div class="projection-icon blue">
+                        <Icon Name="trend-down" Size="18" />
+                    </div>
+                    <div>
+                        <p class="projection-label">Degradation</p>
+                        <p class="projection-value">—</p>
+                    </div>
+                </div>
+                <div class="projection-item">
+                    <div class="projection-icon yellow">
+                        <Icon Name="target" Size="18" />
+                    </div>
+                    <div>
+                        <p class="projection-label">At 100k miles</p>
+                        <p class="projection-value">—</p>
+                    </div>
+                </div>
+                <div class="projection-item">
+                    <div class="projection-icon green">
+                        <Icon Name="shield" Size="18" />
+                    </div>
+                    <div>
+                        <p class="projection-label">70% Threshold</p>
+                        <p class="projection-value">—</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Capacity Chart - Empty State -->
+        <div class="capacity-chart-section">
+            <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-2);">
+                <p class="mini-stat-label">Capacity Over Time</p>
+                <span style="font-size: 0.75rem; color: var(--color-text-muted);">Collecting data...</span>
+            </div>
+            <LineChart DataPoints="@(new List<LineChart.ChartDataPoint>())"
+                       Mode="LineChart.ChartMode.Minimal"
+                       Unit="kWh"
+                       Color="var(--color-success)" />
+        </div>
+    }
+</CardWrapper>
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private BatteryHealthSummary? HealthSummary => Context?.HealthSummary;
+    private List<BatteryHealthSnapshot>? HealthHistory => Context?.HealthHistory;
+    private int? VehicleId => Context?.VehicleId;
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "battery-health",
+        Icon = "battery",
+        Title = "Battery Health",
+        DetailUrl = "/battery-health",
+        DetailLabel = "View Details"
+    };
+
+    private DashboardCardDefinition GetDefinition() => _definition with
+    {
+        DetailUrl = VehicleId.HasValue ? $"/battery-health/{VehicleId}" : _definition.DetailUrl
+    };
+
+    private static string GetHealthColor(double percent) => percent switch
+    {
+        >= 95 => "#4ADE80",
+        >= 90 => "#7DD87D",
+        >= 85 => "#DEB526",
+        >= 80 => "#F59E0B",
+        _ => "#EF4444"
+    };
+
+    private static string GetHealthStatus(double percent) => percent switch
+    {
+        >= 95 => "Excellent",
+        >= 90 => "Very Good",
+        >= 85 => "Good",
+        >= 80 => "Fair",
+        _ => "Needs Attention"
+    };
+}

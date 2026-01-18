@@ -1,0 +1,111 @@
+@inherits LayoutComponentBase
+@using RivianMate.Api.Components.Shared
+@using Microsoft.AspNetCore.Components.Authorization
+@inject TimeZoneService TimeZoneService
+
+<div class="app-container">
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <div class="logo-icon"></div>
+                <span class="logo-text">RivianMate</span>
+            </div>
+        </div>
+        <ul class="nav-menu">
+            <li>
+                <NavLink href="" Match="NavLinkMatch.All">
+                    <Icon Name="home" Size="20" />
+                    <span>Dashboard</span>
+                </NavLink>
+            </li>
+            <li>
+                <NavLink href="battery-health">
+                    <Icon Name="battery" Size="20" />
+                    <span>Battery Health</span>
+                </NavLink>
+            </li>
+            <li>
+                <NavLink href="charging">
+                    <Icon Name="zap" Size="20" />
+                    <span>Charging</span>
+                </NavLink>
+            </li>
+            <li>
+                <NavLink href="drives">
+                    <Icon Name="route" Size="20" />
+                    <span>Drives</span>
+                </NavLink>
+            </li>
+            <li>
+                <NavLink href="status">
+                    <Icon Name="activity" Size="20" />
+                    <span>Vehicle Status</span>
+                </NavLink>
+            </li>
+            <li>
+                <NavLink href="settings">
+                    <Icon Name="settings" Size="20" />
+                    <span>Settings</span>
+                </NavLink>
+            </li>
+        </ul>
+
+        <AuthorizeView>
+            <Authorized>
+                <div class="sidebar-footer">
+                    <div class="user-section">
+                        <NavLink href="profile" class="user-profile-link">
+                            <div class="user-avatar">@GetInitials(context.User.Identity?.Name)</div>
+                            <div class="user-info">
+                                <span class="user-name">@(context.User.Identity?.Name ?? "User")</span>
+                                <span class="user-email">Profile</span>
+                            </div>
+                        </NavLink>
+                    </div>
+                    <a href="logout" class="logout-link">
+                        <Icon Name="log-out" Size="18" />
+                        <span>Sign Out</span>
+                    </a>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+    </nav>
+
+    <main class="main-content">
+        <div class="content-wrapper">
+            @Body
+        </div>
+
+        <footer class="footer">
+            <div class="footer-content">
+                <p>RivianMate - Not affiliated with Rivian Automotive</p>
+                <p>Data refreshes every 30 seconds when vehicle is awake</p>
+            </div>
+        </footer>
+    </main>
+</div>
+
+@code {
+    private bool _timeZoneInitialized;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_timeZoneInitialized)
+        {
+            await TimeZoneService.InitializeAsync();
+            _timeZoneInitialized = true;
+        }
+    }
+
+    private string GetInitials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "U";
+
+        var parts = name.Split('@')[0].Split(new[] { ' ', '.', '_' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+            return $"{char.ToUpper(parts[0][0])}{char.ToUpper(parts[1][0])}";
+
+        return parts.Length > 0 ? char.ToUpper(parts[0][0]).ToString() : "U";
+    }
+}

@@ -1,0 +1,176 @@
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Components.VehicleStatus
+@using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
+
+<CardWrapper Definition="@GetDefinition()">
+    @if (VehicleState != null)
+    {
+        <div class="status-card-content">
+            <!-- Power State -->
+            <div class="status-card-row">
+                <span class="status-card-label">
+                    <Icon Name="power" Size="14" />
+                    Power
+                </span>
+                <span class="status-card-value @GetPowerStateClass()">@FormatPowerState(VehicleState.PowerState)</span>
+            </div>
+
+            <!-- Doors -->
+            <div class="status-card-row">
+                <span class="status-card-label">
+                    <Icon Name="lock" Size="14" />
+                    Doors
+                </span>
+                <span class="status-card-value @GetDoorsClass()">@GetDoorsStatus()</span>
+            </div>
+
+            <!-- Climate -->
+            @if (VehicleState.IsPreconditioningActive == true || VehicleState.IsPetModeActive == true)
+            {
+                <div class="status-card-row">
+                    <span class="status-card-label">
+                        <Icon Name="thermometer" Size="14" />
+                        Climate
+                    </span>
+                    <span class="status-card-value status-active">@GetClimateStatus()</span>
+                </div>
+            }
+            else if (VehicleState.CabinTemperature != null)
+            {
+                <div class="status-card-row">
+                    <span class="status-card-label">
+                        <Icon Name="thermometer" Size="14" />
+                        Cabin
+                    </span>
+                    <span class="status-card-value">@FormatTemperature(VehicleState.CabinTemperature)</span>
+                </div>
+            }
+
+            <!-- Gear Guard -->
+            <div class="status-card-row">
+                <span class="status-card-label">
+                    <Icon Name="shield" Size="14" />
+                    Gear Guard
+                </span>
+                <span class="status-card-value @(VehicleState.GearGuardEnabled == true ? "status-active" : "")">
+                    @(VehicleState.GearGuardEnabled == true ? "Armed" : "Off")
+                </span>
+            </div>
+
+            <!-- Frunk/Liftgate warnings -->
+            @if (VehicleState.FrunkClosed == false || VehicleState.LiftgateClosed == false)
+            {
+                <div class="status-card-row">
+                    <span class="status-card-label">
+                        <Icon Name="alert-triangle" Size="14" />
+                        Alert
+                    </span>
+                    <span class="status-card-value status-warning">
+                        @if (VehicleState.FrunkClosed == false && VehicleState.LiftgateClosed == false)
+                        {
+                            @:Frunk & Liftgate Open
+                        }
+                        else if (VehicleState.FrunkClosed == false)
+                        {
+                            @:Frunk Open
+                        }
+                        else
+                        {
+                            @:Liftgate Open
+                        }
+                    </span>
+                </div>
+            }
+
+            <!-- Cold Weather Limits -->
+            @if (VehicleState.LimitedAccelCold == true || VehicleState.LimitedRegenCold == true)
+            {
+                <div class="status-card-row">
+                    <span class="status-card-label">
+                        <Icon Name="snowflake" Size="14" />
+                        Cold
+                    </span>
+                    <span class="status-card-value status-warning">Performance Limited</span>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card-empty-state">
+            <Icon Name="activity" Size="48" Style="color: var(--color-text-muted); opacity: 0.5;" />
+            <p>No status data available</p>
+        </div>
+    }
+</CardWrapper>
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private VehicleState? VehicleState => Context?.VehicleState;
+    private int? VehicleId => Context?.VehicleId;
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "vehicle-status",
+        Icon = "activity",
+        Title = "Vehicle Status",
+        DetailUrl = "/status",
+        DetailLabel = "Details"
+    };
+
+    private DashboardCardDefinition GetDefinition() => _definition with
+    {
+        DetailUrl = VehicleId.HasValue ? $"/status/{VehicleId}" : _definition.DetailUrl
+    };
+
+    private static string FormatPowerState(PowerState? state) => state switch
+    {
+        PowerState.Ready => "Ready",
+        PowerState.Go => "Driving",
+        PowerState.Sleep => "Asleep",
+        PowerState.Standby => "Standby",
+        PowerState.Charging => "Charging",
+        _ => "Unknown"
+    };
+
+    private string GetPowerStateClass() => VehicleState?.PowerState switch
+    {
+        PowerState.Ready => "status-ready",
+        PowerState.Go => "status-active",
+        PowerState.Sleep => "status-sleep",
+        PowerState.Charging => "status-charging",
+        _ => ""
+    };
+
+    private string GetDoorsStatus()
+    {
+        if (VehicleState?.AllDoorsClosed == false) return "Open";
+        if (VehicleState?.AllDoorsLocked == true) return "Locked";
+        if (VehicleState?.AllDoorsLocked == false) return "Unlocked";
+        return "—";
+    }
+
+    private string GetDoorsClass()
+    {
+        if (VehicleState?.AllDoorsClosed == false) return "status-warning";
+        if (VehicleState?.AllDoorsLocked == true) return "status-secure";
+        return "";
+    }
+
+    private string GetClimateStatus()
+    {
+        if (VehicleState?.IsPetModeActive == true) return "Pet Mode";
+        if (VehicleState?.IsPreconditioningActive == true) return "Preconditioning";
+        return "—";
+    }
+
+    private static string FormatTemperature(double? celsius)
+    {
+        if (celsius == null) return "—";
+        var fahrenheit = celsius.Value * 9 / 5 + 32;
+        return $"{fahrenheit:0}°F";
+    }
+}

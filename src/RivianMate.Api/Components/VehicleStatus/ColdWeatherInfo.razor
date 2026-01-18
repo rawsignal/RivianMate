@@ -1,0 +1,22 @@
+@using RivianMate.Core.Entities
+
+@if (HasColdWeatherLimitations)
+{
+    <StatusSection Title="Cold Weather Limits" Icon="snowflake">
+        @if (VehicleState?.LimitedAccelCold == true)
+        {
+            <StatusItem Label="Acceleration" Value="Limited (cold battery)" StatusClass="status-warning" />
+        }
+        @if (VehicleState?.LimitedRegenCold == true)
+        {
+            <StatusItem Label="Regen Braking" Value="Limited (cold battery)" StatusClass="status-warning" />
+        }
+    </StatusSection>
+}
+
+@code {
+    [Parameter] public VehicleState? VehicleState { get; set; }
+
+    private bool HasColdWeatherLimitations =>
+        VehicleState?.LimitedAccelCold == true || VehicleState?.LimitedRegenCold == true;
+}

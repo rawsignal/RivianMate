@@ -1,0 +1,51 @@
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+
+@if (Compact)
+{
+    <div class="bottom-stat-card">
+        <div class="bottom-stat-label">
+            <Icon Name="@_definition.Icon" Size="14" />
+            @_definition.Title
+        </div>
+        <p class="bottom-stat-value">
+            @(VehicleState?.Odometer?.ToString("N0") ?? "—")
+            @if (VehicleState?.Odometer != null)
+            {
+                <span class="bottom-stat-unit">mi</span>
+            }
+        </p>
+    </div>
+}
+else
+{
+    <CardWrapper Definition="_definition">
+        <div class="quick-stat">
+            @if (VehicleState?.Odometer != null)
+            {
+                <div class="quick-stat-value">
+                    @VehicleState.Odometer.Value.ToString("N0")<span class="quick-stat-unit">mi</span>
+                </div>
+            }
+            else
+            {
+                <div class="quick-stat-value muted">—</div>
+            }
+        </div>
+    </CardWrapper>
+}
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private VehicleState? VehicleState => Context?.VehicleState;
+    private bool Compact => Context?.IsCompact ?? false;
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "odometer",
+        Icon = "gauge",
+        Title = "Odometer"
+    };
+}

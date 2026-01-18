@@ -1,0 +1,68 @@
+@using RivianMate.Core.Entities
+
+<StatusSection Title="Battery" Icon="battery">
+    <StatusItem Label="State of Charge" Value="@FormatPercent(VehicleState?.BatteryLevel)" />
+    <StatusItem Label="Estimated Range" Value="@FormatRange(VehicleState?.RangeEstimate)" />
+    <StatusItem Label="Usable Capacity" Value="@FormatCapacity(VehicleState?.BatteryCapacityKwh)" />
+    <StatusItem Label="Cell Type" Value="@FormatCellType(VehicleState?.BatteryCellType)" />
+    <StatusItem Label="12V Battery" Value="@Format12VHealth(VehicleState?.TwelveVoltBatteryHealth)" StatusClass="@Get12VHealthClass()" />
+    @if (VehicleState?.BatteryNeedsLfpCalibration == true)
+    {
+        <StatusItem Label="LFP Calibration" Value="Needed" StatusClass="status-warning" />
+    }
+</StatusSection>
+
+@code {
+    [Parameter] public VehicleState? VehicleState { get; set; }
+
+    private static string FormatPercent(double? value)
+    {
+        if (value == null) return "—";
+        return $"{value:0.0}%";
+    }
+
+    private static string FormatRange(double? miles)
+    {
+        if (miles == null) return "—";
+        return $"{miles:0} mi";
+    }
+
+    private static string FormatCapacity(double? kwh)
+    {
+        if (kwh == null) return "—";
+        return $"{kwh:0.0} kWh";
+    }
+
+    private static string FormatCellType(string? type)
+    {
+        if (string.IsNullOrEmpty(type)) return "—";
+        return type switch
+        {
+            "NMC" => "NMC (Nickel Manganese Cobalt)",
+            "LFP" => "LFP (Lithium Iron Phosphate)",
+            _ => type
+        };
+    }
+
+    private static string Format12VHealth(string? health)
+    {
+        if (string.IsNullOrEmpty(health)) return "—";
+        return health switch
+        {
+            "good" or "Good" => "Good",
+            "ok" or "Ok" => "OK",
+            "low" or "Low" => "Low",
+            "critical" or "Critical" => "Critical",
+            _ => health
+        };
+    }
+
+    private string Get12VHealthClass() => VehicleState?.TwelveVoltBatteryHealth?.ToLower() switch
+    {
+        "good" => "status-success",
+        "ok" => "",
+        "low" => "status-warning",
+        "critical" => "status-error",
+        _ => ""
+    };
+}

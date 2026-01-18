@@ -1,0 +1,210 @@
+@page "/status"
+@page "/status/{VehicleId:int}"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Components.VehicleStatus
+@using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
+@attribute [Authorize]
+@inject VehicleService VehicleService
+@inject TimeZoneService TimeZoneService
+@inject ILogger<VehicleStatus> Logger
+
+<PageTitle>Vehicle Status - RivianMate</PageTitle>
+
+<!-- Page Header -->
+<div style="margin-bottom: var(--space-8);">
+    <a href="/" style="font-size: 0.875rem; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+        <Icon Name="chevron-left" Size="16" />
+        Back to Dashboard
+    </a>
+    <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+        <Icon Name="activity" Size="28" Style="color: var(--color-accent);" />
+        Vehicle Status
+    </h1>
+    @if (_currentState != null)
+    {
+        <p style="color: var(--color-text-muted); margin-top: var(--space-2);">
+            Last updated: @FormatLastUpdated(_currentState.Timestamp)
+        </p>
+    }
+</div>
+
+@if (_loading)
+{
+    <div class="loading">
+        <p>Loading vehicle status...</p>
+    </div>
+}
+else if (_vehicle == null || _currentState == null)
+{
+    <div class="card" style="text-align: center; padding: var(--space-12);">
+        <Icon Name="activity" Size="64" Style="color: var(--color-text-muted); opacity: 0.3; margin-bottom: var(--space-4);" />
+        <h3 style="margin-bottom: var(--space-4);">No Vehicle Data Available</h3>
+        <p>Vehicle status will appear here once RivianMate receives data from your vehicle.</p>
+    </div>
+}
+else
+{
+    <!-- Vehicle Image & Quick Status -->
+    @if (_vehicle.ImageData != null)
+    {
+        <div class="card mb-6" style="text-align: center; padding: var(--space-8);">
+            <img src="@GetVehicleImageSrc()" alt="@_vehicle.Name" style="max-width: 400px; width: 100%; height: auto; margin-bottom: var(--space-4);" />
+            <h2 style="margin-bottom: var(--space-2);">@(_vehicle.Name ?? FormatModel(_vehicle.Model))</h2>
+            <p style="color: var(--color-text-muted);">
+                @(_vehicle.Year) @FormatModel(_vehicle.Model) @FormatTrim(_vehicle.Trim)
+            </p>
+        </div>
+    }
+
+    <!-- Status Grid -->
+    <div class="status-grid">
+        <!-- Power & Drive -->
+        <div class="card">
+            <PowerInfo VehicleState="_currentState" />
+        </div>
+
+        <!-- Battery -->
+        <div class="card">
+            <BatteryInfo VehicleState="_currentState" />
+        </div>
+
+        <!-- Charging -->
+        <div class="card">
+            <ChargingStatusInfo VehicleState="_currentState" />
+        </div>
+
+        <!-- Climate -->
+        <div class="card">
+            <ClimateInfo VehicleState="_currentState" />
+        </div>
+
+        <!-- Closures & Security -->
+        <div class="card">
+            <ClosuresInfo VehicleState="_currentState" />
+        </div>
+
+        <!-- Tire Pressure -->
+        <div class="card">
+            <TirePressureInfo VehicleState="_currentState" />
+        </div>
+
+        <!-- Location -->
+        <div class="card">
+            <LocationInfo VehicleState="_currentState" />
+        </div>
+
+        <!-- Software -->
+        <div class="card">
+            <SoftwareInfo VehicleState="_currentState" />
+        </div>
+
+        <!-- Cold Weather (conditional) -->
+        @if (_currentState.LimitedAccelCold == true || _currentState.LimitedRegenCold == true)
+        {
+            <div class="card">
+                <ColdWeatherInfo VehicleState="_currentState" />
+            </div>
+        }
+
+        <!-- Driver (conditional) -->
+        @if (!string.IsNullOrEmpty(_currentState.ActiveDriverName))
+        {
+            <div class="card">
+                <DriverInfo VehicleState="_currentState" />
+            </div>
+        }
+
+        <!-- Vehicle Specs -->
+        <div class="card">
+            <VehicleSpecsInfo Vehicle="_vehicle" />
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int? VehicleId { get; set; }
+
+    private Vehicle? _vehicle;
+    private VehicleState? _currentState;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            var targetVehicleId = VehicleId;
+
+            if (!targetVehicleId.HasValue)
+            {
+                var vehicles = await VehicleService.GetAllVehiclesAsync();
+                _vehicle = vehicles.FirstOrDefault();
+                targetVehicleId = _vehicle?.Id;
+            }
+            else
+            {
+                _vehicle = await VehicleService.GetVehicleAsync(targetVehicleId.Value);
+            }
+
+            if (targetVehicleId.HasValue)
+            {
+                _currentState = await VehicleService.GetLatestStateAsync(targetVehicleId.Value);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading vehicle status");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string FormatLastUpdated(DateTime utcTime)
+    {
+        var localTime = TimeZoneService.ToLocalTime(utcTime);
+        var now = TimeZoneService.ToLocalTime(DateTime.UtcNow);
+        var diff = now - localTime;
+
+        if (diff.TotalMinutes < 1) return "Just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes} min ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        return localTime.ToString("MMM d, h:mm tt");
+    }
+
+    private string GetVehicleImageSrc()
+    {
+        if (_vehicle?.ImageData == null) return "";
+        var base64 = Convert.ToBase64String(_vehicle.ImageData);
+        var contentType = _vehicle.ImageContentType ?? "image/png";
+        return $"data:{contentType};base64,{base64}";
+    }
+
+    private static string FormatModel(VehicleModel? model) => model switch
+    {
+        VehicleModel.R1T => "R1T",
+        VehicleModel.R1S => "R1S",
+        VehicleModel.R2 => "R2",
+        VehicleModel.R3 => "R3",
+        _ => ""
+    };
+
+    private static string FormatTrim(VehicleTrim? trim) => trim switch
+    {
+        VehicleTrim.Explore => "Explore",
+        VehicleTrim.Adventure => "Adventure",
+        VehicleTrim.LaunchEdition => "Launch Edition",
+        _ => ""
+    };
+}

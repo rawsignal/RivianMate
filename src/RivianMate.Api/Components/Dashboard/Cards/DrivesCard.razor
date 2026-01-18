@@ -1,0 +1,97 @@
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services
+@using RivianMate.Core.Entities
+
+<CardWrapper Definition="@GetDefinition()">
+    @if (RecentDrives?.Any() == true)
+    {
+        <div class="drives-list">
+            @foreach (var drive in RecentDrives.Take(4))
+            {
+                <div class="drive-item">
+                    <div class="drive-icon">
+                        <Icon Name="navigation" Size="16" />
+                    </div>
+                    <div class="drive-details">
+                        <div class="drive-header">
+                            <span class="drive-distance">@FormatDistance(drive.DistanceMiles) mi</span>
+                            <span class="drive-time">@FormatDriveTime(drive.StartTime)</span>
+                        </div>
+                        <div class="drive-stats">
+                            <span>@FormatEfficiency(drive.EfficiencyMilesPerKwh)</span>
+                            <span class="drive-stat-separator">·</span>
+                            <span>@FormatDuration(drive.StartTime, drive.EndTime)</span>
+                            @if (drive.AverageSpeedMph.HasValue)
+                            {
+                                <span class="drive-stat-separator">·</span>
+                                <span>@drive.AverageSpeedMph.Value.ToString("0") mph avg</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card-empty-state">
+            <Icon Name="navigation" Size="48" Style="color: var(--color-text-muted); opacity: 0.5;" />
+            <p>No drives recorded yet</p>
+        </div>
+    }
+</CardWrapper>
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private List<Drive>? RecentDrives => Context?.RecentDrives;
+    private int? VehicleId => Context?.VehicleId;
+    private TimeZoneService? TimeZoneService => Context?.TimeZoneService;
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "drives",
+        Icon = "navigation",
+        Title = "Recent Drives",
+        DetailUrl = "/drives",
+        DetailLabel = "View All"
+    };
+
+    private DashboardCardDefinition GetDefinition() => _definition with
+    {
+        DetailUrl = VehicleId.HasValue ? $"/drives/{VehicleId}" : _definition.DetailUrl
+    };
+
+    private static string FormatDistance(double? miles)
+    {
+        if (miles == null) return "—";
+        return miles.Value.ToString("0.0");
+    }
+
+    private static string FormatEfficiency(double? efficiency)
+    {
+        if (efficiency == null) return "— mi/kWh";
+        return $"{efficiency.Value:0.0} mi/kWh";
+    }
+
+    private string FormatDriveTime(DateTime utcTime)
+    {
+        if (TimeZoneService == null)
+            return utcTime.ToString("MMM d, h:mm tt");
+
+        var localTime = TimeZoneService.ToLocalTime(utcTime);
+        var today = TimeZoneService.ToLocalTime(DateTime.UtcNow).Date;
+        if (localTime.Date == today) return $"Today, {localTime:h:mm tt}";
+        if (localTime.Date == today.AddDays(-1)) return $"Yesterday, {localTime:h:mm tt}";
+        return localTime.ToString("MMM d, h:mm tt");
+    }
+
+    private static string FormatDuration(DateTime start, DateTime? end)
+    {
+        if (end == null) return "In progress";
+        var duration = end.Value - start;
+        if (duration.TotalMinutes < 60) return $"{(int)duration.TotalMinutes} min";
+        return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+    }
+}

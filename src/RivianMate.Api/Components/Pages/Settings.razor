@@ -1,0 +1,347 @@
+@page "/settings"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+@attribute [Authorize]
+
+@inject RivianAccountService RivianAccountService
+@inject VehicleService VehicleService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavigationManager
+@inject ILogger<Settings> Logger
+
+<PageTitle>Settings - RivianMate</PageTitle>
+
+<div style="max-width: 800px;">
+    <div style="margin-bottom: var(--space-8);">
+        <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+            <Icon Name="settings" Size="28" Style="color: var(--color-accent);" />
+            Settings
+        </h1>
+    </div>
+
+    <!-- Rivian Accounts Section -->
+    <div class="card mb-6">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 class="card-title">
+                <Icon Name="user" Size="20" Style="color: var(--color-accent);" />
+                Linked Rivian Accounts
+            </h2>
+            <a href="/rivian/add" class="btn btn-primary" style="font-size: 0.875rem; padding: var(--space-2) var(--space-4);">
+                <Icon Name="plus" Size="16" />
+                Add Account
+            </a>
+        </div>
+
+        @if (_isLoading)
+        {
+            <div style="padding: var(--space-8); text-align: center;">
+                <div class="loading-spinner"></div>
+            </div>
+        }
+        else if (_accounts == null || _accounts.Count == 0)
+        {
+            <div style="padding: var(--space-8); text-align: center; color: var(--color-text-muted);">
+                <Icon Name="user" Size="48" Style="opacity: 0.3; margin-bottom: var(--space-4);" />
+                <p style="margin-bottom: var(--space-4);">No Rivian accounts linked yet.</p>
+                <a href="/rivian/add" class="btn btn-primary">
+                    <Icon Name="plus" Size="16" />
+                    Link Your First Account
+                </a>
+            </div>
+        }
+        else
+        {
+            <div class="account-list">
+                @foreach (var account in _accounts)
+                {
+                    var vehicleCount = _vehicleCounts.GetValueOrDefault(account.Id, 0);
+                    <div class="account-item">
+                        <div class="account-info">
+                            <div class="account-icon">
+                                <Icon Name="car" Size="24" />
+                            </div>
+                            <div class="account-details">
+                                <p class="account-email">@account.RivianEmail</p>
+                                <p class="account-meta">
+                                    @vehicleCount vehicle@(vehicleCount != 1 ? "s" : "")
+                                    @if (account.LastSyncAt.HasValue)
+                                    {
+                                        <span> · Last synced <LocalTime Value="@account.LastSyncAt.Value" Relative="true" /></span>
+                                    }
+                                </p>
+                                @if (!string.IsNullOrEmpty(account.LastSyncError))
+                                {
+                                    <p class="account-error">
+                                        <Icon Name="alert-triangle" Size="14" />
+                                        @account.LastSyncError
+                                    </p>
+                                }
+                            </div>
+                        </div>
+                        <div class="account-actions">
+                            @if (_deletingAccountId == account.Id)
+                            {
+                                <div class="delete-confirm">
+                                    <span class="delete-warning">Delete all data?</span>
+                                    <button class="btn btn-danger btn-sm" @onclick="() => ConfirmDeleteAccount(account)" disabled="@_isDeleting">
+                                        @if (_isDeleting)
+                                        {
+                                            <span>Deleting...</span>
+                                        }
+                                        else
+                                        {
+                                            <span>Yes, Delete</span>
+                                        }
+                                    </button>
+                                    <button class="btn btn-secondary btn-sm" @onclick="CancelDelete" disabled="@_isDeleting">
+                                        Cancel
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <button class="btn btn-ghost btn-sm" @onclick="() => StartDeleteAccount(account.Id)" title="Remove account">
+                                    <Icon Name="trash-2" Size="18" Style="color: var(--color-error);" />
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="alert alert-error" style="margin: var(--space-4);">
+                @_errorMessage
+            </div>
+        }
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="card danger-card">
+        <div class="card-header">
+            <h2 class="card-title" style="color: var(--color-error);">
+                <Icon Name="alert-triangle" Size="20" Style="color: var(--color-error);" />
+                Danger Zone
+            </h2>
+        </div>
+        <div style="padding: var(--space-4);">
+            <p style="color: var(--color-text-muted); margin-bottom: var(--space-4);">
+                Removing a Rivian account will permanently delete all associated vehicles and their data, including charging history, drive logs, and battery health records.
+            </p>
+        </div>
+    </div>
+</div>
+
+<style>
+    .account-list {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .account-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: var(--space-4);
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .account-item:last-child {
+        border-bottom: none;
+    }
+
+    .account-info {
+        display: flex;
+        align-items: center;
+        gap: var(--space-4);
+    }
+
+    .account-icon {
+        width: 48px;
+        height: 48px;
+        background: rgba(255, 171, 0, 0.1);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--color-accent);
+    }
+
+    .account-details {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+    }
+
+    .account-email {
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+
+    .account-meta {
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+    }
+
+    .account-error {
+        font-size: 0.75rem;
+        color: var(--color-error);
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+    }
+
+    .account-actions {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+    }
+
+    .delete-confirm {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+    }
+
+    .delete-warning {
+        font-size: 0.875rem;
+        color: var(--color-error);
+        font-weight: 500;
+    }
+
+    .btn-sm {
+        font-size: 0.75rem;
+        padding: var(--space-1) var(--space-2);
+    }
+
+    .btn-ghost {
+        background: transparent;
+        border: none;
+        padding: var(--space-2);
+        cursor: pointer;
+        border-radius: var(--radius-md);
+        transition: background-color 0.2s;
+    }
+
+    .btn-ghost:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-danger {
+        background: var(--color-error);
+        color: white;
+        border: none;
+    }
+
+    .btn-danger:hover {
+        background: #dc2626;
+    }
+
+    .danger-card {
+        border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    @@media (max-width: 640px) {
+        .account-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: var(--space-3);
+        }
+
+        .account-actions {
+            align-self: flex-end;
+        }
+
+        .delete-confirm {
+            flex-wrap: wrap;
+        }
+    }
+</style>
+
+@code {
+    private List<RivianAccount>? _accounts;
+    private Dictionary<int, int> _vehicleCounts = new();
+    private Guid _userId;
+    private bool _isLoading = true;
+    private bool _isDeleting;
+    private int? _deletingAccountId;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (Guid.TryParse(userIdClaim, out var userId))
+        {
+            _userId = userId;
+        }
+
+        await LoadAccountsAsync();
+    }
+
+    private async Task LoadAccountsAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            _accounts = await RivianAccountService.GetAccountsForUserAsync(_userId);
+
+            // Get vehicle counts for each account
+            _vehicleCounts.Clear();
+            foreach (var account in _accounts)
+            {
+                var vehicles = await VehicleService.GetVehiclesForAccountAsync(account.Id);
+                _vehicleCounts[account.Id] = vehicles.Count;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load Rivian accounts");
+            _errorMessage = "Failed to load accounts. Please try again.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void StartDeleteAccount(int accountId)
+    {
+        _deletingAccountId = accountId;
+        _errorMessage = null;
+    }
+
+    private void CancelDelete()
+    {
+        _deletingAccountId = null;
+    }
+
+    private async Task ConfirmDeleteAccount(RivianAccount account)
+    {
+        _isDeleting = true;
+        _errorMessage = null;
+
+        try
+        {
+            await RivianAccountService.DeleteAccountAsync(account);
+            _deletingAccountId = null;
+            await LoadAccountsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to delete Rivian account {AccountId}", account.Id);
+            _errorMessage = "Failed to delete account. Please try again.";
+        }
+        finally
+        {
+            _isDeleting = false;
+        }
+    }
+}
