@@ -7,6 +7,7 @@
 @inject SignInManager<ApplicationUser> SignInManager
 @inject NavigationManager NavigationManager
 @inject ILogger<Register> Logger
+@inject RivianMate.Api.Services.FeatureService FeatureService
 
 <PageTitle>Create Account - RivianMate</PageTitle>
 
@@ -78,9 +79,28 @@
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
+    private const string GenericRegistrationError = "We're sorry, we aren't able to complete your account registration at this time. Please try again later.";
+
     public async Task RegisterUser()
     {
         errors.Clear();
+
+        // Check if registration is allowed (user limit)
+        if (!await FeatureService.CanRegisterUserAsync())
+        {
+            Logger.LogWarning("Registration blocked: user limit reached");
+            errors.Add(GenericRegistrationError);
+            return;
+        }
+
+        // Check if email is already in use (return generic error to prevent enumeration)
+        var existingUser = await UserManager.FindByEmailAsync(Input.Email);
+        if (existingUser != null)
+        {
+            Logger.LogWarning("Registration attempted with existing email: {Email}", Input.Email);
+            errors.Add(GenericRegistrationError);
+            return;
+        }
 
         var user = new ApplicationUser
         {
@@ -102,9 +122,25 @@
         }
         else
         {
+            // Log the actual errors for debugging but show generic message to user
             foreach (var error in result.Errors)
             {
-                errors.Add(error.Description);
+                Logger.LogWarning("Registration failed for {Email}: {Error}", Input.Email, error.Description);
+            }
+
+            // Check if it's a password validation error (safe to show)
+            var passwordErrors = result.Errors
+                .Where(e => e.Code.StartsWith("Password"))
+                .Select(e => e.Description)
+                .ToList();
+
+            if (passwordErrors.Any())
+            {
+                errors.AddRange(passwordErrors);
+            }
+            else
+            {
+                errors.Add(GenericRegistrationError);
             }
         }
     }
