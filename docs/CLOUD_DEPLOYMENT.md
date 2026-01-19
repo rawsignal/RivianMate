@@ -96,10 +96,8 @@ aws apprunner create-service \
       "ImageConfiguration": {
         "Port": "8080",
         "RuntimeEnvironmentVariables": {
-          "DATABASE_URL": "Host=<RDS_ENDPOINT>;Database=rivianmate;Username=rivianmate;Password=<PASSWORD>",
-          "ASPNETCORE_ENVIRONMENT": "Production",
-          "RM_DK": "<your-deployment-key>",
-          "Internal__DK": "<your-deployment-key>"
+          "ConnectionStrings__DefaultConnection": "Host=<RDS_ENDPOINT>;Database=rivianmate;Username=rivianmate;Password=<PASSWORD>",
+          "ASPNETCORE_ENVIRONMENT": "Production"
         }
       }
     },
@@ -230,16 +228,8 @@ resource "aws_ecs_task_definition" "rivianmate" {
 
       secrets = [
         {
-          name      = "DATABASE_URL"
+          name      = "ConnectionStrings__DefaultConnection"
           valueFrom = aws_secretsmanager_secret.db_connection.arn
-        },
-        {
-          name      = "RM_DK"
-          valueFrom = aws_secretsmanager_secret.deployment_key.arn
-        },
-        {
-          name      = "Internal__DK"
-          valueFrom = aws_secretsmanager_secret.deployment_key.arn
         }
       ]
 
@@ -462,11 +452,8 @@ az containerapp create \
   --cpu 0.5 \
   --memory 1.0Gi \
   --env-vars \
-    "DATABASE_URL=Host=rivianmate-db.postgres.database.azure.com;Database=rivianmate;Username=rivianmate;Password=<PASSWORD>;SSL Mode=Require" \
-    "ASPNETCORE_ENVIRONMENT=Production" \
-  --secrets \
-    "rm-dk=<your-deployment-key>" \
-    "internal-dk=<your-deployment-key>"
+    "ConnectionStrings__DefaultConnection=Host=rivianmate-db.postgres.database.azure.com;Database=rivianmate;Username=rivianmate;Password=<PASSWORD>;SSL Mode=Require" \
+    "ASPNETCORE_ENVIRONMENT=Production"
 ```
 
 #### Step 4: Configure Custom Domain
@@ -509,8 +496,7 @@ metadata:
   namespace: rivianmate
 type: Opaque
 stringData:
-  DATABASE_URL: "Host=rivianmate-db.postgres.database.azure.com;Database=rivianmate;Username=rivianmate;Password=<PASSWORD>;SSL Mode=Require"
-  DEPLOYMENT_KEY: "<your-deployment-key>"
+  CONNECTION_STRING: "Host=rivianmate-db.postgres.database.azure.com;Database=rivianmate;Username=rivianmate;Password=<PASSWORD>;SSL Mode=Require"
 ---
 # deployment.yaml
 apiVersion: apps/v1
@@ -536,21 +522,11 @@ spec:
         env:
         - name: ASPNETCORE_ENVIRONMENT
           value: "Production"
-        - name: DATABASE_URL
+        - name: ConnectionStrings__DefaultConnection
           valueFrom:
             secretKeyRef:
               name: rivianmate-secrets
-              key: DATABASE_URL
-        - name: RM_DK
-          valueFrom:
-            secretKeyRef:
-              name: rivianmate-secrets
-              key: DEPLOYMENT_KEY
-        - name: Internal__DK
-          valueFrom:
-            secretKeyRef:
-              name: rivianmate-secrets
-              key: DEPLOYMENT_KEY
+              key: CONNECTION_STRING
         resources:
           requests:
             memory: "512Mi"
@@ -641,39 +617,25 @@ spec:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `Host=db.example.com;Database=rivianmate;Username=user;Password=pass` |
-| `RM_DK` | Deployment key (see below) | `<your-secret-key>` |
+| `ConnectionStrings__DefaultConnection` | PostgreSQL connection string | `Host=db.example.com;Database=rivianmate;Username=user;Password=pass;SSL Mode=Require` |
 | `ASPNETCORE_ENVIRONMENT` | Runtime environment | `Production` |
 
-### Cloud Edition Activation
+### Pro Edition Build
 
-The cloud edition requires a deployment key. This prevents self-hosters from enabling cloud features.
+The Pro edition is determined at **compile time**, not runtime. Build with the `Edition=Pro` flag:
 
-**Setup:**
+```bash
+# Docker build
+docker build --build-arg EDITION=Pro -t rivianmate-pro .
 
-1. Generate a random secret key:
-   ```bash
-   openssl rand -base64 32
-   ```
+# Azure ACR build
+az acr build --registry yourregistry --image rivianmate:latest --build-arg EDITION=Pro .
 
-2. Add to your infrastructure secrets (AWS Secrets Manager, Azure Key Vault, etc.)
+# Direct dotnet build
+dotnet build -p:Edition=Pro
+```
 
-3. Set the environment variable in your container:
-   ```yaml
-   environment:
-     - RM_DK=<your-generated-secret>
-   ```
-
-4. Add to your app configuration via User Secrets or secure config:
-   ```bash
-   # For local development/testing
-   dotnet user-secrets set "Internal:DK" "<your-generated-secret>"
-
-   # Or via environment variable in cloud
-   Internal__DK=<your-generated-secret>
-   ```
-
-Both values must match for cloud edition to activate. Keep this key secure and never commit it to the repository.
+The Self-Hosted edition (default) cannot be "upgraded" to Pro at runtime - they are separate binaries with different feature sets compiled in. This prevents reverse-engineering or unauthorized feature activation.
 
 ### Optional Configuration
 

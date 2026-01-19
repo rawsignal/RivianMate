@@ -20,16 +20,17 @@ public record DashboardCardConfig(
 );
 
 /// <summary>
-/// Service for managing user dashboard configurations
+/// Service for managing user dashboard configurations.
+/// Uses IDbContextFactory to create short-lived contexts for Blazor Server compatibility.
 /// </summary>
 public class DashboardConfigService
 {
-    private readonly RivianMateDbContext _db;
+    private readonly IDbContextFactory<RivianMateDbContext> _dbFactory;
     private readonly ILogger<DashboardConfigService> _logger;
 
-    public DashboardConfigService(RivianMateDbContext db, ILogger<DashboardConfigService> logger)
+    public DashboardConfigService(IDbContextFactory<RivianMateDbContext> dbFactory, ILogger<DashboardConfigService> logger)
     {
-        _db = db;
+        _dbFactory = dbFactory;
         _logger = logger;
     }
 
@@ -39,8 +40,10 @@ public class DashboardConfigService
     /// </summary>
     public async Task<List<DashboardCardConfig>> GetUserConfigAsync(Guid userId)
     {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
         // Get user's custom configurations
-        var userConfigs = await _db.UserDashboardConfigs
+        var userConfigs = await db.UserDashboardConfigs
             .Where(c => c.UserId == userId)
             .ToDictionaryAsync(c => c.CardId);
 
@@ -115,7 +118,9 @@ public class DashboardConfigService
             return;
         }
 
-        var config = await _db.UserDashboardConfigs
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var config = await db.UserDashboardConfigs
             .FirstOrDefaultAsync(c => c.UserId == userId && c.CardId == cardId);
 
         if (config != null)
@@ -135,10 +140,10 @@ public class DashboardConfigService
                 Order = cardDef.DefaultOrder,
                 UpdatedAt = DateTime.UtcNow
             };
-            _db.UserDashboardConfigs.Add(config);
+            db.UserDashboardConfigs.Add(config);
         }
 
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
         _logger.LogInformation("Set card {CardId} visibility to {Visible} for user {UserId}", cardId, visible, userId);
     }
 
@@ -147,8 +152,10 @@ public class DashboardConfigService
     /// </summary>
     public async Task ReorderCardsAsync(Guid userId, DashboardSection section, IReadOnlyList<string> orderedCardIds)
     {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
         // Get existing user configs for this section
-        var existingConfigs = await _db.UserDashboardConfigs
+        var existingConfigs = await db.UserDashboardConfigs
             .Where(c => c.UserId == userId)
             .ToDictionaryAsync(c => c.CardId);
 
@@ -182,11 +189,11 @@ public class DashboardConfigService
                     Order = i,
                     UpdatedAt = DateTime.UtcNow
                 };
-                _db.UserDashboardConfigs.Add(newConfig);
+                db.UserDashboardConfigs.Add(newConfig);
             }
         }
 
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
         _logger.LogInformation("Reordered {Count} cards in section {Section} for user {UserId}",
             orderedCardIds.Count, section, userId);
     }
@@ -196,12 +203,14 @@ public class DashboardConfigService
     /// </summary>
     public async Task ResetToDefaultsAsync(Guid userId)
     {
-        var userConfigs = await _db.UserDashboardConfigs
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var userConfigs = await db.UserDashboardConfigs
             .Where(c => c.UserId == userId)
             .ToListAsync();
 
-        _db.UserDashboardConfigs.RemoveRange(userConfigs);
-        await _db.SaveChangesAsync();
+        db.UserDashboardConfigs.RemoveRange(userConfigs);
+        await db.SaveChangesAsync();
 
         _logger.LogInformation("Reset dashboard to defaults for user {UserId}", userId);
     }

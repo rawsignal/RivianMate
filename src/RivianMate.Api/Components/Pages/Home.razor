@@ -568,30 +568,41 @@
             return;
         }
 
-        // Get current order for this section
-        var sectionCards = GetVisibleCards(draggingCard.Section);
-        var orderedIds = sectionCards.Select(c => c.CardId).ToList();
-
-        // Remove dragging card from its current position
-        orderedIds.Remove(_draggingCardId);
-
-        // Insert at new position (before hover target)
-        var targetIndex = orderedIds.IndexOf(_hoverTargetCardId);
-        if (targetIndex >= 0)
+        try
         {
-            orderedIds.Insert(targetIndex, _draggingCardId);
+            // Get current order for this section
+            var sectionCards = GetVisibleCards(draggingCard.Section);
+            var orderedIds = sectionCards.Select(c => c.CardId).ToList();
+
+            // Remove dragging card from its current position
+            orderedIds.Remove(_draggingCardId);
+
+            // Insert at new position (before hover target)
+            var targetIndex = orderedIds.IndexOf(_hoverTargetCardId);
+            if (targetIndex >= 0)
+            {
+                orderedIds.Insert(targetIndex, _draggingCardId);
+            }
+            else
+            {
+                orderedIds.Add(_draggingCardId);
+            }
+
+            // Save new order
+            await DashboardConfigService.ReorderCardsAsync(_userId, draggingCard.Section, orderedIds);
+            await LoadDashboardConfig();
         }
-        else
+        catch (Exception ex)
         {
-            orderedIds.Add(_draggingCardId);
+            Logger.LogError(ex, "Failed to reorder cards");
         }
-
-        // Save new order
-        await DashboardConfigService.ReorderCardsAsync(_userId, draggingCard.Section, orderedIds);
-        await LoadDashboardConfig();
-
-        _draggingCardId = null;
-        _hoverTargetCardId = null;
+        finally
+        {
+            // Always clear drag state to reset UI
+            _draggingCardId = null;
+            _hoverTargetCardId = null;
+            StateHasChanged();
+        }
     }
 
     // Dynamic card rendering

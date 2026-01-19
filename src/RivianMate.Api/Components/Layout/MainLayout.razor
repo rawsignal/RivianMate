@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Licensing
 @using Microsoft.AspNetCore.Components.Authorization
 @inject TimeZoneService TimeZoneService
 
@@ -8,7 +9,7 @@
         <div class="sidebar-header">
             <div class="logo">
                 <div class="logo-icon"></div>
-                <span class="logo-text">RivianMate</span>
+                <span class="logo-text">@BuildInfo.DisplayName</span>
             </div>
         </div>
         <ul class="nav-menu">

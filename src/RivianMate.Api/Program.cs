@@ -50,18 +50,24 @@ string? postgresConnectionString = null;
 if (useSqlite)
 {
     var sqliteConnection = builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=rivianmate.db";
-    builder.Services.AddDbContext<RivianMateDbContext>(options =>
+    // Use DbContextFactory for Blazor Server to avoid disposed context issues
+    builder.Services.AddDbContextFactory<RivianMateDbContext>(options =>
         options.UseSqlite(sqliteConnection));
+    // Also register scoped DbContext for services that need it
+    builder.Services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<RivianMateDbContext>>().CreateDbContext());
 }
 else
 {
     postgresConnectionString = GetPostgresConnectionString();
-    builder.Services.AddDbContext<RivianMateDbContext>(options =>
+    // Use DbContextFactory for Blazor Server to avoid disposed context issues
+    builder.Services.AddDbContextFactory<RivianMateDbContext>(options =>
         options.UseNpgsql(postgresConnectionString, npgsqlOptions =>
             npgsqlOptions.EnableRetryOnFailure(
                 maxRetryCount: 5,
                 maxRetryDelay: TimeSpan.FromSeconds(30),
                 errorCodesToAdd: null)));
+    // Also register scoped DbContext for services that need it
+    builder.Services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<RivianMateDbContext>>().CreateDbContext());
 }
 
 // === Hangfire (Distributed Job Scheduling) ===
