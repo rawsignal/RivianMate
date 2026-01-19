@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RivianMate.Infrastructure.Data;
@@ -11,9 +12,11 @@ using RivianMate.Infrastructure.Data;
 namespace RivianMate.Infrastructure.Migrations
 {
     [DbContext(typeof(RivianMateDbContext))]
-    partial class RivianMateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260119212829_ChangeGearGuardToStatus")]
+    partial class ChangeGearGuardToStatus
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -739,9 +742,6 @@ namespace RivianMate.Infrastructure.Migrations
                     b.Property<Guid?>("OwnerId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("PublicId")
-                        .HasColumnType("uuid");
-
                     b.Property<int?>("RivianAccountId")
                         .HasColumnType("integer");
 
@@ -771,9 +771,6 @@ namespace RivianMate.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OwnerId");
-
-                    b.HasIndex("PublicId")
-                        .IsUnique();
 
                     b.HasIndex("RivianAccountId");
 

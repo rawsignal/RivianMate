@@ -1,4 +1,5 @@
 @using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
 
 <StatusSection Title="Closures & Security" Icon="lock">
     <StatusItem Label="Doors" StatusClass="@GetClosureClass(VehicleState?.AllDoorsClosed, VehicleState?.AllDoorsLocked)">
@@ -8,17 +9,28 @@
     <StatusItem Label="Frunk" StatusClass="@GetClosureClass(VehicleState?.FrunkClosed, VehicleState?.FrunkLocked)">
         @GetFrunkStatus()
     </StatusItem>
-    <StatusItem Label="Liftgate" Value="@GetClosedStatus(VehicleState?.LiftgateClosed)" StatusClass="@(VehicleState?.LiftgateClosed == false ? "status-warning" : "")" />
-    @if (VehicleState?.TonneauClosed != null)
+    @if (Model == VehicleModel.R1S)
     {
+        <StatusItem Label="Liftgate" Value="@GetClosedStatus(VehicleState?.LiftgateClosed)" StatusClass="@(VehicleState?.LiftgateClosed == false ? "status-warning" : "")" />
+    }
+    @if (Model == VehicleModel.R1T)
+    {
+        <StatusItem Label="Tailgate" Value="@GetClosedStatus(VehicleState?.TailgateClosed)" StatusClass="@(VehicleState?.TailgateClosed == false ? "status-warning" : "")" />
         <StatusItem Label="Tonneau" Value="@GetClosedStatus(VehicleState?.TonneauClosed)" StatusClass="@(VehicleState?.TonneauClosed == false ? "status-warning" : "")" />
+        <StatusItem Label="Gear Tunnel L" StatusClass="@GetClosureClass(VehicleState?.SideBinLeftClosed, VehicleState?.SideBinLeftLocked)">
+            @GetSideBinLeftStatus()
+        </StatusItem>
+        <StatusItem Label="Gear Tunnel R" StatusClass="@GetClosureClass(VehicleState?.SideBinRightClosed, VehicleState?.SideBinRightLocked)">
+            @GetSideBinRightStatus()
+        </StatusItem>
     }
     <StatusItem Label="Charge Port" Value="@GetOpenStatus(VehicleState?.ChargePortOpen)" />
-    <StatusItem Label="Gear Guard" Value="@FormatBool(VehicleState?.GearGuardEnabled)" StatusClass="@(VehicleState?.GearGuardEnabled == true ? "status-active" : "")" />
+    <StatusItem Label="Gear Guard" Value="@(VehicleState?.GearGuardStatus ?? "—")" StatusClass="@GetGearGuardClass(VehicleState?.GearGuardStatus)" />
 </StatusSection>
 
 @code {
     [Parameter] public VehicleState? VehicleState { get; set; }
+    [Parameter] public VehicleModel? Model { get; set; }
 
     private string GetDoorStatus()
     {
@@ -35,6 +47,24 @@
         if (VehicleState.FrunkClosed == false) return "Open";
         if (VehicleState.FrunkLocked == true) return "Closed & Locked";
         if (VehicleState.FrunkLocked == false) return "Closed & Unlocked";
+        return "Closed";
+    }
+
+    private string GetSideBinLeftStatus()
+    {
+        if (VehicleState?.SideBinLeftClosed == null) return "—";
+        if (VehicleState.SideBinLeftClosed == false) return "Open";
+        if (VehicleState.SideBinLeftLocked == true) return "Closed & Locked";
+        if (VehicleState.SideBinLeftLocked == false) return "Closed & Unlocked";
+        return "Closed";
+    }
+
+    private string GetSideBinRightStatus()
+    {
+        if (VehicleState?.SideBinRightClosed == null) return "—";
+        if (VehicleState.SideBinRightClosed == false) return "Open";
+        if (VehicleState.SideBinRightLocked == true) return "Closed & Locked";
+        if (VehicleState.SideBinRightLocked == false) return "Closed & Unlocked";
         return "Closed";
     }
 
@@ -67,4 +97,11 @@
         if (locked == true) return "status-secure";
         return "";
     }
+
+    private static string GetGearGuardClass(string? status) => status?.ToLower() switch
+    {
+        "engaged" => "status-active",
+        "enabled" => "status-secure",
+        _ => ""
+    };
 }

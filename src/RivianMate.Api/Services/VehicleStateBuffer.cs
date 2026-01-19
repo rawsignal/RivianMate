@@ -191,7 +191,7 @@ public class VehicleStateBuffer
 
         // === Gear Guard ===
 
-        if (last.GearGuardEnabled != current.GearGuardEnabled)
+        if (last.GearGuardStatus != current.GearGuardStatus)
         {
             return true;
         }

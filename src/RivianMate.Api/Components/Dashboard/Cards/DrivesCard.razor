@@ -46,7 +46,7 @@
     public DashboardContext? Context { get; set; }
 
     private List<Drive>? RecentDrives => Context?.RecentDrives;
-    private int? VehicleId => Context?.VehicleId;
+    private Guid? VehiclePublicId => Context?.VehiclePublicId;
     private TimeZoneService? TimeZoneService => Context?.TimeZoneService;
 
     private static readonly DashboardCardDefinition _definition = new()
@@ -60,7 +60,7 @@
 
     private DashboardCardDefinition GetDefinition() => _definition with
     {
-        DetailUrl = VehicleId.HasValue ? $"/drives/{VehicleId}" : _definition.DetailUrl
+        DetailUrl = VehiclePublicId.HasValue ? $"/drives/{VehiclePublicId}" : _definition.DetailUrl
     };
 
     private static string FormatDistance(double? miles)

@@ -846,7 +846,7 @@ public class DevDataSeeder
             FrunkClosed = true,
             FrunkLocked = true,
             LiftgateClosed = true,
-            GearGuardEnabled = true,
+            GearGuardStatus = "Enabled",
             OtaCurrentVersion = vehicle.SoftwareVersion,
             Latitude = 37.7749 + (random.NextDouble() - 0.5) * 0.1,
             Longitude = -122.4194 + (random.NextDouble() - 0.5) * 0.1,

@@ -12,7 +12,7 @@ public class DashboardContext
 {
     // Vehicle data
     public VehicleState? VehicleState { get; init; }
-    public int? VehicleId { get; init; }
+    public Guid? VehiclePublicId { get; init; }
 
     // Battery health data
     public BatteryHealthSummary? HealthSummary { get; init; }

@@ -1,5 +1,5 @@
 @page "/battery-health"
-@page "/battery-health/{VehicleId:int}"
+@page "/battery-health/{VehicleId:guid}"
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -357,7 +357,7 @@ else
 
 @code {
     [Parameter]
-    public int? VehicleId { get; set; }
+    public Guid? VehicleId { get; set; }
 
     private Vehicle? _vehicle;
     private BatteryHealthSummary? _summary;
@@ -386,32 +386,29 @@ else
                 return;
             }
 
-            var targetVehicleId = VehicleId;
-
-            if (!targetVehicleId.HasValue)
+            if (!VehicleId.HasValue)
             {
-                // Only get vehicles owned by this user
+                // No vehicle specified - get user's first vehicle
                 var vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
                 _vehicle = vehicles.FirstOrDefault();
-                targetVehicleId = _vehicle?.Id;
             }
             else
             {
-                // Verify the vehicle belongs to this user
-                _vehicle = await VehicleService.GetVehicleForUserAsync(targetVehicleId.Value, _userId);
+                // Verify the vehicle belongs to this user via PublicId
+                _vehicle = await VehicleService.GetVehicleByPublicIdAsync(VehicleId.Value, _userId);
                 if (_vehicle == null)
                 {
-                    Logger.LogWarning("User {UserId} attempted to access vehicle {VehicleId} they don't own", _userId, targetVehicleId);
+                    Logger.LogWarning("User {UserId} attempted to access vehicle {VehiclePublicId} they don't own", _userId, VehicleId);
                     _notFound = true;
                     return;
                 }
             }
 
-            if (targetVehicleId.HasValue)
+            if (_vehicle != null)
             {
-                _summary = await BatteryHealthService.GetHealthSummaryAsync(targetVehicleId.Value);
-                _healthHistory = await BatteryHealthService.GetHealthHistoryAsync(targetVehicleId.Value);
-                _careAnalysis = await BatteryCareService.GetBatteryCareAnalysisAsync(targetVehicleId.Value);
+                _summary = await BatteryHealthService.GetHealthSummaryAsync(_vehicle.Id);
+                _healthHistory = await BatteryHealthService.GetHealthHistoryAsync(_vehicle.Id);
+                _careAnalysis = await BatteryCareService.GetBatteryCareAnalysisAsync(_vehicle.Id);
             }
         }
         catch (Exception ex)

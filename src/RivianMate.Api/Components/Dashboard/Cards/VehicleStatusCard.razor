@@ -53,8 +53,8 @@
                     <Icon Name="shield" Size="14" />
                     Gear Guard
                 </span>
-                <span class="status-card-value @(VehicleState.GearGuardEnabled == true ? "status-active" : "")">
-                    @(VehicleState.GearGuardEnabled == true ? "Armed" : "Off")
+                <span class="status-card-value @GetGearGuardClass(VehicleState.GearGuardStatus)">
+                    @(VehicleState.GearGuardStatus ?? "—")
                 </span>
             </div>
 
@@ -110,7 +110,7 @@
     public DashboardContext? Context { get; set; }
 
     private VehicleState? VehicleState => Context?.VehicleState;
-    private int? VehicleId => Context?.VehicleId;
+    private Guid? VehiclePublicId => Context?.VehiclePublicId;
 
     private static readonly DashboardCardDefinition _definition = new()
     {
@@ -123,7 +123,7 @@
 
     private DashboardCardDefinition GetDefinition() => _definition with
     {
-        DetailUrl = VehicleId.HasValue ? $"/status/{VehicleId}" : _definition.DetailUrl
+        DetailUrl = VehiclePublicId.HasValue ? $"/status/{VehiclePublicId}" : _definition.DetailUrl
     };
 
     private static string FormatPowerState(PowerState? state) => state switch
@@ -173,4 +173,11 @@
         var fahrenheit = celsius.Value * 9 / 5 + 32;
         return $"{fahrenheit:0}°F";
     }
+
+    private static string GetGearGuardClass(string? status) => status?.ToLower() switch
+    {
+        "engaged" => "status-active",
+        "enabled" => "status-secure",
+        _ => ""
+    };
 }

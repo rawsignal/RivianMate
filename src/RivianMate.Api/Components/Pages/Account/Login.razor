@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Identity
 @using RivianMate.Core.Entities
+@using RivianMate.Api.Components.Shared
 
 @inject SignInManager<ApplicationUser> SignInManager
 @inject UserManager<ApplicationUser> UserManager
@@ -44,7 +45,7 @@
 
             <div class="form-group">
                 <label for="password">Password</label>
-                <InputText @bind-Value="Input.Password" id="password" type="password" placeholder="Enter your password" autocomplete="current-password" />
+                <PasswordField @bind-Value="Input.Password" Name="Input.Password" Id="password" Placeholder="Enter your password" Autocomplete="current-password" />
                 <ValidationMessage For="() => Input.Password" class="validation-message" />
             </div>
 

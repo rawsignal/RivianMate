@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RivianMate.Core.Entities;
 using RivianMate.Core.Exceptions;
@@ -14,15 +15,24 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
     private readonly ICurrentUserAccessor? _currentUserAccessor;
     private readonly ILogger<RivianMateDbContext>? _logger;
 
+    /// <summary>
+    /// Constructor for DbContextFactory (used by EF tooling and background jobs).
+    /// No ownership validation in this mode.
+    /// </summary>
+    [ActivatorUtilitiesConstructor]
     public RivianMateDbContext(DbContextOptions<RivianMateDbContext> options)
         : base(options)
     {
     }
 
+    /// <summary>
+    /// Constructor with ownership validation services.
+    /// Used for scoped DbContext in request handling.
+    /// </summary>
     public RivianMateDbContext(
         DbContextOptions<RivianMateDbContext> options,
         ICurrentUserAccessor? currentUserAccessor,
-        ILogger<RivianMateDbContext>? logger = null)
+        ILogger<RivianMateDbContext>? logger)
         : base(options)
     {
         _currentUserAccessor = currentUserAccessor;
@@ -79,6 +89,7 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
         modelBuilder.Entity<Vehicle>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.PublicId).IsUnique();
             entity.HasIndex(e => e.RivianVehicleId).IsUnique();
             entity.HasIndex(e => e.Vin);
             entity.HasIndex(e => e.OwnerId);

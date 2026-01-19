@@ -609,7 +609,7 @@
     private DashboardContext CreateContext(DashboardSection section) => new()
     {
         VehicleState = _currentState,
-        VehicleId = _vehicle?.Id,
+        VehiclePublicId = _vehicle?.PublicId,
         HealthSummary = _healthSummary,
         HealthHistory = _healthHistory,
         RecentSessions = _recentSessions,

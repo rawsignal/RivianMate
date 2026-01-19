@@ -136,9 +136,14 @@ public class VehicleState : IVehicleOwnedEntity
     public bool? AllWindowsClosed { get; set; }
     public bool? FrunkClosed { get; set; }
     public bool? FrunkLocked { get; set; }
-    public bool? LiftgateClosed { get; set; }
-    public bool? TonneauClosed { get; set; }
-    public bool? GearGuardEnabled { get; set; }
+    public bool? LiftgateClosed { get; set; }      // R1S liftgate
+    public bool? TailgateClosed { get; set; }      // R1T tailgate
+    public bool? TonneauClosed { get; set; }       // R1T tonneau cover
+    public bool? SideBinLeftClosed { get; set; }   // R1T gear tunnel left
+    public bool? SideBinLeftLocked { get; set; }   // R1T gear tunnel left
+    public bool? SideBinRightClosed { get; set; }  // R1T gear tunnel right
+    public bool? SideBinRightLocked { get; set; }  // R1T gear tunnel right
+    public string? GearGuardStatus { get; set; }   // "Disabled", "Enabled", "Engaged"
     
     // === Tire Pressure - Status ===
     public TirePressureStatus TirePressureStatusFrontLeft { get; set; } = TirePressureStatus.Unknown;

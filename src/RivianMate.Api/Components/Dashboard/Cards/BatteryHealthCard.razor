@@ -145,7 +145,7 @@
 
     private BatteryHealthSummary? HealthSummary => Context?.HealthSummary;
     private List<BatteryHealthSnapshot>? HealthHistory => Context?.HealthHistory;
-    private int? VehicleId => Context?.VehicleId;
+    private Guid? VehiclePublicId => Context?.VehiclePublicId;
 
     private static readonly DashboardCardDefinition _definition = new()
     {
@@ -158,7 +158,7 @@
 
     private DashboardCardDefinition GetDefinition() => _definition with
     {
-        DetailUrl = VehicleId.HasValue ? $"/battery-health/{VehicleId}" : _definition.DetailUrl
+        DetailUrl = VehiclePublicId.HasValue ? $"/battery-health/{VehiclePublicId}" : _definition.DetailUrl
     };
 
     private static string GetHealthColor(double percent) => percent switch

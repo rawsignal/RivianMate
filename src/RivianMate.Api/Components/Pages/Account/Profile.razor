@@ -93,13 +93,13 @@
 
                 <div class="form-group">
                     <label for="currentPassword">Current Password</label>
-                    <InputText @bind-Value="PasswordInput.CurrentPassword" id="currentPassword" type="password" placeholder="Enter current password" />
+                    <PasswordField @bind-Value="PasswordInput.CurrentPassword" Name="PasswordInput.CurrentPassword" Id="currentPassword" Placeholder="Enter current password" Autocomplete="current-password" />
                     <ValidationMessage For="() => PasswordInput.CurrentPassword" class="validation-message" />
                 </div>
 
                 <div class="form-group">
                     <label for="newPassword">New Password</label>
-                    <InputText @bind-Value="PasswordInput.NewPassword" id="newPassword" type="password" placeholder="Enter new password" />
+                    <PasswordField @bind-Value="PasswordInput.NewPassword" Name="PasswordInput.NewPassword" Id="newPassword" Placeholder="Enter new password" Autocomplete="new-password" />
                     <ValidationMessage For="() => PasswordInput.NewPassword" class="validation-message" />
                     <div class="password-requirements">
                         Must be at least 12 characters with uppercase, lowercase, number, and special character.
@@ -108,7 +108,7 @@
 
                 <div class="form-group">
                     <label for="confirmNewPassword">Confirm New Password</label>
-                    <InputText @bind-Value="PasswordInput.ConfirmNewPassword" id="confirmNewPassword" type="password" placeholder="Confirm new password" />
+                    <PasswordField @bind-Value="PasswordInput.ConfirmNewPassword" Name="PasswordInput.ConfirmNewPassword" Id="confirmNewPassword" Placeholder="Confirm new password" Autocomplete="new-password" />
                     <ValidationMessage For="() => PasswordInput.ConfirmNewPassword" class="validation-message" />
                 </div>
 

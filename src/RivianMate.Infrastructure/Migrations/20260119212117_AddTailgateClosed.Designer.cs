@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RivianMate.Infrastructure.Data;
@@ -11,9 +12,11 @@ using RivianMate.Infrastructure.Data;
 namespace RivianMate.Infrastructure.Migrations
 {
     [DbContext(typeof(RivianMateDbContext))]
-    partial class RivianMateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260119212117_AddTailgateClosed")]
+    partial class AddTailgateClosed
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -739,9 +742,6 @@ namespace RivianMate.Infrastructure.Migrations
                     b.Property<Guid?>("OwnerId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("PublicId")
-                        .HasColumnType("uuid");
-
                     b.Property<int?>("RivianAccountId")
                         .HasColumnType("integer");
 
@@ -771,9 +771,6 @@ namespace RivianMate.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OwnerId");
-
-                    b.HasIndex("PublicId")
-                        .IsUnique();
 
                     b.HasIndex("RivianAccountId");
 
@@ -848,8 +845,8 @@ namespace RivianMate.Infrastructure.Migrations
                     b.Property<bool?>("FrunkLocked")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("GearGuardStatus")
-                        .HasColumnType("text");
+                    b.Property<bool?>("GearGuardEnabled")
+                        .HasColumnType("boolean");
 
                     b.Property<int>("GearStatus")
                         .HasColumnType("integer");
@@ -910,18 +907,6 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.Property<string>("RawJson")
                         .HasColumnType("text");
-
-                    b.Property<bool?>("SideBinLeftClosed")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool?>("SideBinLeftLocked")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool?>("SideBinRightClosed")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool?>("SideBinRightLocked")
-                        .HasColumnType("boolean");
 
                     b.Property<double?>("Speed")
                         .HasColumnType("double precision");

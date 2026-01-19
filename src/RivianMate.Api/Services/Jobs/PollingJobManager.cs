@@ -17,9 +17,10 @@ public class PollingJobManager
     private readonly ILogger<PollingJobManager> _logger;
 
     // Default intervals
-    private const int DefaultAwakeIntervalSeconds = 30;
-    private const int DefaultAsleepIntervalSeconds = 300; // 5 minutes
+    private const int DefaultAwakeIntervalSeconds = 15;
+    private const int DefaultAsleepIntervalSeconds = 60; // 1 minute
     private const int DefaultBackoffIntervalSeconds = 600; // 10 minutes
+    private const int MinCronIntervalSeconds = 60; // Cron can't go below 1 minute
 
     public PollingJobManager(
         IRecurringJobManager recurringJobs,
@@ -75,11 +76,23 @@ public class PollingJobManager
 
     /// <summary>
     /// Update polling interval based on whether vehicles are awake.
+    /// For sub-minute awake intervals, schedules delayed jobs instead of updating the recurring job.
+    /// The recurring job stays at asleep interval as a baseline/fallback.
     /// </summary>
     public void UpdateAccountPollingInterval(int accountId, bool hasAwakeVehicle)
     {
+        var awakeInterval = GetAwakeInterval();
+
+        // For sub-minute awake intervals, use delayed jobs for rapid polling
+        if (hasAwakeVehicle && awakeInterval < MinCronIntervalSeconds)
+        {
+            ScheduleNextAwakePoll(accountId, awakeInterval);
+            return;
+        }
+
+        // For minute+ intervals or asleep vehicles, update the recurring job
         var jobId = GetJobId(accountId);
-        var interval = hasAwakeVehicle ? GetAwakeInterval() : GetAsleepInterval();
+        var interval = hasAwakeVehicle ? awakeInterval : GetAsleepInterval();
         var cronMinutes = Math.Max(1, interval / 60);
 
         _logger.LogDebug(
@@ -90,6 +103,21 @@ public class PollingJobManager
             jobId,
             job => job.ExecuteAsync(accountId, CancellationToken.None),
             GetCronExpression(cronMinutes));
+    }
+
+    /// <summary>
+    /// Schedule a delayed job for rapid awake polling (sub-minute intervals).
+    /// Used when vehicles are awake and need faster updates than cron allows.
+    /// </summary>
+    public void ScheduleNextAwakePoll(int accountId, int delaySeconds)
+    {
+        _logger.LogDebug(
+            "Scheduling next awake poll for account {AccountId} in {Delay}s",
+            accountId, delaySeconds);
+
+        _backgroundJobs.Schedule<AccountPollingJob>(
+            job => job.ExecuteAsync(accountId, CancellationToken.None),
+            TimeSpan.FromSeconds(delaySeconds));
     }
 
     /// <summary>

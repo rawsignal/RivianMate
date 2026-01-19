@@ -10,7 +10,13 @@ namespace RivianMate.Core.Entities;
 public class Vehicle : IOwnerOwnedEntity
 {
     public int Id { get; set; }
-    
+
+    /// <summary>
+    /// Public identifier used in URLs and external references.
+    /// Non-sequential to prevent enumeration attacks.
+    /// </summary>
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+
     /// <summary>
     /// Rivian's unique vehicle identifier
     /// </summary>

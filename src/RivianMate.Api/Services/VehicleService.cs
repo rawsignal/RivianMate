@@ -294,7 +294,7 @@ public class VehicleService
             BatteryLevel = rs.BatteryLevel?.Value,
             BatteryLimit = rs.BatteryLimit?.Value,
             BatteryCapacityKwh = rs.BatteryCapacity?.Value,
-            RangeEstimate = rs.DistanceToEmpty?.Value,
+            RangeEstimate = KmToMiles(rs.DistanceToEmpty?.Value),  // API returns km
             TwelveVoltBatteryHealth = rs.TwelveVoltBatteryHealth?.Value,
             BatteryCellType = rs.BatteryCellType?.Value,
             BatteryNeedsLfpCalibration = ParseBoolFromString(rs.BatteryNeedsLfpCalibration?.Value),
@@ -322,10 +322,12 @@ public class VehicleService
             // Climate
             CabinTemperature = rs.CabinClimateInteriorTemperature?.Value,
             ClimateTargetTemp = rs.CabinClimateDriverTemperature?.Value,
-            IsPreconditioningActive = rs.CabinPreconditioningStatus?.Value?.ToLower() != "undefined"
-                && rs.CabinPreconditioningStatus?.Value?.ToLower() != "off",
+            IsPreconditioningActive = !string.IsNullOrEmpty(rs.CabinPreconditioningStatus?.Value)
+                && rs.CabinPreconditioningStatus.Value.ToLower() != "undefined"
+                && rs.CabinPreconditioningStatus.Value.ToLower() != "off",
             IsPetModeActive = rs.PetModeStatus?.Value?.ToLower() == "on",
-            IsDefrostActive = rs.DefrostDefogStatus?.Value?.ToLower() == "on",
+            IsDefrostActive = !string.IsNullOrEmpty(rs.DefrostDefogStatus?.Value)
+                && rs.DefrostDefogStatus.Value.ToLower() != "off",  // Active when not "off"
 
             // Closures
             AllDoorsClosed = AreAllClosed(
@@ -343,11 +345,16 @@ public class VehicleService
                 rs.WindowFrontRightClosed?.Value,
                 rs.WindowRearLeftClosed?.Value,
                 rs.WindowRearRightClosed?.Value),
-            FrunkClosed = rs.ClosureFrunkClosed?.Value?.ToLower() == "closed",
-            FrunkLocked = rs.ClosureFrunkLocked?.Value?.ToLower() == "locked",
-            LiftgateClosed = rs.ClosureLiftgateClosed?.Value?.ToLower() == "closed",
-            TonneauClosed = rs.ClosureTonneauClosed?.Value?.ToLower() == "closed",
-            GearGuardEnabled = rs.GearGuardLocked?.Value?.ToLower() == "locked",
+            FrunkClosed = ParseClosedState(rs.ClosureFrunkClosed?.Value),
+            FrunkLocked = ParseLockedState(rs.ClosureFrunkLocked?.Value),
+            LiftgateClosed = ParseClosedState(rs.ClosureLiftgateClosed?.Value),       // R1S
+            TailgateClosed = ParseClosedState(rs.ClosureTailgateClosed?.Value),     // R1T
+            TonneauClosed = ParseClosedState(rs.ClosureTonneauClosed?.Value),       // R1T
+            SideBinLeftClosed = ParseClosedState(rs.ClosureSideBinLeftClosed?.Value),   // R1T gear tunnel
+            SideBinLeftLocked = ParseLockedState(rs.ClosureSideBinLeftLocked?.Value),
+            SideBinRightClosed = ParseClosedState(rs.ClosureSideBinRightClosed?.Value),
+            SideBinRightLocked = ParseLockedState(rs.ClosureSideBinRightLocked?.Value),
+            GearGuardStatus = FormatGearGuardStatus(rs.GearGuardVideoStatus?.Value),
 
             // Tires - Status
             TirePressureStatusFrontLeft = ParseTirePressure(rs.TirePressureStatusFrontLeft?.Value),
@@ -355,11 +362,8 @@ public class VehicleService
             TirePressureStatusRearLeft = ParseTirePressure(rs.TirePressureStatusRearLeft?.Value),
             TirePressureStatusRearRight = ParseTirePressure(rs.TirePressureStatusRearRight?.Value),
 
-            // Tires - Actual Pressure
-            TirePressureFrontLeft = rs.TirePressureFrontLeft?.Value,
-            TirePressureFrontRight = rs.TirePressureFrontRight?.Value,
-            TirePressureRearLeft = rs.TirePressureRearLeft?.Value,
-            TirePressureRearRight = rs.TirePressureRearRight?.Value,
+            // Note: Tire pressure values (PSI) are not available from Rivian API
+            // Only status (OK/LOW/HIGH/CRITICAL) is exposed
 
             // OTA - prefer full version string if available
             OtaCurrentVersion = rs.OtaCurrentVersion?.Value ?? FormatOtaVersion(
@@ -435,6 +439,27 @@ public class VehicleService
     {
         return await _db.Vehicles
             .FirstOrDefaultAsync(v => v.Id == vehicleId && v.OwnerId == userId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Get a vehicle by PublicId, verifying ownership.
+    /// </summary>
+    public async Task<Vehicle?> GetVehicleByPublicIdAsync(Guid publicId, Guid userId, CancellationToken cancellationToken = default)
+    {
+        return await _db.Vehicles
+            .FirstOrDefaultAsync(v => v.PublicId == publicId && v.OwnerId == userId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Get vehicle ID from PublicId, verifying ownership.
+    /// Returns null if not found or not owned by user.
+    /// </summary>
+    public async Task<int?> GetVehicleIdByPublicIdAsync(Guid publicId, Guid userId, CancellationToken cancellationToken = default)
+    {
+        return await _db.Vehicles
+            .Where(v => v.PublicId == publicId && v.OwnerId == userId)
+            .Select(v => (int?)v.Id)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
     /// <summary>
@@ -695,6 +720,45 @@ public class VehicleService
     {
         if (values.All(v => v == null)) return null;
         return values.All(v => v?.ToLower() == "locked");
+    }
+
+    /// <summary>
+    /// Parse closure state from API response. Returns null if no value provided.
+    /// </summary>
+    private static bool? ParseClosedState(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return null;
+        return value.ToLower() == "closed";
+    }
+
+    /// <summary>
+    /// Parse locked state from API response. Returns null if no value provided.
+    /// </summary>
+    private static bool? ParseLockedState(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return null;
+        return value.ToLower() == "locked";
+    }
+
+    /// <summary>
+    /// Format Gear Guard status from API response.
+    /// API returns values like "disabled", "enabled", "engaged" (with underscores replaced by spaces).
+    /// </summary>
+    private static string? FormatGearGuardStatus(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return null;
+        // Convert snake_case to Title Case (e.g., "away_from_home" -> "Away From Home")
+        return string.Join(" ", value.Split('_').Select(word =>
+            char.ToUpper(word[0]) + word[1..].ToLower()));
+    }
+
+    /// <summary>
+    /// Convert kilometers to miles. Rivian API returns distance in km.
+    /// </summary>
+    private static double? KmToMiles(double? km)
+    {
+        if (km == null) return null;
+        return km.Value * 0.621371;
     }
 
     private static string? FormatOtaVersion(int? year, int? week, int? number)

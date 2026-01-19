@@ -1,5 +1,5 @@
 @page "/charging"
-@page "/charging/{VehicleId:int}"
+@page "/charging/{VehicleId:guid}"
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -332,7 +332,7 @@ else
 
 @code {
     [Parameter]
-    public int? VehicleId { get; set; }
+    public Guid? VehicleId { get; set; }
 
     private List<ChargingSession>? _sessions;
     private ChargingSession? _selectedSession;
@@ -345,6 +345,7 @@ else
     private int _dcfcCharges;
     private double _totalCost;
     private Guid _userId;
+    private int? _internalVehicleId;
 
     // Home electricity rate for estimating home charging cost (loaded from settings)
     private double _homeElectricityRate = 0.15; // $/kWh default
@@ -398,27 +399,30 @@ else
             // Load home electricity rate from settings (for estimating home charging cost)
             _homeElectricityRate = await SettingsService.GetDoubleAsync(SettingKeys.HomeElectricityRate, 0.15);
 
-            var targetVehicleId = VehicleId;
+            Vehicle? vehicle = null;
 
-            if (!targetVehicleId.HasValue)
+            if (!VehicleId.HasValue)
             {
-                // Only get vehicles owned by this user
+                // No vehicle specified - get user's first vehicle
                 var vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
-                targetVehicleId = vehicles.FirstOrDefault()?.Id;
+                vehicle = vehicles.FirstOrDefault();
             }
-
-            if (targetVehicleId.HasValue)
+            else
             {
-                // Verify the vehicle belongs to this user before loading sessions
-                var vehicle = await VehicleService.GetVehicleForUserAsync(targetVehicleId.Value, _userId);
+                // Verify the vehicle belongs to this user via PublicId
+                vehicle = await VehicleService.GetVehicleByPublicIdAsync(VehicleId.Value, _userId);
                 if (vehicle == null)
                 {
-                    Logger.LogWarning("User {UserId} attempted to access vehicle {VehicleId} they don't own", _userId, targetVehicleId);
+                    Logger.LogWarning("User {UserId} attempted to access vehicle {VehiclePublicId} they don't own", _userId, VehicleId);
                     _notFound = true;
                     return;
                 }
+            }
 
-                _sessions = await VehicleService.GetChargingSessionsAsync(targetVehicleId.Value);
+            if (vehicle != null)
+            {
+                _internalVehicleId = vehicle.Id;
+                _sessions = await VehicleService.GetChargingSessionsAsync(vehicle.Id);
 
                 if (_sessions?.Any() == true)
                 {

@@ -6,25 +6,21 @@
         <div class="tire-row">
             <div class="tire-item @GetTireClass(VehicleState?.TirePressureStatusFrontLeft)">
                 <span class="tire-label">FL</span>
-                <span class="tire-value">@FormatPressure(VehicleState?.TirePressureFrontLeft)</span>
-                <span class="tire-status">@GetTireStatusIcon(VehicleState?.TirePressureStatusFrontLeft)</span>
+                <span class="tire-value">@FormatStatus(VehicleState?.TirePressureStatusFrontLeft)</span>
             </div>
             <div class="tire-item @GetTireClass(VehicleState?.TirePressureStatusFrontRight)">
                 <span class="tire-label">FR</span>
-                <span class="tire-value">@FormatPressure(VehicleState?.TirePressureFrontRight)</span>
-                <span class="tire-status">@GetTireStatusIcon(VehicleState?.TirePressureStatusFrontRight)</span>
+                <span class="tire-value">@FormatStatus(VehicleState?.TirePressureStatusFrontRight)</span>
             </div>
         </div>
         <div class="tire-row">
             <div class="tire-item @GetTireClass(VehicleState?.TirePressureStatusRearLeft)">
                 <span class="tire-label">RL</span>
-                <span class="tire-value">@FormatPressure(VehicleState?.TirePressureRearLeft)</span>
-                <span class="tire-status">@GetTireStatusIcon(VehicleState?.TirePressureStatusRearLeft)</span>
+                <span class="tire-value">@FormatStatus(VehicleState?.TirePressureStatusRearLeft)</span>
             </div>
             <div class="tire-item @GetTireClass(VehicleState?.TirePressureStatusRearRight)">
                 <span class="tire-label">RR</span>
-                <span class="tire-value">@FormatPressure(VehicleState?.TirePressureRearRight)</span>
-                <span class="tire-status">@GetTireStatusIcon(VehicleState?.TirePressureStatusRearRight)</span>
+                <span class="tire-value">@FormatStatus(VehicleState?.TirePressureStatusRearRight)</span>
             </div>
         </div>
     </div>
@@ -33,11 +29,14 @@
 @code {
     [Parameter] public VehicleState? VehicleState { get; set; }
 
-    private static string FormatPressure(double? psi)
+    private static string FormatStatus(TirePressureStatus? status) => status switch
     {
-        if (psi == null) return "—";
-        return $"{psi:0} psi";
-    }
+        TirePressureStatus.Ok => "OK",
+        TirePressureStatus.Low => "Low",
+        TirePressureStatus.High => "High",
+        TirePressureStatus.Critical => "Critical",
+        _ => "—"
+    };
 
     private static string GetTireClass(TirePressureStatus? status) => status switch
     {
@@ -45,15 +44,6 @@
         TirePressureStatus.Low => "tire-low",
         TirePressureStatus.High => "tire-high",
         TirePressureStatus.Critical => "tire-critical",
-        _ => ""
-    };
-
-    private static string GetTireStatusIcon(TirePressureStatus? status) => status switch
-    {
-        TirePressureStatus.Ok => "",
-        TirePressureStatus.Low => "Low",
-        TirePressureStatus.High => "High",
-        TirePressureStatus.Critical => "Critical",
         _ => ""
     };
 }

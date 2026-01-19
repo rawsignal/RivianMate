@@ -58,14 +58,12 @@ if (useSqlite)
     // Use DbContextFactory for Blazor Server to avoid disposed context issues
     builder.Services.AddDbContextFactory<RivianMateDbContext>(options =>
         options.UseSqlite(sqliteConnection));
-    // Also register scoped DbContext for services that need it
-    // Inject ICurrentUserAccessor for ownership validation
+    // Register scoped DbContext with ownership validation services injected
     builder.Services.AddScoped(sp =>
     {
-        var factory = sp.GetRequiredService<IDbContextFactory<RivianMateDbContext>>();
+        var options = sp.GetRequiredService<DbContextOptions<RivianMateDbContext>>();
         var currentUserAccessor = sp.GetService<ICurrentUserAccessor>();
         var logger = sp.GetService<ILogger<RivianMateDbContext>>();
-        var options = sp.GetRequiredService<DbContextOptions<RivianMateDbContext>>();
         return new RivianMateDbContext(options, currentUserAccessor, logger);
     });
 }
@@ -79,13 +77,12 @@ else
                 maxRetryCount: 5,
                 maxRetryDelay: TimeSpan.FromSeconds(30),
                 errorCodesToAdd: null)));
-    // Also register scoped DbContext for services that need it
-    // Inject ICurrentUserAccessor for ownership validation
+    // Register scoped DbContext with ownership validation services injected
     builder.Services.AddScoped(sp =>
     {
+        var options = sp.GetRequiredService<DbContextOptions<RivianMateDbContext>>();
         var currentUserAccessor = sp.GetService<ICurrentUserAccessor>();
         var logger = sp.GetService<ILogger<RivianMateDbContext>>();
-        var options = sp.GetRequiredService<DbContextOptions<RivianMateDbContext>>();
         return new RivianMateDbContext(options, currentUserAccessor, logger);
     });
 }
