@@ -1,10 +1,12 @@
+using RivianMate.Core.Interfaces;
+
 namespace RivianMate.Core.Entities;
 
 /// <summary>
 /// Represents a driving session from vehicle start to park.
 /// Derived from analyzing VehicleState snapshots.
 /// </summary>
-public class Drive
+public class Drive : IVehicleOwnedEntity
 {
     public int Id { get; set; }
     

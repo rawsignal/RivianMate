@@ -2,6 +2,7 @@
 @page "/charging/{VehicleId:int}"
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using RivianMate.Api.Components.Shared
 @using RivianMate.Core.Entities
 @using RivianMate.Core.Enums
@@ -9,6 +10,7 @@
 @inject VehicleService VehicleService
 @inject TimeZoneService TimeZoneService
 @inject SettingsService SettingsService
+@inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject ILogger<Charging> Logger
 @implements IAsyncDisposable
@@ -32,6 +34,12 @@
     <div class="loading">
         <p>Loading charging sessions...</p>
     </div>
+}
+else if (_notFound)
+{
+    <NotFound Title="Vehicle Not Found"
+              Message="The requested vehicle was not found or you don't have access to it."
+              Icon="zap" />
 }
 else if (_sessions == null || !_sessions.Any())
 {
@@ -329,12 +337,14 @@ else
     private List<ChargingSession>? _sessions;
     private ChargingSession? _selectedSession;
     private bool _loading = true;
+    private bool _notFound;
     private bool _mapInitialized;
     private bool _pendingMapUpdate;
     private double _totalEnergy;
     private int _homeCharges;
     private int _dcfcCharges;
     private double _totalCost;
+    private Guid _userId;
 
     // Home electricity rate for estimating home charging cost (loaded from settings)
     private double _homeElectricityRate = 0.15; // $/kWh default
@@ -377,6 +387,14 @@ else
 
         try
         {
+            // Get current user ID
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdClaim, out _userId))
+            {
+                return;
+            }
+
             // Load home electricity rate from settings (for estimating home charging cost)
             _homeElectricityRate = await SettingsService.GetDoubleAsync(SettingKeys.HomeElectricityRate, 0.15);
 
@@ -384,12 +402,22 @@ else
 
             if (!targetVehicleId.HasValue)
             {
-                var vehicles = await VehicleService.GetAllVehiclesAsync();
+                // Only get vehicles owned by this user
+                var vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
                 targetVehicleId = vehicles.FirstOrDefault()?.Id;
             }
 
             if (targetVehicleId.HasValue)
             {
+                // Verify the vehicle belongs to this user before loading sessions
+                var vehicle = await VehicleService.GetVehicleForUserAsync(targetVehicleId.Value, _userId);
+                if (vehicle == null)
+                {
+                    Logger.LogWarning("User {UserId} attempted to access vehicle {VehicleId} they don't own", _userId, targetVehicleId);
+                    _notFound = true;
+                    return;
+                }
+
                 _sessions = await VehicleService.GetChargingSessionsAsync(targetVehicleId.Value);
 
                 if (_sessions?.Any() == true)

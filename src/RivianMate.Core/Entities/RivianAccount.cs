@@ -1,10 +1,12 @@
+using RivianMate.Core.Interfaces;
+
 namespace RivianMate.Core.Entities;
 
 /// <summary>
 /// Represents a linked Rivian account for a RivianMate user.
 /// Each user can have multiple Rivian accounts linked.
 /// </summary>
-public class RivianAccount
+public class RivianAccount : IUserOwnedEntity
 {
     public int Id { get; set; }
 

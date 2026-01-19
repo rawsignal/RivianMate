@@ -1,4 +1,5 @@
 using RivianMate.Core.Enums;
+using RivianMate.Core.Interfaces;
 
 namespace RivianMate.Core.Entities;
 
@@ -6,7 +7,7 @@ namespace RivianMate.Core.Entities;
 /// A snapshot of vehicle state at a specific point in time.
 /// This is the raw data collected from the Rivian API.
 /// </summary>
-public class VehicleState
+public class VehicleState : IVehicleOwnedEntity
 {
     public long Id { get; set; }
     

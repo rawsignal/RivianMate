@@ -16,11 +16,16 @@ namespace RivianMate.Api.Services;
 public class VehicleService
 {
     private readonly RivianMateDbContext _db;
+    private readonly VehicleStateBuffer _stateBuffer;
     private readonly ILogger<VehicleService> _logger;
 
-    public VehicleService(RivianMateDbContext db, ILogger<VehicleService> logger)
+    public VehicleService(
+        RivianMateDbContext db,
+        VehicleStateBuffer stateBuffer,
+        ILogger<VehicleService> logger)
     {
         _db = db;
+        _stateBuffer = stateBuffer;
         _logger = logger;
     }
 
@@ -109,6 +114,7 @@ public class VehicleService
 
     /// <summary>
     /// Process and store vehicle state from Rivian API.
+    /// Only saves to database if there are meaningful changes from the last saved state.
     /// </summary>
     public async Task<VehicleState?> ProcessVehicleStateAsync(
         int vehicleId,
@@ -126,16 +132,26 @@ public class VehicleService
         }
 
         var state = MapToVehicleState(vehicleId, rivianState, rawJson);
-        
+
         // Calculate projected range at 100%
         if (state.BatteryLevel > 0 && state.RangeEstimate > 0)
         {
             state.ProjectedRangeAt100 = state.RangeEstimate / (state.BatteryLevel / 100.0);
         }
 
-        _db.VehicleStates.Add(state);
-        
-        // Update vehicle last seen
+        // Check if we should save this state (has meaningful changes)
+        var shouldSave = _stateBuffer.ShouldSaveState(state);
+
+        if (shouldSave)
+        {
+            _db.VehicleStates.Add(state);
+        }
+        else
+        {
+            _logger.LogDebug("Vehicle {VehicleId}: Skipping duplicate state (no meaningful changes)", vehicleId);
+        }
+
+        // Always update vehicle last seen
         vehicle.LastSeenAt = state.Timestamp;
         
         // Update software version if changed
@@ -240,12 +256,17 @@ public class VehicleService
         }
 
         await _db.SaveChangesAsync(cancellationToken);
-        
-        _logger.LogDebug(
-            "Recorded state for vehicle {VehicleId}: {BatteryLevel}% @ {Odometer} miles, capacity: {Capacity} kWh",
-            vehicleId, state.BatteryLevel, state.Odometer, state.BatteryCapacityKwh);
 
-        return state;
+        // Update the buffer with the saved state
+        if (shouldSave)
+        {
+            _stateBuffer.UpdateBuffer(state);
+            _logger.LogDebug(
+                "Recorded state for vehicle {VehicleId}: {BatteryLevel}% @ {Odometer} miles, capacity: {Capacity} kWh",
+                vehicleId, state.BatteryLevel, state.Odometer, state.BatteryCapacityKwh);
+        }
+
+        return shouldSave ? state : null;
     }
 
     /// <summary>

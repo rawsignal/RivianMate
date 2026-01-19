@@ -9,11 +9,16 @@ using RivianMate.Api.Middleware;
 using RivianMate.Api.Services;
 using RivianMate.Api.Services.Jobs;
 using RivianMate.Core.Entities;
+using RivianMate.Core.Interfaces;
 using RivianMate.Infrastructure.Data;
 using RivianMate.Infrastructure.Nhtsa;
 using RivianMate.Infrastructure.Rivian;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// === Current User Accessor (for ownership validation) ===
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserAccessor, CurrentUserAccessor>();
 
 // === Database ===
 // In Development with DatabaseProvider=Sqlite, uses local SQLite file
@@ -54,7 +59,15 @@ if (useSqlite)
     builder.Services.AddDbContextFactory<RivianMateDbContext>(options =>
         options.UseSqlite(sqliteConnection));
     // Also register scoped DbContext for services that need it
-    builder.Services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<RivianMateDbContext>>().CreateDbContext());
+    // Inject ICurrentUserAccessor for ownership validation
+    builder.Services.AddScoped(sp =>
+    {
+        var factory = sp.GetRequiredService<IDbContextFactory<RivianMateDbContext>>();
+        var currentUserAccessor = sp.GetService<ICurrentUserAccessor>();
+        var logger = sp.GetService<ILogger<RivianMateDbContext>>();
+        var options = sp.GetRequiredService<DbContextOptions<RivianMateDbContext>>();
+        return new RivianMateDbContext(options, currentUserAccessor, logger);
+    });
 }
 else
 {
@@ -67,7 +80,14 @@ else
                 maxRetryDelay: TimeSpan.FromSeconds(30),
                 errorCodesToAdd: null)));
     // Also register scoped DbContext for services that need it
-    builder.Services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<RivianMateDbContext>>().CreateDbContext());
+    // Inject ICurrentUserAccessor for ownership validation
+    builder.Services.AddScoped(sp =>
+    {
+        var currentUserAccessor = sp.GetService<ICurrentUserAccessor>();
+        var logger = sp.GetService<ILogger<RivianMateDbContext>>();
+        var options = sp.GetRequiredService<DbContextOptions<RivianMateDbContext>>();
+        return new RivianMateDbContext(options, currentUserAccessor, logger);
+    });
 }
 
 // === Hangfire (Distributed Job Scheduling) ===
@@ -162,6 +182,7 @@ builder.Services.AddScoped<SettingsService>();
 builder.Services.AddScoped<LicenseService>();
 builder.Services.AddScoped<FeatureService>();
 builder.Services.AddScoped<TimeZoneService>();
+builder.Services.AddSingleton<VehicleStateBuffer>(); // Singleton to maintain state across requests
 builder.Services.AddScoped<VehicleService>();
 builder.Services.AddScoped<BatteryHealthService>();
 builder.Services.AddScoped<BatteryCareService>();

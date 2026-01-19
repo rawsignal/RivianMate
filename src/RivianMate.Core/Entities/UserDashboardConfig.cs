@@ -1,4 +1,5 @@
 using RivianMate.Core.Enums;
+using RivianMate.Core.Interfaces;
 
 namespace RivianMate.Core.Entities;
 
@@ -6,7 +7,7 @@ namespace RivianMate.Core.Entities;
 /// Stores per-user dashboard card configuration (visibility and order).
 /// Each row represents a single card's configuration for a user.
 /// </summary>
-public class UserDashboardConfig
+public class UserDashboardConfig : IUserOwnedEntity
 {
     public int Id { get; set; }
 

@@ -1,3 +1,5 @@
+using RivianMate.Core.Interfaces;
+
 namespace RivianMate.Core.Entities;
 
 /// <summary>
@@ -5,7 +7,7 @@ namespace RivianMate.Core.Entities;
 /// Now that we have batteryCapacity directly from the API, this is much simpler.
 /// We just need to track the reported capacity over time and compare to original.
 /// </summary>
-public class BatteryHealthSnapshot
+public class BatteryHealthSnapshot : IVehicleOwnedEntity
 {
     public int Id { get; set; }
     

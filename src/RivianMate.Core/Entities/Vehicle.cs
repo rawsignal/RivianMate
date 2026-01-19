@@ -1,4 +1,5 @@
 using RivianMate.Core.Enums;
+using RivianMate.Core.Interfaces;
 using DriveType = RivianMate.Core.Enums.DriveType;
 
 namespace RivianMate.Core.Entities;
@@ -6,7 +7,7 @@ namespace RivianMate.Core.Entities;
 /// <summary>
 /// Represents a Rivian vehicle linked to the user's account
 /// </summary>
-public class Vehicle
+public class Vehicle : IOwnerOwnedEntity
 {
     public int Id { get; set; }
     

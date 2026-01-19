@@ -2,11 +2,13 @@
 @page "/drives/{VehicleId:int}"
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using RivianMate.Api.Components.Shared
 @using RivianMate.Core.Entities
 @attribute [Authorize]
 @inject VehicleService VehicleService
 @inject TimeZoneService TimeZoneService
+@inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject ILogger<Drives> Logger
 @implements IAsyncDisposable
@@ -30,6 +32,12 @@
     <div class="loading">
         <p>Loading drives...</p>
     </div>
+}
+else if (_notFound)
+{
+    <NotFound Title="Vehicle Not Found"
+              Message="The requested vehicle was not found or you don't have access to it."
+              Icon="navigation" />
 }
 else if (_drives == null || !_drives.Any())
 {
@@ -274,16 +282,19 @@ else
     [Parameter]
     public int? VehicleId { get; set; }
 
+    private Vehicle? _vehicle;
     private List<Drive>? _drives;
     private Drive? _selectedDrive;
     private List<Position>? _positions;
     private int _positionCount;
     private bool _loading = true;
+    private bool _notFound;
     private bool _mapInitialized;
     private bool _pendingMapUpdate;
     private double _totalDistance;
     private double _totalEnergy;
     private double? _avgEfficiency;
+    private Guid _userId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -332,12 +343,33 @@ else
 
         try
         {
+            // Get current user ID
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdClaim, out _userId))
+            {
+                return;
+            }
+
             var targetVehicleId = VehicleId;
 
             if (!targetVehicleId.HasValue)
             {
-                var vehicles = await VehicleService.GetAllVehiclesAsync();
-                targetVehicleId = vehicles.FirstOrDefault()?.Id;
+                // Only get vehicles owned by this user
+                var vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
+                _vehicle = vehicles.FirstOrDefault();
+                targetVehicleId = _vehicle?.Id;
+            }
+            else
+            {
+                // Verify the vehicle belongs to this user
+                _vehicle = await VehicleService.GetVehicleForUserAsync(targetVehicleId.Value, _userId);
+                if (_vehicle == null)
+                {
+                    Logger.LogWarning("User {UserId} attempted to access vehicle {VehicleId} they don't own", _userId, targetVehicleId);
+                    _notFound = true;
+                    return;
+                }
             }
 
             if (targetVehicleId.HasValue)

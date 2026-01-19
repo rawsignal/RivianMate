@@ -1,4 +1,5 @@
 using RivianMate.Core.Enums;
+using RivianMate.Core.Interfaces;
 
 namespace RivianMate.Core.Entities;
 
@@ -6,7 +7,7 @@ namespace RivianMate.Core.Entities;
 /// Represents a complete charging session from plug-in to plug-out.
 /// Derived from analyzing VehicleState snapshots.
 /// </summary>
-public class ChargingSession
+public class ChargingSession : IVehicleOwnedEntity
 {
     public int Id { get; set; }
     

@@ -1,10 +1,12 @@
+using RivianMate.Core.Interfaces;
+
 namespace RivianMate.Core.Entities;
 
 /// <summary>
 /// A GPS position recorded during a drive.
 /// Used for mapping routes and calculating drive statistics.
 /// </summary>
-public class Position
+public class Position : IDriveOwnedEntity
 {
     public long Id { get; set; }
     

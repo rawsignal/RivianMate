@@ -2,15 +2,31 @@ using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RivianMate.Core.Entities;
+using RivianMate.Core.Exceptions;
+using RivianMate.Core.Interfaces;
 
 namespace RivianMate.Infrastructure.Data;
 
 public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>, IDataProtectionKeyContext
 {
+    private readonly ICurrentUserAccessor? _currentUserAccessor;
+    private readonly ILogger<RivianMateDbContext>? _logger;
+
     public RivianMateDbContext(DbContextOptions<RivianMateDbContext> options)
         : base(options)
     {
+    }
+
+    public RivianMateDbContext(
+        DbContextOptions<RivianMateDbContext> options,
+        ICurrentUserAccessor? currentUserAccessor,
+        ILogger<RivianMateDbContext>? logger = null)
+        : base(options)
+    {
+        _currentUserAccessor = currentUserAccessor;
+        _logger = logger;
     }
     
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
@@ -189,5 +205,128 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+    }
+
+    /// <summary>
+    /// Override SaveChangesAsync to validate ownership of entities before saving.
+    /// This provides defense-in-depth by ensuring that even if the application layer
+    /// fails to validate ownership, the database layer will catch it.
+    /// </summary>
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        await ValidateOwnershipAsync(cancellationToken);
+        return await base.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Override SaveChanges to validate ownership of entities before saving.
+    /// </summary>
+    public override int SaveChanges()
+    {
+        ValidateOwnershipAsync(CancellationToken.None).GetAwaiter().GetResult();
+        return base.SaveChanges();
+    }
+
+    private async Task ValidateOwnershipAsync(CancellationToken cancellationToken)
+    {
+        // Skip validation if no user accessor is available (e.g., during migrations or background jobs)
+        var currentUserId = _currentUserAccessor?.UserId;
+        if (currentUserId == null)
+        {
+            return;
+        }
+
+        var entries = ChangeTracker.Entries()
+            .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified || e.State == EntityState.Deleted);
+
+        foreach (var entry in entries)
+        {
+            var entity = entry.Entity;
+
+            // Check IUserOwnedEntity (RivianAccount, UserDashboardConfig)
+            if (entity is IUserOwnedEntity userOwned)
+            {
+                if (userOwned.UserId != currentUserId.Value)
+                {
+                    _logger?.LogWarning(
+                        "Ownership violation: User {CurrentUserId} attempted to {Action} {EntityType} owned by {OwnerId}",
+                        currentUserId, entry.State, entity.GetType().Name, userOwned.UserId);
+                    throw new OwnershipViolationException(entity.GetType().Name, currentUserId, userOwned.UserId);
+                }
+            }
+            // Check IOwnerOwnedEntity (Vehicle)
+            else if (entity is IOwnerOwnedEntity ownerOwned)
+            {
+                // For vehicles, OwnerId can be null for legacy data
+                // Only validate if OwnerId is set and doesn't match
+                if (ownerOwned.OwnerId.HasValue && ownerOwned.OwnerId.Value != currentUserId.Value)
+                {
+                    _logger?.LogWarning(
+                        "Ownership violation: User {CurrentUserId} attempted to {Action} {EntityType} owned by {OwnerId}",
+                        currentUserId, entry.State, entity.GetType().Name, ownerOwned.OwnerId);
+                    throw new OwnershipViolationException(entity.GetType().Name, currentUserId, ownerOwned.OwnerId);
+                }
+            }
+            // Check IVehicleOwnedEntity (VehicleState, ChargingSession, Drive, BatteryHealthSnapshot)
+            else if (entity is IVehicleOwnedEntity vehicleOwned)
+            {
+                // Need to look up the vehicle to check ownership
+                var vehicle = await GetVehicleOwnerAsync(vehicleOwned.VehicleId, cancellationToken);
+                if (vehicle?.OwnerId != null && vehicle.OwnerId != currentUserId.Value)
+                {
+                    _logger?.LogWarning(
+                        "Ownership violation: User {CurrentUserId} attempted to {Action} {EntityType} for vehicle owned by {OwnerId}",
+                        currentUserId, entry.State, entity.GetType().Name, vehicle.OwnerId);
+                    throw new OwnershipViolationException(entity.GetType().Name, currentUserId, vehicle.OwnerId);
+                }
+            }
+            // Check IDriveOwnedEntity (Position)
+            else if (entity is IDriveOwnedEntity driveOwned)
+            {
+                // Need to look up the drive -> vehicle to check ownership
+                var ownerId = await GetDriveOwnerAsync(driveOwned.DriveId, cancellationToken);
+                if (ownerId != null && ownerId != currentUserId.Value)
+                {
+                    _logger?.LogWarning(
+                        "Ownership violation: User {CurrentUserId} attempted to {Action} {EntityType} for drive owned by {OwnerId}",
+                        currentUserId, entry.State, entity.GetType().Name, ownerId);
+                    throw new OwnershipViolationException(entity.GetType().Name, currentUserId, ownerId);
+                }
+            }
+        }
+    }
+
+    private async Task<Vehicle?> GetVehicleOwnerAsync(int vehicleId, CancellationToken cancellationToken)
+    {
+        // Check if vehicle is already tracked
+        var trackedVehicle = ChangeTracker.Entries<Vehicle>()
+            .FirstOrDefault(e => e.Entity.Id == vehicleId)?.Entity;
+
+        if (trackedVehicle != null)
+            return trackedVehicle;
+
+        // Query from database
+        return await Vehicles
+            .AsNoTracking()
+            .Where(v => v.Id == vehicleId)
+            .Select(v => new Vehicle { Id = v.Id, OwnerId = v.OwnerId, RivianVehicleId = v.RivianVehicleId })
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<Guid?> GetDriveOwnerAsync(int driveId, CancellationToken cancellationToken)
+    {
+        // Check if drive is already tracked
+        var trackedDrive = ChangeTracker.Entries<Drive>()
+            .FirstOrDefault(e => e.Entity.Id == driveId)?.Entity;
+
+        if (trackedDrive?.Vehicle != null)
+            return trackedDrive.Vehicle.OwnerId;
+
+        // Query from database through drive -> vehicle
+        return await Drives
+            .AsNoTracking()
+            .Where(d => d.Id == driveId)
+            .Select(d => d.Vehicle.OwnerId)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 }
