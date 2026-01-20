@@ -16,6 +16,8 @@ public static class DashboardCardComponentRegistry
         ["battery-health"] = typeof(BatteryHealthCard),
         ["charging"] = typeof(ChargingCard),
         ["drives"] = typeof(DrivesCard),
+        ["activity-feed"] = typeof(ActivityFeedCard),
+        ["recalls"] = typeof(RecallsCard),
         ["odometer"] = typeof(OdometerCard),
         ["cabin-temp"] = typeof(CabinTempCard),
         ["efficiency"] = typeof(EfficiencyCard),

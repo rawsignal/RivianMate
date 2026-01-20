@@ -339,10 +339,8 @@ public class RivianApiClient : IDisposable
                     chargerState { timeStamp value }
                     chargerStatus { timeStamp value }
                     chargePortState { timeStamp value }
-                    chargingDisabledAll { timeStamp value }
                     closureFrunkClosed { timeStamp value }
                     closureFrunkLocked { timeStamp value }
-                    closureFrunkNextAction { timeStamp value }
                     closureLiftgateClosed { timeStamp value }
                     closureLiftgateLocked { timeStamp value }
                     closureLiftgateNextAction { timeStamp value }
@@ -394,7 +392,6 @@ public class RivianApiClient : IDisposable
                     petModeTemperatureStatus { timeStamp value }
                     powerState { timeStamp value }
                     rangeThreshold { timeStamp value }
-                    rearHitchStatus { timeStamp value }
                     remoteChargingAvailable { timeStamp value }
                     seatFrontLeftHeat { timeStamp value }
                     seatFrontLeftVent { timeStamp value }
@@ -411,6 +408,10 @@ public class RivianApiClient : IDisposable
                     tirePressureStatusFrontRight { timeStamp value }
                     tirePressureStatusRearLeft { timeStamp value }
                     tirePressureStatusRearRight { timeStamp value }
+                    tirePressureFrontLeft { timeStamp value }
+                    tirePressureFrontRight { timeStamp value }
+                    tirePressureRearLeft { timeStamp value }
+                    tirePressureRearRight { timeStamp value }
                     trailerStatus { timeStamp value }
                     twelveVoltBatteryHealth { timeStamp value }
                     vehicleMileage { timeStamp value }
@@ -451,12 +452,16 @@ public class RivianApiClient : IDisposable
 
             if (errorCode == "RATE_LIMIT")
             {
-                _logger.LogWarning("Rate limited by Rivian API");
+                _logger.LogWarning("Rate limited by Rivian API. Response: {Response}",
+                    rawJson.Length > 1000 ? rawJson.Substring(0, 1000) + "..." : rawJson);
                 throw new RateLimitedException("Rivian API rate limit exceeded. Please wait before retrying.");
             }
 
-            _logger.LogError("GetVehicleState failed: {Errors}", errorMessage);
-            throw new ExternalServiceException("Rivian", "Failed to retrieve vehicle state", errorMessage);
+            // Log full response at error level so we can debug issues
+            _logger.LogError("GetVehicleState failed with error: {Errors}. Raw response: {Response}",
+                errorMessage,
+                rawJson.Length > 2000 ? rawJson.Substring(0, 2000) + "..." : rawJson);
+            throw new ExternalServiceException("Rivian", "Failed to retrieve vehicle state", $"Rivian API error: {errorMessage}");
         }
 
         return (result?.Data?.VehicleState, rawJson);

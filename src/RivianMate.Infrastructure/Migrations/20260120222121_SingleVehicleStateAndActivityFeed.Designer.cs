@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RivianMate.Infrastructure.Data;
@@ -11,9 +12,11 @@ using RivianMate.Infrastructure.Data;
 namespace RivianMate.Infrastructure.Migrations
 {
     [DbContext(typeof(RivianMateDbContext))]
-    partial class RivianMateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260120222121_SingleVehicleStateAndActivityFeed")]
+    partial class SingleVehicleStateAndActivityFeed
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -451,9 +454,6 @@ namespace RivianMate.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<string>("DriverName")
-                        .HasColumnType("text");
-
                     b.Property<double?>("EfficiencyMilesPerKwh")
                         .HasColumnType("double precision");
 
@@ -524,9 +524,6 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.Property<int>("VehicleId")
                         .HasColumnType("integer");
-
-                    b.Property<string>("WheelConfig")
-                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
@@ -1011,9 +1008,8 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("Timestamp");
 
-                    b.HasIndex("VehicleId");
-
-                    b.HasIndex("VehicleId", "Timestamp");
+                    b.HasIndex("VehicleId")
+                        .IsUnique();
 
                     b.ToTable("VehicleStates");
                 });

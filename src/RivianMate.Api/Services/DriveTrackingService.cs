@@ -85,7 +85,9 @@ public class DriveTrackingService
             StartLatitude = state.Latitude,
             StartLongitude = state.Longitude,
             StartElevation = state.Altitude,
-            DriveMode = state.DriveMode
+            DriveMode = state.DriveMode,
+            DriverName = state.ActiveDriverName,
+            WheelConfig = vehicle.WheelConfig
         };
 
         _db.Drives.Add(drive);

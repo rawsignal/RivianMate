@@ -45,6 +45,7 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
     public DbSet<Drive> Drives => Set<Drive>();
     public DbSet<Position> Positions => Set<Position>();
     public DbSet<BatteryHealthSnapshot> BatteryHealthSnapshots => Set<BatteryHealthSnapshot>();
+    public DbSet<ActivityFeedItem> ActivityFeed => Set<ActivityFeedItem>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<RivianAccount> RivianAccounts => Set<RivianAccount>();
     public DbSet<UserDashboardConfig> UserDashboardConfigs => Set<UserDashboardConfig>();
@@ -115,21 +116,39 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
         });
 
         // === VehicleState ===
+        // Historical vehicle states for tracking changes over time
         modelBuilder.Entity<VehicleState>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.VehicleId);
             entity.HasIndex(e => e.Timestamp);
             entity.HasIndex(e => new { e.VehicleId, e.Timestamp });
-            
+
             entity.HasOne(e => e.Vehicle)
                 .WithMany(v => v.States)
                 .HasForeignKey(e => e.VehicleId)
                 .OnDelete(DeleteBehavior.Cascade);
-            
+
             entity.Property(e => e.DriveMode).HasMaxLength(50);
             entity.Property(e => e.OtaCurrentVersion).HasMaxLength(50);
             entity.Property(e => e.OtaAvailableVersion).HasMaxLength(50);
             entity.Property(e => e.OtaStatus).HasMaxLength(50);
+        });
+
+        // === ActivityFeedItem ===
+        modelBuilder.Entity<ActivityFeedItem>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Timestamp);
+            entity.HasIndex(e => new { e.VehicleId, e.Timestamp });
+            entity.HasIndex(e => new { e.VehicleId, e.Type, e.Timestamp });
+
+            entity.HasOne(e => e.Vehicle)
+                .WithMany(v => v.ActivityFeed)
+                .HasForeignKey(e => e.VehicleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(e => e.Message).HasMaxLength(500);
         });
         
         // === ChargingSession ===

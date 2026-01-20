@@ -5,9 +5,11 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using RivianMate.Api.Components;
+using RivianMate.Api.Configuration;
 using RivianMate.Api.Middleware;
 using RivianMate.Api.Services;
 using RivianMate.Api.Services.Jobs;
+using RivianMate.Core.Enums;
 using RivianMate.Core.Entities;
 using RivianMate.Core.Interfaces;
 using RivianMate.Infrastructure.Data;
@@ -167,8 +169,13 @@ builder.Services.AddHttpClient(nameof(RivianApiClient), client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
-// === NHTSA VIN Decoder Service ===
+// === NHTSA Services ===
 builder.Services.AddHttpClient<NhtsaVinDecoderService>(client =>
+{
+    client.DefaultRequestHeaders.Add("User-Agent", "RivianMate/1.0");
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddHttpClient<NhtsaRecallService>(client =>
 {
     client.DefaultRequestHeaders.Add("User-Agent", "RivianMate/1.0");
     client.Timeout = TimeSpan.FromSeconds(15);
@@ -180,6 +187,7 @@ builder.Services.AddScoped<LicenseService>();
 builder.Services.AddScoped<FeatureService>();
 builder.Services.AddScoped<TimeZoneService>();
 builder.Services.AddSingleton<VehicleStateBuffer>(); // Singleton to maintain state across requests
+builder.Services.AddScoped<ActivityFeedService>();
 builder.Services.AddScoped<VehicleService>();
 builder.Services.AddScoped<BatteryHealthService>();
 builder.Services.AddScoped<BatteryCareService>();
@@ -190,10 +198,25 @@ builder.Services.AddScoped<DriveTrackingService>();
 builder.Services.AddScoped<ChargingTrackingService>();
 builder.Services.AddScoped<DevDataSeeder>();
 
+// === Polling/WebSocket Configuration ===
+builder.Services.Configure<PollingConfiguration>(
+    builder.Configuration.GetSection("RivianMate:Polling"));
+
 // === Polling Job Services ===
 builder.Services.AddScoped<AccountPollingJob>();
 builder.Services.AddScoped<PollingJobManager>();
 builder.Services.AddHostedService<PollingJobSynchronizer>();
+
+// === WebSocket Subscription Service (conditionally enabled) ===
+var pollingMode = builder.Configuration.GetValue<string>("RivianMate:Polling:Mode") ?? "GraphQL";
+if (pollingMode.Equals("WebSocket", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddSingleton<WebSocketSubscriptionService>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<WebSocketSubscriptionService>());
+}
+
+// === Subscription Manager (unified interface for both modes) ===
+builder.Services.AddScoped<SubscriptionManager>();
 
 // === Blazor ===
 builder.Services.AddRazorComponents()

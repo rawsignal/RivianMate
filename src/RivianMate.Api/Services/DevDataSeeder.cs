@@ -116,6 +116,7 @@ public class DevDataSeeder
             Trim = VehicleTrim.Adventure,
             ExteriorColor = "Rivian Blue",
             InteriorColor = "Ocean Coast",
+            WheelConfig = "22\" Bright Sport",
             BatteryCellType = "50g",
             OriginalCapacityKwh = 135.0,
             EpaRangeMiles = 314,
@@ -143,6 +144,7 @@ public class DevDataSeeder
             Trim = VehicleTrim.LaunchEdition,
             ExteriorColor = "Launch Green",
             InteriorColor = "Black Mountain",
+            WheelConfig = "21\" Road",
             BatteryCellType = "50g",
             OriginalCapacityKwh = 135.0,
             EpaRangeMiles = 316,
@@ -170,6 +172,7 @@ public class DevDataSeeder
             Trim = VehicleTrim.Ascend,
             ExteriorColor = "Glacier White",
             InteriorColor = "Forest Edge",
+            WheelConfig = "20\" All-Terrain",
             BatteryCellType = "LFP",
             OriginalCapacityKwh = 105.0,
             EpaRangeMiles = 260,
@@ -197,6 +200,7 @@ public class DevDataSeeder
             Trim = VehicleTrim.Adventure,
             ExteriorColor = "Limestone",
             InteriorColor = "Ocean Coast",
+            WheelConfig = "22\" Bright Sport",
             BatteryCellType = "53g",
             OriginalCapacityKwh = 180.0,
             EpaRangeMiles = 400,
@@ -224,6 +228,7 @@ public class DevDataSeeder
             Trim = VehicleTrim.Adventure,
             ExteriorColor = "El Cap Granite",
             InteriorColor = "Black Mountain",
+            WheelConfig = "20\" All-Terrain Dark",
             BatteryCellType = "50g",
             OriginalCapacityKwh = 135.0,
             EpaRangeMiles = 328,
@@ -657,6 +662,9 @@ public class DevDataSeeder
 
             var endTime = driveDate.AddMinutes(durationMinutes);
 
+            // Driver names for variety
+            var driverNames = new[] { "Primary Driver", "Guest", "Spouse", null };
+
             // Create the drive
             var drive = new Drive
             {
@@ -683,7 +691,9 @@ public class DevDataSeeder
                 StartElevation = 10 + random.Next(-5, 20),
                 EndElevation = 10 + random.Next(-5, 20),
                 ElevationGain = random.Next(5, 50),
-                DriveMode = random.NextDouble() < 0.8 ? "everyday" : "sport"
+                DriveMode = random.NextDouble() < 0.8 ? "everyday" : "sport",
+                DriverName = driverNames[random.Next(driverNames.Length)],
+                WheelConfig = vehicle.WheelConfig
             };
 
             // Store the index before adding (for position mapping)
@@ -786,6 +796,7 @@ public class DevDataSeeder
 
         // Generate states for the last 30 days to establish charge limit patterns
         var startDate = DateTime.UtcNow.AddDays(-30);
+        var driverNames = new[] { "Primary Driver", "Guest", "Spouse", null };
 
         // Generate 2-3 states per day
         for (int day = 0; day < 30; day++)
@@ -797,22 +808,51 @@ public class DevDataSeeder
                 if (timestamp > DateTime.UtcNow.AddMinutes(-10)) continue;
 
                 var batteryLevel = 30 + random.Next(0, 60);
+                var rangeEstimate = batteryLevel * 3;
+                var projectedRangeAt100 = batteryLevel > 5 ? rangeEstimate / (batteryLevel / 100.0) : (double?)null;
+                var isCharging = random.NextDouble() < 0.3;
 
                 states.Add(new VehicleState
                 {
                     VehicleId = vehicle.Id,
                     Timestamp = timestamp,
+
+                    // Driver
+                    ActiveDriverName = driverNames[random.Next(driverNames.Length)],
+
+                    // Battery
                     BatteryLevel = batteryLevel,
                     BatteryLimit = scenario.AverageChargeLimit + random.Next(-5, 5),
                     BatteryCapacityKwh = (vehicle.OriginalCapacityKwh ?? 135) * (scenario.CurrentHealthPercent / 100.0),
-                    RangeEstimate = batteryLevel * 3,
+                    RangeEstimate = rangeEstimate,
+                    ProjectedRangeAt100 = projectedRangeAt100.HasValue ? Math.Round(projectedRangeAt100.Value, 0) : null,
+                    TwelveVoltBatteryHealth = "ready",
+                    BatteryCellType = vehicle.BatteryCellType,
+
+                    // Location & Odometer
                     Odometer = scenario.CurrentOdometer - (30 - day) * 30,
-                    PowerState = PowerState.Standby,
-                    GearStatus = GearStatus.Park,
-                    ChargerState = random.NextDouble() < 0.3 ? ChargerState.Charging : ChargerState.Disconnected,
                     Latitude = scenario.HomeLatitude + (random.NextDouble() - 0.5) * 0.01,
                     Longitude = scenario.HomeLongitude + (random.NextDouble() - 0.5) * 0.01,
-                    BatteryCellType = vehicle.BatteryCellType
+                    Altitude = 10 + random.Next(-5, 50),
+
+                    // Power & Drive
+                    PowerState = PowerState.Standby,
+                    GearStatus = GearStatus.Park,
+                    DriveMode = "everyday",
+                    ChargerState = isCharging ? ChargerState.Charging : ChargerState.Disconnected,
+                    TimeToEndOfCharge = isCharging ? random.Next(30, 240) : null,
+
+                    // Climate
+                    CabinTemperature = 15 + random.Next(-5, 15),
+                    ClimateTargetTemp = 21,
+
+                    // Closures (vary occasionally)
+                    AllDoorsClosed = random.NextDouble() > 0.05,
+                    AllDoorsLocked = random.NextDouble() > 0.1,
+                    AllWindowsClosed = true,
+                    FrunkClosed = true,
+                    FrunkLocked = true,
+                    GearGuardStatus = random.NextDouble() > 0.2 ? "Enabled" : "Disabled"
                 });
             }
         }
@@ -827,30 +867,85 @@ public class DevDataSeeder
         var rangeEstimate = (vehicle.EpaRangeMiles ?? 300) * (batteryLevel / 100.0) *
             (scenario.CurrentHealthPercent / 100.0) * (0.85 + random.NextDouble() * 0.2);
 
+        // Calculate projected range at 100%
+        double? projectedRangeAt100 = batteryLevel > 5 ? rangeEstimate / (batteryLevel / 100.0) : null;
+
+        // Driver names for variety
+        var driverNames = new[] { "Primary Driver", "Guest", "Spouse", null };
+        var cabinTemp = 18 + random.Next(-5, 15);
+
+        // Tire pressures - typical range 38-44 PSI
+        var basePressure = 41.0;
+
         return new VehicleState
         {
             VehicleId = vehicle.Id,
             Timestamp = DateTime.UtcNow.AddMinutes(-random.Next(5, 60)),
+
+            // Driver
+            ActiveDriverName = driverNames[random.Next(driverNames.Length)],
+
+            // Battery
             BatteryLevel = batteryLevel,
             BatteryLimit = scenario.AverageChargeLimit,
             BatteryCapacityKwh = latestSnapshot.ReportedCapacityKwh,
             RangeEstimate = Math.Round(rangeEstimate, 0),
+            ProjectedRangeAt100 = projectedRangeAt100.HasValue ? Math.Round(projectedRangeAt100.Value, 0) : null,
+            TwelveVoltBatteryHealth = "ready",
+            BatteryCellType = vehicle.BatteryCellType,
+            BatteryNeedsLfpCalibration = vehicle.BatteryCellType == "LFP" ? random.NextDouble() < 0.1 : null,
+
+            // Odometer & Location
             Odometer = scenario.CurrentOdometer,
+            Latitude = scenario.HomeLatitude + (random.NextDouble() - 0.5) * 0.001,
+            Longitude = scenario.HomeLongitude + (random.NextDouble() - 0.5) * 0.001,
+            Altitude = 10 + random.Next(-5, 50),
+
+            // Power & Drive
             PowerState = PowerState.Standby,
             GearStatus = GearStatus.Park,
+            DriveMode = "everyday",
             ChargerState = ChargerState.Disconnected,
-            CabinTemperature = 18 + random.Next(-5, 15),
+
+            // Climate
+            CabinTemperature = cabinTemp,
+            ClimateTargetTemp = 21,
+            IsPreconditioningActive = false,
+            IsPetModeActive = false,
+            IsDefrostActive = false,
+
+            // Closures
             AllDoorsClosed = true,
             AllDoorsLocked = true,
             AllWindowsClosed = true,
             FrunkClosed = true,
             FrunkLocked = true,
-            LiftgateClosed = true,
+            LiftgateClosed = vehicle.Model == VehicleModel.R1S,
+            TailgateClosed = vehicle.Model == VehicleModel.R1T,
+            TonneauClosed = vehicle.Model == VehicleModel.R1T,
+            SideBinLeftClosed = vehicle.Model == VehicleModel.R1T,
+            SideBinLeftLocked = vehicle.Model == VehicleModel.R1T,
+            SideBinRightClosed = vehicle.Model == VehicleModel.R1T,
+            SideBinRightLocked = vehicle.Model == VehicleModel.R1T,
             GearGuardStatus = "Enabled",
+
+            // Tire Pressure
+            TirePressureStatusFrontLeft = TirePressureStatus.Ok,
+            TirePressureStatusFrontRight = TirePressureStatus.Ok,
+            TirePressureStatusRearLeft = TirePressureStatus.Ok,
+            TirePressureStatusRearRight = TirePressureStatus.Ok,
+            TirePressureFrontLeft = Math.Round(basePressure + (random.NextDouble() - 0.5) * 4, 1),
+            TirePressureFrontRight = Math.Round(basePressure + (random.NextDouble() - 0.5) * 4, 1),
+            TirePressureRearLeft = Math.Round(basePressure + (random.NextDouble() - 0.5) * 4, 1),
+            TirePressureRearRight = Math.Round(basePressure + (random.NextDouble() - 0.5) * 4, 1),
+
+            // Cold weather (usually not limited)
+            LimitedAccelCold = false,
+            LimitedRegenCold = false,
+
+            // Software
             OtaCurrentVersion = vehicle.SoftwareVersion,
-            Latitude = 37.7749 + (random.NextDouble() - 0.5) * 0.1,
-            Longitude = -122.4194 + (random.NextDouble() - 0.5) * 0.1,
-            BatteryCellType = vehicle.BatteryCellType
+            OtaStatus = "idle"
         };
     }
 

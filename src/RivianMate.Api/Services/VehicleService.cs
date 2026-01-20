@@ -17,15 +17,18 @@ public class VehicleService
 {
     private readonly RivianMateDbContext _db;
     private readonly VehicleStateBuffer _stateBuffer;
+    private readonly ActivityFeedService _activityFeed;
     private readonly ILogger<VehicleService> _logger;
 
     public VehicleService(
         RivianMateDbContext db,
         VehicleStateBuffer stateBuffer,
+        ActivityFeedService activityFeed,
         ILogger<VehicleService> logger)
     {
         _db = db;
         _stateBuffer = stateBuffer;
+        _activityFeed = activityFeed;
         _logger = logger;
     }
 
@@ -114,13 +117,20 @@ public class VehicleService
 
     /// <summary>
     /// Process and store vehicle state from Rivian API.
-    /// Only saves to database if there are meaningful changes from the last saved state.
+    /// Updates the single VehicleState record for this vehicle (upsert pattern).
+    /// Records meaningful changes to the ActivityFeed for history.
     /// </summary>
+    /// <param name="vehicleId">The vehicle ID</param>
+    /// <param name="rivianState">The state data from Rivian</param>
+    /// <param name="rawJson">Optional raw JSON for debugging</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <param name="isPartialUpdate">True if this is a partial WebSocket update that should be merged with previous state</param>
     public async Task<VehicleState?> ProcessVehicleStateAsync(
         int vehicleId,
         RivianVehicleState rivianState,
         string? rawJson = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool isPartialUpdate = false)
     {
         var vehicle = await _db.Vehicles
             .FirstOrDefaultAsync(v => v.Id == vehicleId, cancellationToken);
@@ -131,45 +141,76 @@ public class VehicleService
             return null;
         }
 
-        var state = MapToVehicleState(vehicleId, rivianState, rawJson);
+        // Get the existing state record or create one (single record per vehicle)
+        var existingState = await _db.VehicleStates
+            .FirstOrDefaultAsync(s => s.VehicleId == vehicleId, cancellationToken);
 
-        // Calculate projected range at 100%
-        if (state.BatteryLevel > 0 && state.RangeEstimate > 0)
+        // Get previous state from buffer for change detection and merging
+        var previousState = _stateBuffer.GetCurrentState(vehicleId) ?? existingState;
+
+        // Map the incoming data
+        var incomingState = MapToVehicleState(vehicleId, rivianState, rawJson);
+
+        // For partial updates, merge with previous state to fill in missing fields
+        if (isPartialUpdate && previousState != null)
         {
-            state.ProjectedRangeAt100 = state.RangeEstimate / (state.BatteryLevel / 100.0);
+            incomingState = MergeWithPreviousState(incomingState, previousState);
         }
 
-        // Check if we should save this state (has meaningful changes)
-        var shouldSave = _stateBuffer.ShouldSaveState(state);
-
-        if (shouldSave)
+        // Calculate projected range at 100%
+        if (incomingState.BatteryLevel > 0 && incomingState.RangeEstimate > 0)
         {
-            _db.VehicleStates.Add(state);
+            incomingState.ProjectedRangeAt100 = incomingState.RangeEstimate / (incomingState.BatteryLevel / 100.0);
+        }
+
+        // Always update the buffer with the latest merged state
+        _stateBuffer.UpdateCurrentState(incomingState);
+
+        // Check if we should persist to DB (throttle frequent updates)
+        var shouldPersist = _stateBuffer.ShouldSaveState(incomingState);
+
+        if (!shouldPersist)
+        {
+            _logger.LogDebug("Vehicle {VehicleId}: Throttling update (no meaningful changes)", vehicleId);
+            return null;
+        }
+
+        // Record activity feed events for meaningful changes
+        await _activityFeed.RecordStateChangesAsync(vehicle, previousState, incomingState, cancellationToken);
+
+        // Upsert: update existing record or create new one
+        if (existingState != null)
+        {
+            // Update existing record with new values
+            UpdateStateRecord(existingState, incomingState);
+            existingState.RawJson = rawJson;
         }
         else
         {
-            _logger.LogDebug("Vehicle {VehicleId}: Skipping duplicate state (no meaningful changes)", vehicleId);
+            // First state for this vehicle - create the record
+            _db.VehicleStates.Add(incomingState);
+            existingState = incomingState;
         }
 
-        // Always update vehicle last seen
-        vehicle.LastSeenAt = state.Timestamp;
-        
+        // Update vehicle last seen
+        vehicle.LastSeenAt = incomingState.Timestamp;
+
         // Update software version if changed
-        if (!string.IsNullOrEmpty(state.OtaCurrentVersion) &&
-            vehicle.SoftwareVersion != state.OtaCurrentVersion)
+        if (!string.IsNullOrEmpty(incomingState.OtaCurrentVersion) &&
+            vehicle.SoftwareVersion != incomingState.OtaCurrentVersion)
         {
             _logger.LogInformation("Vehicle {VehicleId} software updated: {OldVersion} -> {NewVersion}",
-                vehicleId, vehicle.SoftwareVersion, state.OtaCurrentVersion);
-            vehicle.SoftwareVersion = state.OtaCurrentVersion;
+                vehicleId, vehicle.SoftwareVersion, incomingState.OtaCurrentVersion);
+            vehicle.SoftwareVersion = incomingState.OtaCurrentVersion;
         }
 
         // Update battery cell type if not already set
-        if (!string.IsNullOrEmpty(state.BatteryCellType) &&
+        if (!string.IsNullOrEmpty(incomingState.BatteryCellType) &&
             string.IsNullOrEmpty(vehicle.BatteryCellType))
         {
             _logger.LogInformation("Vehicle {VehicleId} battery cell type detected: {CellType}",
-                vehicleId, state.BatteryCellType);
-            vehicle.BatteryCellType = state.BatteryCellType;
+                vehicleId, incomingState.BatteryCellType);
+            vehicle.BatteryCellType = incomingState.BatteryCellType;
         }
 
         // Detect battery pack type if not already set
@@ -192,14 +233,14 @@ public class VehicleService
                 }
             }
             // Fall back to capacity-based inference
-            else if (state.BatteryCapacityKwh != null)
+            else if (incomingState.BatteryCapacityKwh != null)
             {
-                var inferredPack = RivianVinDecoder.InferFromCapacity(state.BatteryCapacityKwh);
+                var inferredPack = RivianVinDecoder.InferFromCapacity(incomingState.BatteryCapacityKwh);
                 if (inferredPack != BatteryPackType.Unknown)
                 {
                     vehicle.BatteryPack = inferredPack;
                     _logger.LogInformation("Vehicle {VehicleId} battery pack inferred from capacity ({Capacity} kWh): {BatteryPack}",
-                        vehicleId, state.BatteryCapacityKwh, inferredPack);
+                        vehicleId, incomingState.BatteryCapacityKwh, inferredPack);
                 }
             }
 
@@ -213,10 +254,7 @@ public class VehicleService
             }
         }
 
-        // Set cell type based on pack type if not already set (runs even if pack was previously detected)
-        // Large pack = Samsung 50G (NMC)
-        // Max pack = Samsung 53G (NMC)
-        // Standard pack: NMC prior to 2025, LFP for 2025+
+        // Set cell type based on pack type if not already set
         if (string.IsNullOrEmpty(vehicle.BatteryCellType))
         {
             string? cellType = null;
@@ -228,11 +266,10 @@ public class VehicleService
                     BatteryPackType.Large => "50g",
                     BatteryPackType.Max => "53g",
                     BatteryPackType.Standard when vehicle.Year >= 2025 => "LFP",
-                    BatteryPackType.Standard => "50g", // Pre-2025 Standard was NMC (Samsung 50G)
+                    BatteryPackType.Standard => "50g",
                     _ => null
                 };
             }
-            // Fallback: determine from VIN directly if pack is unknown
             else if (!string.IsNullOrEmpty(vehicle.Vin) && vehicle.Vin.Length >= 10)
             {
                 var vinCode = char.ToUpperInvariant(vehicle.Vin[5]);
@@ -240,10 +277,10 @@ public class VehicleService
 
                 cellType = vinCode switch
                 {
-                    'G' when modelYear >= 2025 => "LFP",  // Standard LFP (2025+)
-                    'G' => "50g",                          // Standard NMC (pre-2025)
-                    'C' => "53g",                          // Max pack
-                    _ => "50g"                             // Large pack (A, B, F) or unknown
+                    'G' when modelYear >= 2025 => "LFP",
+                    'G' => "50g",
+                    'C' => "53g",
+                    _ => "50g"
                 };
             }
 
@@ -257,16 +294,13 @@ public class VehicleService
 
         await _db.SaveChangesAsync(cancellationToken);
 
-        // Update the buffer with the saved state
-        if (shouldSave)
-        {
-            _stateBuffer.UpdateBuffer(state);
-            _logger.LogDebug(
-                "Recorded state for vehicle {VehicleId}: {BatteryLevel}% @ {Odometer} miles, capacity: {Capacity} kWh",
-                vehicleId, state.BatteryLevel, state.Odometer, state.BatteryCapacityKwh);
-        }
+        // Update the buffer with the persisted state
+        _stateBuffer.UpdateBuffer(existingState);
+        _logger.LogDebug(
+            "Updated state for vehicle {VehicleId}: {BatteryLevel}% @ {Odometer} miles",
+            vehicleId, existingState.BatteryLevel, existingState.Odometer);
 
-        return shouldSave ? state : null;
+        return existingState;
     }
 
     /// <summary>
@@ -362,8 +396,11 @@ public class VehicleService
             TirePressureStatusRearLeft = ParseTirePressure(rs.TirePressureStatusRearLeft?.Value),
             TirePressureStatusRearRight = ParseTirePressure(rs.TirePressureStatusRearRight?.Value),
 
-            // Note: Tire pressure values (PSI) are not available from Rivian API
-            // Only status (OK/LOW/HIGH/CRITICAL) is exposed
+            // Tires - Actual PSI values (converted from bar, may be null on some vehicles/firmware)
+            TirePressureFrontLeft = BarToPsi(rs.TirePressureFrontLeft?.Value),
+            TirePressureFrontRight = BarToPsi(rs.TirePressureFrontRight?.Value),
+            TirePressureRearLeft = BarToPsi(rs.TirePressureRearLeft?.Value),
+            TirePressureRearRight = BarToPsi(rs.TirePressureRearRight?.Value),
 
             // OTA - prefer full version string if available
             OtaCurrentVersion = rs.OtaCurrentVersion?.Value ?? FormatOtaVersion(
@@ -481,14 +518,13 @@ public class VehicleService
     }
 
     /// <summary>
-    /// Get the most recent state for a vehicle.
+    /// Get the current state for a vehicle.
+    /// With the single-record-per-vehicle model, this is a simple lookup.
     /// </summary>
     public async Task<VehicleState?> GetLatestStateAsync(int vehicleId, CancellationToken cancellationToken = default)
     {
         return await _db.VehicleStates
-            .Where(s => s.VehicleId == vehicleId)
-            .OrderByDescending(s => s.Timestamp)
-            .FirstOrDefaultAsync(cancellationToken);
+            .FirstOrDefaultAsync(s => s.VehicleId == vehicleId, cancellationToken);
     }
 
     /// <summary>
@@ -713,31 +749,51 @@ public class VehicleService
     private static bool? AreAllClosed(params string?[] values)
     {
         if (values.All(v => v == null)) return null;
-        return values.All(v => v?.ToLower() == "closed");
+        // Return false only if any value is explicitly "open"
+        // Ignore null/unknown values - they don't mean "open"
+        var hasOpen = values.Any(v => v?.ToLower() == "open");
+        if (hasOpen) return false;
+        // If we have at least one "closed" and no "open", consider all closed
+        var hasClosed = values.Any(v => v?.ToLower() == "closed");
+        return hasClosed ? true : null;
     }
 
     private static bool? AreAllLocked(params string?[] values)
     {
         if (values.All(v => v == null)) return null;
-        return values.All(v => v?.ToLower() == "locked");
+        // Return false only if any value is explicitly "unlocked"
+        var hasUnlocked = values.Any(v => v?.ToLower() == "unlocked");
+        if (hasUnlocked) return false;
+        var hasLocked = values.Any(v => v?.ToLower() == "locked");
+        return hasLocked ? true : null;
     }
 
     /// <summary>
-    /// Parse closure state from API response. Returns null if no value provided.
+    /// Parse closure state from API response.
+    /// Returns true if "closed", false if "open", null otherwise.
+    /// Unknown/undefined values are treated as null (unknown) rather than open.
     /// </summary>
     private static bool? ParseClosedState(string? value)
     {
         if (string.IsNullOrEmpty(value)) return null;
-        return value.ToLower() == "closed";
+        var lower = value.ToLower();
+        if (lower == "closed") return true;
+        if (lower == "open") return false;
+        // Unknown values (e.g., "undefined", "unknown") treated as null
+        return null;
     }
 
     /// <summary>
-    /// Parse locked state from API response. Returns null if no value provided.
+    /// Parse locked state from API response.
+    /// Returns true if "locked", false if "unlocked", null otherwise.
     /// </summary>
     private static bool? ParseLockedState(string? value)
     {
         if (string.IsNullOrEmpty(value)) return null;
-        return value.ToLower() == "locked";
+        var lower = value.ToLower();
+        if (lower == "locked") return true;
+        if (lower == "unlocked") return false;
+        return null;
     }
 
     /// <summary>
@@ -765,5 +821,216 @@ public class VehicleService
     {
         if (year == null || year == 0) return null;
         return $"{year}.{week ?? 0}.{number ?? 0}";
+    }
+
+    /// <summary>
+    /// Merge a partial state update with the previous state.
+    /// WebSocket updates from Rivian often send different fields in separate messages,
+    /// so we need to combine them to get a complete picture.
+    /// </summary>
+    private static VehicleState MergeWithPreviousState(VehicleState newState, VehicleState previousState)
+    {
+        // Keep the new timestamp
+        // For each field, if the new value is null/default, use the previous value
+
+        // Location
+        newState.Latitude ??= previousState.Latitude;
+        newState.Longitude ??= previousState.Longitude;
+        newState.Altitude ??= previousState.Altitude;
+        newState.Speed ??= previousState.Speed;
+        newState.Heading ??= previousState.Heading;
+
+        // Driver
+        if (string.IsNullOrEmpty(newState.ActiveDriverName))
+            newState.ActiveDriverName = previousState.ActiveDriverName;
+
+        // Battery
+        newState.BatteryLevel ??= previousState.BatteryLevel;
+        newState.BatteryLimit ??= previousState.BatteryLimit;
+        newState.BatteryCapacityKwh ??= previousState.BatteryCapacityKwh;
+        if (string.IsNullOrEmpty(newState.BatteryCellType))
+            newState.BatteryCellType = previousState.BatteryCellType;
+        if (string.IsNullOrEmpty(newState.TwelveVoltBatteryHealth))
+            newState.TwelveVoltBatteryHealth = previousState.TwelveVoltBatteryHealth;
+
+        // Range
+        newState.RangeEstimate ??= previousState.RangeEstimate;
+        newState.ProjectedRangeAt100 ??= previousState.ProjectedRangeAt100;
+
+        // Charging (ChargerState is enum, use Unknown as default check)
+        if (newState.ChargerState == ChargerState.Unknown)
+            newState.ChargerState = previousState.ChargerState;
+        newState.ChargePortOpen ??= previousState.ChargePortOpen;
+        newState.TimeToEndOfCharge ??= previousState.TimeToEndOfCharge;
+        if (string.IsNullOrEmpty(newState.ChargerDerateStatus))
+            newState.ChargerDerateStatus = previousState.ChargerDerateStatus;
+
+        // Power & Drive (enums, use Unknown as default check)
+        if (newState.PowerState == PowerState.Unknown)
+            newState.PowerState = previousState.PowerState;
+        if (newState.GearStatus == GearStatus.Unknown)
+            newState.GearStatus = previousState.GearStatus;
+        if (string.IsNullOrEmpty(newState.DriveMode))
+            newState.DriveMode = previousState.DriveMode;
+
+        // Odometer
+        newState.Odometer ??= previousState.Odometer;
+
+        // Climate
+        newState.CabinTemperature ??= previousState.CabinTemperature;
+        newState.ClimateTargetTemp ??= previousState.ClimateTargetTemp;
+        newState.IsPreconditioningActive ??= previousState.IsPreconditioningActive;
+        newState.IsPetModeActive ??= previousState.IsPetModeActive;
+        newState.IsDefrostActive ??= previousState.IsDefrostActive;
+
+        // Cold weather
+        newState.LimitedAccelCold ??= previousState.LimitedAccelCold;
+        newState.LimitedRegenCold ??= previousState.LimitedRegenCold;
+
+        // Doors & Windows
+        newState.AllDoorsLocked ??= previousState.AllDoorsLocked;
+        newState.AllDoorsClosed ??= previousState.AllDoorsClosed;
+        newState.AllWindowsClosed ??= previousState.AllWindowsClosed;
+        newState.FrunkClosed ??= previousState.FrunkClosed;
+        newState.FrunkLocked ??= previousState.FrunkLocked;
+        newState.LiftgateClosed ??= previousState.LiftgateClosed;
+        newState.TailgateClosed ??= previousState.TailgateClosed;
+        newState.TonneauClosed ??= previousState.TonneauClosed;
+        newState.SideBinLeftClosed ??= previousState.SideBinLeftClosed;
+        newState.SideBinLeftLocked ??= previousState.SideBinLeftLocked;
+        newState.SideBinRightClosed ??= previousState.SideBinRightClosed;
+        newState.SideBinRightLocked ??= previousState.SideBinRightLocked;
+
+        // Gear Guard
+        if (string.IsNullOrEmpty(newState.GearGuardStatus))
+            newState.GearGuardStatus = previousState.GearGuardStatus;
+
+        // Tires - Status (use previous if new is Unknown)
+        if (newState.TirePressureStatusFrontLeft == TirePressureStatus.Unknown)
+            newState.TirePressureStatusFrontLeft = previousState.TirePressureStatusFrontLeft;
+        if (newState.TirePressureStatusFrontRight == TirePressureStatus.Unknown)
+            newState.TirePressureStatusFrontRight = previousState.TirePressureStatusFrontRight;
+        if (newState.TirePressureStatusRearLeft == TirePressureStatus.Unknown)
+            newState.TirePressureStatusRearLeft = previousState.TirePressureStatusRearLeft;
+        if (newState.TirePressureStatusRearRight == TirePressureStatus.Unknown)
+            newState.TirePressureStatusRearRight = previousState.TirePressureStatusRearRight;
+
+        // Tires - PSI values
+        newState.TirePressureFrontLeft ??= previousState.TirePressureFrontLeft;
+        newState.TirePressureFrontRight ??= previousState.TirePressureFrontRight;
+        newState.TirePressureRearLeft ??= previousState.TirePressureRearLeft;
+        newState.TirePressureRearRight ??= previousState.TirePressureRearRight;
+
+        // OTA
+        if (string.IsNullOrEmpty(newState.OtaCurrentVersion))
+            newState.OtaCurrentVersion = previousState.OtaCurrentVersion;
+        if (string.IsNullOrEmpty(newState.OtaAvailableVersion))
+            newState.OtaAvailableVersion = previousState.OtaAvailableVersion;
+        if (string.IsNullOrEmpty(newState.OtaStatus))
+            newState.OtaStatus = previousState.OtaStatus;
+        newState.OtaInstallProgress ??= previousState.OtaInstallProgress;
+
+        return newState;
+    }
+
+    /// <summary>
+    /// Update an existing VehicleState record with values from an incoming state.
+    /// Used for upsert pattern where we maintain a single record per vehicle.
+    /// </summary>
+    private static void UpdateStateRecord(VehicleState existing, VehicleState incoming)
+    {
+        existing.Timestamp = incoming.Timestamp;
+
+        // Location
+        existing.Latitude = incoming.Latitude;
+        existing.Longitude = incoming.Longitude;
+        existing.Altitude = incoming.Altitude;
+        existing.Speed = incoming.Speed;
+        existing.Heading = incoming.Heading;
+
+        // Driver
+        existing.ActiveDriverName = incoming.ActiveDriverName;
+
+        // Battery
+        existing.BatteryLevel = incoming.BatteryLevel;
+        existing.BatteryLimit = incoming.BatteryLimit;
+        existing.BatteryCapacityKwh = incoming.BatteryCapacityKwh;
+        existing.BatteryCellType = incoming.BatteryCellType;
+        existing.BatteryNeedsLfpCalibration = incoming.BatteryNeedsLfpCalibration;
+        existing.TwelveVoltBatteryHealth = incoming.TwelveVoltBatteryHealth;
+
+        // Range
+        existing.RangeEstimate = incoming.RangeEstimate;
+        existing.ProjectedRangeAt100 = incoming.ProjectedRangeAt100;
+
+        // Charging
+        existing.ChargerState = incoming.ChargerState;
+        existing.ChargePortOpen = incoming.ChargePortOpen;
+        existing.TimeToEndOfCharge = incoming.TimeToEndOfCharge;
+        existing.ChargerDerateStatus = incoming.ChargerDerateStatus;
+
+        // Power & Drive
+        existing.PowerState = incoming.PowerState;
+        existing.GearStatus = incoming.GearStatus;
+        existing.DriveMode = incoming.DriveMode;
+
+        // Odometer
+        existing.Odometer = incoming.Odometer;
+
+        // Climate
+        existing.CabinTemperature = incoming.CabinTemperature;
+        existing.ClimateTargetTemp = incoming.ClimateTargetTemp;
+        existing.IsPreconditioningActive = incoming.IsPreconditioningActive;
+        existing.IsPetModeActive = incoming.IsPetModeActive;
+        existing.IsDefrostActive = incoming.IsDefrostActive;
+
+        // Cold weather
+        existing.LimitedAccelCold = incoming.LimitedAccelCold;
+        existing.LimitedRegenCold = incoming.LimitedRegenCold;
+
+        // Doors & Windows
+        existing.AllDoorsLocked = incoming.AllDoorsLocked;
+        existing.AllDoorsClosed = incoming.AllDoorsClosed;
+        existing.AllWindowsClosed = incoming.AllWindowsClosed;
+        existing.FrunkClosed = incoming.FrunkClosed;
+        existing.FrunkLocked = incoming.FrunkLocked;
+        existing.LiftgateClosed = incoming.LiftgateClosed;
+        existing.TailgateClosed = incoming.TailgateClosed;
+        existing.TonneauClosed = incoming.TonneauClosed;
+        existing.SideBinLeftClosed = incoming.SideBinLeftClosed;
+        existing.SideBinLeftLocked = incoming.SideBinLeftLocked;
+        existing.SideBinRightClosed = incoming.SideBinRightClosed;
+        existing.SideBinRightLocked = incoming.SideBinRightLocked;
+
+        // Gear Guard
+        existing.GearGuardStatus = incoming.GearGuardStatus;
+
+        // Tires - Status
+        existing.TirePressureStatusFrontLeft = incoming.TirePressureStatusFrontLeft;
+        existing.TirePressureStatusFrontRight = incoming.TirePressureStatusFrontRight;
+        existing.TirePressureStatusRearLeft = incoming.TirePressureStatusRearLeft;
+        existing.TirePressureStatusRearRight = incoming.TirePressureStatusRearRight;
+
+        // Tires - PSI
+        existing.TirePressureFrontLeft = incoming.TirePressureFrontLeft;
+        existing.TirePressureFrontRight = incoming.TirePressureFrontRight;
+        existing.TirePressureRearLeft = incoming.TirePressureRearLeft;
+        existing.TirePressureRearRight = incoming.TirePressureRearRight;
+
+        // OTA
+        existing.OtaCurrentVersion = incoming.OtaCurrentVersion;
+        existing.OtaAvailableVersion = incoming.OtaAvailableVersion;
+        existing.OtaStatus = incoming.OtaStatus;
+        existing.OtaInstallProgress = incoming.OtaInstallProgress;
+    }
+
+    /// <summary>
+    /// Convert tire pressure from bar to PSI.
+    /// Rivian API returns pressure in bar, but PSI is more common in the US.
+    /// </summary>
+    private static double? BarToPsi(double? bar)
+    {
+        if (bar == null) return null;
+        return bar.Value * 14.5038;
     }
 }

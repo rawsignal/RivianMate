@@ -7,10 +7,12 @@ namespace RivianMate.Api.Services;
 /// <summary>
 /// In-memory buffer for vehicle states to avoid storing duplicate data.
 /// Only saves a new state when something meaningful has changed.
+/// Also tracks the current accumulated state for merging partial WebSocket updates.
 /// </summary>
 public class VehicleStateBuffer
 {
-    private readonly ConcurrentDictionary<int, BufferedState> _lastStates = new();
+    private readonly ConcurrentDictionary<int, BufferedState> _lastSavedStates = new();
+    private readonly ConcurrentDictionary<int, VehicleState> _currentStates = new();
     private readonly ILogger<VehicleStateBuffer> _logger;
 
     // How often to force a save even if nothing changed (heartbeat)
@@ -35,7 +37,7 @@ public class VehicleStateBuffer
     /// <returns>True if the state should be saved, false if it's a duplicate.</returns>
     public bool ShouldSaveState(VehicleState newState)
     {
-        if (!_lastStates.TryGetValue(newState.VehicleId, out var buffered))
+        if (!_lastSavedStates.TryGetValue(newState.VehicleId, out var buffered))
         {
             // First state for this vehicle - always save
             return true;
@@ -67,7 +69,27 @@ public class VehicleStateBuffer
     /// </summary>
     public void UpdateBuffer(VehicleState savedState)
     {
-        _lastStates[savedState.VehicleId] = new BufferedState(savedState, DateTime.UtcNow);
+        _lastSavedStates[savedState.VehicleId] = new BufferedState(savedState, DateTime.UtcNow);
+        // Also update current state since saved state is the most complete
+        _currentStates[savedState.VehicleId] = savedState;
+    }
+
+    /// <summary>
+    /// Get the current accumulated state for a vehicle (for merging partial updates).
+    /// Returns null if no state has been tracked yet.
+    /// </summary>
+    public VehicleState? GetCurrentState(int vehicleId)
+    {
+        return _currentStates.TryGetValue(vehicleId, out var state) ? state : null;
+    }
+
+    /// <summary>
+    /// Update the current accumulated state (even if not saved to DB).
+    /// Used for tracking partial WebSocket updates that may not trigger a save.
+    /// </summary>
+    public void UpdateCurrentState(VehicleState state)
+    {
+        _currentStates[state.VehicleId] = state;
     }
 
     /// <summary>
@@ -75,7 +97,7 @@ public class VehicleStateBuffer
     /// </summary>
     public Dictionary<int, DateTime> GetBufferStats()
     {
-        return _lastStates.ToDictionary(
+        return _lastSavedStates.ToDictionary(
             kvp => kvp.Key,
             kvp => kvp.Value.SavedAt);
     }
@@ -85,7 +107,8 @@ public class VehicleStateBuffer
     /// </summary>
     public void ClearVehicle(int vehicleId)
     {
-        _lastStates.TryRemove(vehicleId, out _);
+        _lastSavedStates.TryRemove(vehicleId, out _);
+        _currentStates.TryRemove(vehicleId, out _);
     }
 
     private bool HasMeaningfulChange(VehicleState last, VehicleState current)

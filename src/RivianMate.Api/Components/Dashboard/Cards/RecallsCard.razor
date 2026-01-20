@@ -1,0 +1,138 @@
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Enums
+@using RivianMate.Infrastructure.Nhtsa
+@inject NhtsaRecallService RecallService
+
+<CardWrapper Definition="@GetDefinition()">
+    @if (_loading)
+    {
+        <div class="card-loading-state">
+            <div class="spinner"></div>
+            <p>Checking for recalls...</p>
+        </div>
+    }
+    else if (_error != null)
+    {
+        <div class="card-error-state">
+            <Icon Name="alert-triangle" Size="32" Style="color: var(--color-warning);" />
+            <p>@_error</p>
+        </div>
+    }
+    else if (_recalls == null || !_recalls.Any())
+    {
+        <div class="card-empty-state recalls-clear">
+            <Icon Name="check-circle" Size="48" Style="color: var(--color-success);" />
+            <p>No open recalls</p>
+        </div>
+    }
+    else
+    {
+        <div class="recalls-summary">
+            <div class="recalls-count @(_recalls.Count > 0 ? "has-recalls" : "")">
+                <span class="count">@_recalls.Count</span>
+                <span class="label">Open Recall@(_recalls.Count != 1 ? "s" : "")</span>
+            </div>
+            <div class="recalls-list">
+                @foreach (var recall in _recalls.Take(3))
+                {
+                    <div class="recall-item">
+                        <Icon Name="alert-circle" Size="16" Style="color: var(--color-warning);" />
+                        <span class="recall-component">@TruncateComponent(recall.Component)</span>
+                    </div>
+                }
+                @if (_recalls.Count > 3)
+                {
+                    <div class="recall-item more">
+                        <span>+@(_recalls.Count - 3) more</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</CardWrapper>
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private VehicleModel VehicleModel => Context?.VehicleModel ?? VehicleModel.Unknown;
+    private int? VehicleYear => Context?.VehicleYear;
+    private Guid? VehiclePublicId => Context?.VehiclePublicId;
+
+    private bool _loading = true;
+    private string? _error;
+    private List<RecallInfo>? _recalls;
+
+    // Track which vehicle we loaded recalls for
+    private VehicleModel _loadedForModel;
+    private int? _loadedForYear;
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "recalls",
+        Icon = "alert-triangle",
+        Title = "Safety Recalls",
+        DetailUrl = "/recalls",
+        DetailLabel = "View Details"
+    };
+
+    private DashboardCardDefinition GetDefinition() => _definition with
+    {
+        DetailUrl = VehiclePublicId.HasValue ? $"/recalls/{VehiclePublicId}" : _definition.DetailUrl
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Load recalls when we have vehicle info and it's different from what we loaded
+        if (VehicleModel != VehicleModel.Unknown && VehicleYear.HasValue)
+        {
+            if (_recalls == null || VehicleModel != _loadedForModel || VehicleYear != _loadedForYear)
+            {
+                await LoadRecallsAsync();
+            }
+        }
+    }
+
+    private async Task LoadRecallsAsync()
+    {
+        try
+        {
+            _loading = true;
+            StateHasChanged();
+
+            var model = VehicleModel;
+            var year = VehicleYear!.Value;
+
+            var result = await RecallService.GetRivianRecallsAsync(model, year);
+
+            if (result.Success)
+            {
+                _recalls = result.Recalls;
+                _error = null;
+                _loadedForModel = model;
+                _loadedForYear = year;
+            }
+            else
+            {
+                _error = result.Error ?? "Failed to load recalls";
+            }
+        }
+        catch (Exception)
+        {
+            _error = "Unable to check recalls";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string TruncateComponent(string component)
+    {
+        if (string.IsNullOrEmpty(component)) return "Unknown";
+
+        // NHTSA component names can be long and comma-separated
+        var firstPart = component.Split(',')[0].Trim();
+        return firstPart.Length > 30 ? firstPart[..27] + "..." : firstPart;
+    }
+}

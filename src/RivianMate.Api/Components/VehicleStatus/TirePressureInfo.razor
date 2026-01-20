@@ -6,21 +6,21 @@
         <div class="tire-row">
             <div class="tire-item @GetTireClass(VehicleState?.TirePressureStatusFrontLeft)">
                 <span class="tire-label">FL</span>
-                <span class="tire-value">@FormatStatus(VehicleState?.TirePressureStatusFrontLeft)</span>
+                <span class="tire-value">@FormatPressure(VehicleState?.TirePressureFrontLeft, VehicleState?.TirePressureStatusFrontLeft)</span>
             </div>
             <div class="tire-item @GetTireClass(VehicleState?.TirePressureStatusFrontRight)">
                 <span class="tire-label">FR</span>
-                <span class="tire-value">@FormatStatus(VehicleState?.TirePressureStatusFrontRight)</span>
+                <span class="tire-value">@FormatPressure(VehicleState?.TirePressureFrontRight, VehicleState?.TirePressureStatusFrontRight)</span>
             </div>
         </div>
         <div class="tire-row">
             <div class="tire-item @GetTireClass(VehicleState?.TirePressureStatusRearLeft)">
                 <span class="tire-label">RL</span>
-                <span class="tire-value">@FormatStatus(VehicleState?.TirePressureStatusRearLeft)</span>
+                <span class="tire-value">@FormatPressure(VehicleState?.TirePressureRearLeft, VehicleState?.TirePressureStatusRearLeft)</span>
             </div>
             <div class="tire-item @GetTireClass(VehicleState?.TirePressureStatusRearRight)">
                 <span class="tire-label">RR</span>
-                <span class="tire-value">@FormatStatus(VehicleState?.TirePressureStatusRearRight)</span>
+                <span class="tire-value">@FormatPressure(VehicleState?.TirePressureRearRight, VehicleState?.TirePressureStatusRearRight)</span>
             </div>
         </div>
     </div>
@@ -29,14 +29,24 @@
 @code {
     [Parameter] public VehicleState? VehicleState { get; set; }
 
-    private static string FormatStatus(TirePressureStatus? status) => status switch
+    private static string FormatPressure(double? psi, TirePressureStatus? status)
     {
-        TirePressureStatus.Ok => "OK",
-        TirePressureStatus.Low => "Low",
-        TirePressureStatus.High => "High",
-        TirePressureStatus.Critical => "Critical",
-        _ => "—"
-    };
+        // Prefer actual PSI value if available
+        if (psi.HasValue && psi.Value > 0)
+        {
+            return $"{psi.Value:F0} PSI";
+        }
+
+        // Fall back to status text
+        return status switch
+        {
+            TirePressureStatus.Ok => "OK",
+            TirePressureStatus.Low => "Low",
+            TirePressureStatus.High => "High",
+            TirePressureStatus.Critical => "Critical",
+            _ => "—"
+        };
+    }
 
     private static string GetTireClass(TirePressureStatus? status) => status switch
     {

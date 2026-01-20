@@ -576,6 +576,105 @@ a.btn-primary:hover {
     font-size: 0.875rem;
 }
 
+/* ===== Card Loading State ===== */
+.card-loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-8) var(--space-4);
+    text-align: center;
+    color: var(--color-text-muted);
+    gap: var(--space-3);
+}
+
+.card-loading-state .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--color-border);
+    border-top-color: var(--color-accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.card-loading-state p {
+    font-size: 0.875rem;
+}
+
+/* ===== Card Error State ===== */
+.card-error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-8) var(--space-4);
+    text-align: center;
+    color: var(--color-text-muted);
+    gap: var(--space-3);
+}
+
+.card-error-state p {
+    font-size: 0.875rem;
+}
+
+/* ===== Recalls Card ===== */
+.recalls-summary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.recalls-count {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+}
+
+.recalls-count .count {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--color-success);
+}
+
+.recalls-count.has-recalls .count {
+    color: var(--color-warning);
+}
+
+.recalls-count .label {
+    font-size: 1rem;
+    color: var(--color-text-muted);
+}
+
+.recalls-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.recall-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+}
+
+.recall-item .recall-component {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.recall-item.more {
+    color: var(--color-text-muted);
+    font-style: italic;
+    padding-left: var(--space-6);
+}
+
+.recalls-clear {
+    color: var(--color-success);
+}
+
 /* ===== Battery Health Card ===== */
 .battery-health-content {
     display: flex;
@@ -2668,6 +2767,281 @@ a.btn-primary:hover {
 
 .leaflet-control-attribution a {
     color: var(--color-accent) !important;
+}
+
+/* ===== Activity Feed Card ===== */
+
+.activity-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.activity-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    background-color: var(--color-surface);
+    border-radius: var(--radius-md);
+}
+
+.activity-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background-color: var(--color-surface-elevated);
+    color: var(--color-text-muted);
+}
+
+.activity-icon.activity-closure {
+    background-color: rgba(251, 191, 36, 0.15);
+    color: #fbbf24;
+}
+
+.activity-icon.activity-gear {
+    background-color: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+}
+
+.activity-icon.activity-power {
+    background-color: rgba(168, 85, 247, 0.15);
+    color: #a855f7;
+}
+
+.activity-icon.activity-charging {
+    background-color: rgba(74, 222, 128, 0.15);
+    color: var(--color-success);
+}
+
+.activity-icon.activity-drive {
+    background-color: rgba(74, 222, 128, 0.15);
+    color: var(--color-success);
+}
+
+.activity-icon.activity-climate {
+    background-color: rgba(6, 182, 212, 0.15);
+    color: #06b6d4;
+}
+
+.activity-icon.activity-security {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: var(--color-error);
+}
+
+.activity-details {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.activity-message {
+    font-size: 0.875rem;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.activity-time {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+}
+
+/* ===== Activity Feed Page ===== */
+
+.activity-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-4);
+}
+
+.activity-filters {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.activity-filter-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.activity-filter-group label {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+}
+
+.activity-filter-group input[type="date"],
+.activity-filter-group select {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface);
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+}
+
+.activity-filter-group input[type="date"]:focus,
+.activity-filter-group select:focus {
+    outline: none;
+    border-color: var(--color-accent);
+}
+
+.activity-list-full {
+    display: flex;
+    flex-direction: column;
+}
+
+.activity-list-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+    transition: background-color var(--transition-fast);
+}
+
+.activity-list-item:hover {
+    background-color: var(--color-surface-elevated);
+}
+
+.activity-list-item:last-child {
+    border-bottom: none;
+}
+
+.activity-list-item .activity-icon {
+    width: 36px;
+    height: 36px;
+}
+
+.activity-list-item .activity-message {
+    font-size: 0.9375rem;
+}
+
+.activity-list-item .activity-time {
+    font-size: 0.8125rem;
+}
+
+.activity-date-group {
+    padding: var(--space-2) var(--space-4);
+    background-color: var(--color-surface);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--color-border);
+}
+
+/* ===== Recalls Page ===== */
+
+.recalls-page-summary {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.recalls-page-count {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+}
+
+.recalls-page-count .count {
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--color-warning);
+}
+
+.recalls-page-count .label {
+    font-size: 1.25rem;
+    color: var(--color-text-secondary);
+}
+
+.recall-detail-card {
+    margin-bottom: var(--space-4);
+}
+
+.recall-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-3);
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.recall-campaign {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 600;
+    color: var(--color-warning);
+}
+
+.recall-date {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+}
+
+.recall-component-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-4);
+    line-height: 1.4;
+}
+
+.recall-section {
+    margin-bottom: var(--space-4);
+}
+
+.recall-section:last-child {
+    margin-bottom: 0;
+}
+
+.recall-section h4 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-2);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.recall-section p {
+    font-size: 0.9375rem;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+}
+
+.recall-disclaimer {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background-color: var(--color-surface-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    margin-top: var(--space-4);
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.recall-disclaimer p {
+    margin: 0;
 }
 
 /* ===========================

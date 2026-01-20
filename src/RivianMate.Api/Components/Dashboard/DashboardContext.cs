@@ -13,6 +13,8 @@ public class DashboardContext
     // Vehicle data
     public VehicleState? VehicleState { get; init; }
     public Guid? VehiclePublicId { get; init; }
+    public VehicleModel VehicleModel { get; init; }
+    public int? VehicleYear { get; init; }
 
     // Battery health data
     public BatteryHealthSummary? HealthSummary { get; init; }
@@ -23,6 +25,9 @@ public class DashboardContext
 
     // Drives data
     public List<Drive>? RecentDrives { get; init; }
+
+    // Activity feed data
+    public List<ActivityFeedItem>? RecentActivity { get; init; }
 
     // Computed values
     public double? Efficiency { get; init; }

@@ -136,7 +136,19 @@ public class Drive : IVehicleOwnedEntity
     /// Primary drive mode used (e.g., "everyday", "sport", "conserve")
     /// </summary>
     public string? DriveMode { get; set; }
-    
+
+    // === Driver ===
+    /// <summary>
+    /// Name of the driver for this trip (from active driver profile)
+    /// </summary>
+    public string? DriverName { get; set; }
+
+    // === Vehicle Configuration ===
+    /// <summary>
+    /// Wheel configuration at time of drive (for efficiency comparisons across wheel types)
+    /// </summary>
+    public string? WheelConfig { get; set; }
+
     // === Positions ===
     /// <summary>
     /// Navigation property to recorded positions during this drive

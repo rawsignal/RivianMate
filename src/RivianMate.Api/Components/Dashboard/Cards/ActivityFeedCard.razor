@@ -1,0 +1,95 @@
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services
+@using RivianMate.Core.Entities
+
+<CardWrapper Definition="@GetDefinition()">
+    @if (RecentActivity?.Any() == true)
+    {
+        <div class="activity-list">
+            @foreach (var activity in RecentActivity.Take(6))
+            {
+                <div class="activity-item">
+                    <div class="activity-icon @GetActivityTypeClass(activity.Type)">
+                        <Icon Name="@GetActivityIcon(activity.Type)" Size="14" />
+                    </div>
+                    <div class="activity-details">
+                        <span class="activity-message">@activity.Message</span>
+                        <span class="activity-time">@FormatTime(activity.Timestamp)</span>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card-empty-state">
+            <Icon Name="list" Size="48" Style="color: var(--color-text-muted); opacity: 0.5;" />
+            <p>No activity recorded yet</p>
+        </div>
+    }
+</CardWrapper>
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private List<ActivityFeedItem>? RecentActivity => Context?.RecentActivity;
+    private Guid? VehiclePublicId => Context?.VehiclePublicId;
+    private TimeZoneService? TimeZoneService => Context?.TimeZoneService;
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "activity-feed",
+        Icon = "list",
+        Title = "Activity Feed",
+        DetailUrl = "/activity",
+        DetailLabel = "View All"
+    };
+
+    private DashboardCardDefinition GetDefinition() => _definition with
+    {
+        DetailUrl = VehiclePublicId.HasValue ? $"/activity/{VehiclePublicId}" : _definition.DetailUrl
+    };
+
+    private static string GetActivityIcon(ActivityType type) => type switch
+    {
+        ActivityType.Closure => "door-open",
+        ActivityType.Gear => "settings",
+        ActivityType.Power => "power",
+        ActivityType.Charging => "zap",
+        ActivityType.Drive => "navigation",
+        ActivityType.Climate => "thermometer",
+        ActivityType.Location => "map-pin",
+        ActivityType.Software => "download",
+        ActivityType.Security => "shield",
+        _ => "activity"
+    };
+
+    private static string GetActivityTypeClass(ActivityType type) => type switch
+    {
+        ActivityType.Closure => "activity-closure",
+        ActivityType.Gear => "activity-gear",
+        ActivityType.Power => "activity-power",
+        ActivityType.Charging => "activity-charging",
+        ActivityType.Drive => "activity-drive",
+        ActivityType.Climate => "activity-climate",
+        ActivityType.Security => "activity-security",
+        _ => ""
+    };
+
+    private string FormatTime(DateTime utcTime)
+    {
+        if (TimeZoneService == null)
+            return utcTime.ToString("MMM d, h:mm tt");
+
+        var localTime = TimeZoneService.ToLocalTime(utcTime);
+        var now = TimeZoneService.ToLocalTime(DateTime.UtcNow);
+        var diff = now - localTime;
+
+        if (diff.TotalMinutes < 1) return "Just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (localTime.Date == now.Date.AddDays(-1)) return $"Yesterday, {localTime:h:mm tt}";
+        return localTime.ToString("MMM d, h:mm tt");
+    }
+}

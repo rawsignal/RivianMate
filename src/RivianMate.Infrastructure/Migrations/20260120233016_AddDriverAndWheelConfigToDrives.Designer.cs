@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RivianMate.Infrastructure.Data;
@@ -11,9 +12,11 @@ using RivianMate.Infrastructure.Data;
 namespace RivianMate.Infrastructure.Migrations
 {
     [DbContext(typeof(RivianMateDbContext))]
-    partial class RivianMateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260120233016_AddDriverAndWheelConfigToDrives")]
+    partial class AddDriverAndWheelConfigToDrives
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1011,9 +1014,8 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("Timestamp");
 
-                    b.HasIndex("VehicleId");
-
-                    b.HasIndex("VehicleId", "Timestamp");
+                    b.HasIndex("VehicleId")
+                        .IsUnique();
 
                     b.ToTable("VehicleStates");
                 });

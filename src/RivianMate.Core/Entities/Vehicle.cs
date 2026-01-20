@@ -94,6 +94,12 @@ public class Vehicle : IOwnerOwnedEntity
     public string? ImageContentType { get; set; }
 
     /// <summary>
+    /// The original image URL from Rivian API.
+    /// Contains vehicle configuration info like paint color in the path.
+    /// </summary>
+    public string? ImageUrl { get; set; }
+
+    /// <summary>
     /// The vehicle version number (1-5) that works for fetching images from Rivian API.
     /// Stored to avoid trying all versions on subsequent requests.
     /// </summary>
@@ -131,4 +137,5 @@ public class Vehicle : IOwnerOwnedEntity
     public ICollection<Drive> Drives { get; set; } = new List<Drive>();
     public ICollection<ChargingSession> ChargingSessions { get; set; } = new List<ChargingSession>();
     public ICollection<BatteryHealthSnapshot> BatteryHealthSnapshots { get; set; } = new List<BatteryHealthSnapshot>();
+    public ICollection<ActivityFeedItem> ActivityFeed { get; set; } = new List<ActivityFeedItem>();
 }

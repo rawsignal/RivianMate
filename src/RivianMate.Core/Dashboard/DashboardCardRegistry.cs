@@ -135,6 +135,22 @@ public static class DashboardCardRegistry
             DefaultOrder: 3
         ));
 
+        cards.Add("activity-feed", new DashboardCardDefinition(
+            Id: "activity-feed",
+            Name: "Activity Feed",
+            Icon: "list",
+            Section: DashboardSection.MainGrid,
+            DefaultOrder: 4
+        ));
+
+        cards.Add("recalls", new DashboardCardDefinition(
+            Id: "recalls",
+            Name: "Safety Recalls",
+            Icon: "alert-triangle",
+            Section: DashboardSection.MainGrid,
+            DefaultOrder: 5
+        ));
+
         Cards = cards;
     }
 }

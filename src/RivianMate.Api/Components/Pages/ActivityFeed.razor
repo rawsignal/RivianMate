@@ -1,0 +1,275 @@
+@page "/activity"
+@page "/activity/{VehicleId:guid}"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+@attribute [Authorize]
+@inject ActivityFeedService ActivityFeedService
+@inject VehicleService VehicleService
+@inject TimeZoneService TimeZoneService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ILogger<ActivityFeed> Logger
+
+<PageTitle>Activity Feed - RivianMate</PageTitle>
+
+<!-- Page Header -->
+<div style="margin-bottom: var(--space-6);">
+    <a href="/" style="font-size: 0.875rem; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+        <Icon Name="chevron-left" Size="16" />
+        Back to Dashboard
+    </a>
+    <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+        <Icon Name="list" Size="28" Style="color: var(--color-accent);" />
+        Activity Feed
+    </h1>
+</div>
+
+@if (_loading)
+{
+    <div class="loading">
+        <p>Loading activity...</p>
+    </div>
+}
+else if (_notFound)
+{
+    <NotFound Title="Vehicle Not Found"
+              Message="The requested vehicle was not found or you don't have access to it."
+              Icon="list" />
+}
+else
+{
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="activity-filters">
+            <div class="activity-filter-group">
+                <label for="filterType">Type:</label>
+                <select id="filterType" @bind="_selectedType" @bind:after="FilterChanged">
+                    <option value="">All Types</option>
+                    <option value="Closure">Closures</option>
+                    <option value="Gear">Gear Changes</option>
+                    <option value="Power">Power State</option>
+                    <option value="Charging">Charging</option>
+                    <option value="Drive">Drives</option>
+                    <option value="Climate">Climate</option>
+                    <option value="Security">Security</option>
+                    <option value="Software">Software</option>
+                </select>
+            </div>
+            <div class="activity-filter-group">
+                <label for="filterStart">From:</label>
+                <input type="date" id="filterStart" @bind="_startDate" @bind:after="FilterChanged" />
+            </div>
+            <div class="activity-filter-group">
+                <label for="filterEnd">To:</label>
+                <input type="date" id="filterEnd" @bind="_endDate" @bind:after="FilterChanged" />
+            </div>
+            @if (_hasFilters)
+            {
+                <button class="btn btn-secondary btn-sm" style="margin-left: auto;" @onclick="ClearFilters">
+                    <Icon Name="x" Size="14" />
+                    Clear
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (_activities == null || !_activities.Any())
+    {
+        <div class="card" style="text-align: center; padding: var(--space-12);">
+            <Icon Name="list" Size="64" Style="color: var(--color-text-muted); opacity: 0.3; margin-bottom: var(--space-4);" />
+            <h3 style="margin-bottom: var(--space-4);">No Activity Found</h3>
+            @if (_hasFilters)
+            {
+                <p>No activity matches your current filters. Try adjusting the date range or type filter.</p>
+            }
+            else
+            {
+                <p>Activity events will appear here as your vehicle state changes.</p>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="activity-list-full">
+                @{
+                    DateTime? currentDate = null;
+                }
+                @foreach (var activity in _activities)
+                {
+                    var activityDate = TimeZoneService.ToLocalTime(activity.Timestamp).Date;
+                    if (currentDate != activityDate)
+                    {
+                        currentDate = activityDate;
+                        <div class="activity-date-group">@FormatDateHeader(activityDate)</div>
+                    }
+                    <div class="activity-list-item">
+                        <div class="activity-icon @GetActivityTypeClass(activity.Type)">
+                            <Icon Name="@GetActivityIcon(activity.Type)" Size="18" />
+                        </div>
+                        <div class="activity-details">
+                            <span class="activity-message">@activity.Message</span>
+                            <span class="activity-time">@FormatTime(activity.Timestamp)</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (_activities.Count >= _pageSize)
+        {
+            <div style="text-align: center; margin-top: var(--space-4);">
+                <button class="btn btn-secondary" @onclick="LoadMore">Load More</button>
+            </div>
+        }
+    }
+}
+
+@code {
+    [Parameter]
+    public Guid? VehicleId { get; set; }
+
+    private List<ActivityFeedItem>? _activities;
+    private Vehicle? _vehicle;
+    private bool _loading = true;
+    private bool _notFound = false;
+
+    // Filters
+    private string _selectedType = "";
+    private DateTime? _startDate;
+    private DateTime? _endDate;
+    private int _pageSize = 50;
+    private int _currentPage = 1;
+
+    private bool _hasFilters => !string.IsNullOrEmpty(_selectedType) || _startDate.HasValue || _endDate.HasValue;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = Guid.Parse(authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "");
+
+            // Get vehicle
+            if (VehicleId.HasValue)
+            {
+                _vehicle = await VehicleService.GetVehicleByPublicIdAsync(VehicleId.Value, userId);
+            }
+            else
+            {
+                var vehicles = await VehicleService.GetVehiclesForUserAsync(userId);
+                _vehicle = vehicles.FirstOrDefault();
+            }
+
+            if (_vehicle == null)
+            {
+                _notFound = true;
+            }
+            else
+            {
+                await LoadActivityAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading activity feed");
+            _notFound = true;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadActivityAsync()
+    {
+        if (_vehicle == null) return;
+
+        ActivityType? filterType = null;
+        if (!string.IsNullOrEmpty(_selectedType) && Enum.TryParse<ActivityType>(_selectedType, out var parsedType))
+        {
+            filterType = parsedType;
+        }
+
+        _activities = await ActivityFeedService.GetRecentActivityAsync(
+            _vehicle.Id,
+            _pageSize * _currentPage,
+            filterType);
+
+        // Apply date filters client-side (since we need to convert to local time)
+        if (_startDate.HasValue || _endDate.HasValue)
+        {
+            _activities = _activities.Where(a =>
+            {
+                var localDate = TimeZoneService.ToLocalTime(a.Timestamp).Date;
+                if (_startDate.HasValue && localDate < _startDate.Value) return false;
+                if (_endDate.HasValue && localDate > _endDate.Value) return false;
+                return true;
+            }).ToList();
+        }
+    }
+
+    private async Task FilterChanged()
+    {
+        _currentPage = 1;
+        await LoadActivityAsync();
+    }
+
+    private async Task ClearFilters()
+    {
+        _selectedType = "";
+        _startDate = null;
+        _endDate = null;
+        _currentPage = 1;
+        await LoadActivityAsync();
+    }
+
+    private async Task LoadMore()
+    {
+        _currentPage++;
+        await LoadActivityAsync();
+    }
+
+    private string FormatDateHeader(DateTime date)
+    {
+        var today = TimeZoneService.ToLocalTime(DateTime.UtcNow).Date;
+        if (date == today) return "Today";
+        if (date == today.AddDays(-1)) return "Yesterday";
+        if (date > today.AddDays(-7)) return date.ToString("dddd");
+        return date.ToString("MMMM d, yyyy");
+    }
+
+    private string FormatTime(DateTime utcTime)
+    {
+        var localTime = TimeZoneService.ToLocalTime(utcTime);
+        return localTime.ToString("h:mm tt");
+    }
+
+    private static string GetActivityIcon(ActivityType type) => type switch
+    {
+        ActivityType.Closure => "door-open",
+        ActivityType.Gear => "settings",
+        ActivityType.Power => "power",
+        ActivityType.Charging => "zap",
+        ActivityType.Drive => "navigation",
+        ActivityType.Climate => "thermometer",
+        ActivityType.Location => "map-pin",
+        ActivityType.Software => "download",
+        ActivityType.Security => "shield",
+        _ => "activity"
+    };
+
+    private static string GetActivityTypeClass(ActivityType type) => type switch
+    {
+        ActivityType.Closure => "activity-closure",
+        ActivityType.Gear => "activity-gear",
+        ActivityType.Power => "activity-power",
+        ActivityType.Charging => "activity-charging",
+        ActivityType.Drive => "activity-drive",
+        ActivityType.Climate => "activity-climate",
+        ActivityType.Security => "activity-security",
+        _ => ""
+    };
+}

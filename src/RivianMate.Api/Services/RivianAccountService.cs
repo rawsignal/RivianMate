@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using RivianMate.Api.Configuration;
 using RivianMate.Api.Services.Jobs;
 using RivianMate.Core.Entities;
+using RivianMate.Core.Enums;
 using RivianMate.Infrastructure.Data;
 using RivianMate.Infrastructure.Nhtsa;
 using RivianMate.Infrastructure.Rivian;
@@ -23,6 +26,7 @@ public class RivianAccountService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly NhtsaVinDecoderService _nhtsaService;
     private readonly PollingJobManager _jobManager;
+    private readonly PollingConfiguration _pollingConfig;
     private readonly ILogger<RivianAccountService> _logger;
     private readonly ILogger<RivianApiClient> _rivianLogger;
 
@@ -32,6 +36,7 @@ public class RivianAccountService
         IHttpClientFactory httpClientFactory,
         NhtsaVinDecoderService nhtsaService,
         PollingJobManager jobManager,
+        IOptions<PollingConfiguration> pollingConfig,
         ILogger<RivianAccountService> logger,
         ILogger<RivianApiClient> rivianLogger)
     {
@@ -40,6 +45,7 @@ public class RivianAccountService
         _httpClientFactory = httpClientFactory;
         _nhtsaService = nhtsaService;
         _jobManager = jobManager;
+        _pollingConfig = pollingConfig.Value;
         _logger = logger;
         _rivianLogger = rivianLogger;
     }
@@ -177,10 +183,16 @@ public class RivianAccountService
 
             await _db.SaveChangesAsync(cancellationToken);
 
-            // Re-register polling job (in case it was removed or account was inactive)
-            _jobManager.RegisterAccountJob(existingAccount.Id);
+            // Register for state updates based on mode
+            // In GraphQL mode, register Hangfire polling job
+            // In WebSocket mode, the background service will pick up the account on next refresh
+            if (_pollingConfig.Mode == PollingMode.GraphQL)
+            {
+                _jobManager.RegisterAccountJob(existingAccount.Id);
+            }
 
-            _logger.LogInformation("Updated existing Rivian account {AccountId} for user {UserId}", existingAccount.Id, userId);
+            _logger.LogInformation("Updated existing Rivian account {AccountId} for user {UserId} (mode: {Mode})",
+                existingAccount.Id, userId, _pollingConfig.Mode);
             return existingAccount;
         }
 
@@ -201,10 +213,14 @@ public class RivianAccountService
         _db.RivianAccounts.Add(account);
         await _db.SaveChangesAsync(cancellationToken);
 
-        // Register polling job for the new account
-        _jobManager.RegisterAccountJob(account.Id);
+        // Register for state updates based on mode
+        if (_pollingConfig.Mode == PollingMode.GraphQL)
+        {
+            _jobManager.RegisterAccountJob(account.Id);
+        }
 
-        _logger.LogInformation("Created new Rivian account {AccountId} for user {UserId}", account.Id, userId);
+        _logger.LogInformation("Created new Rivian account {AccountId} for user {UserId} (mode: {Mode})",
+            account.Id, userId, _pollingConfig.Mode);
         return account;
     }
 
@@ -224,6 +240,18 @@ public class RivianAccountService
             Decrypt(account.EncryptedRefreshToken) ?? "");
 
         return client;
+    }
+
+    /// <summary>
+    /// Get decrypted tokens for a Rivian account.
+    /// Returns (userSessionToken, accessToken) for WebSocket authentication.
+    /// </summary>
+    public (string? UserSessionToken, string? AccessToken) GetDecryptedTokens(RivianAccount account)
+    {
+        return (
+            Decrypt(account.EncryptedUserSessionToken),
+            Decrypt(account.EncryptedAccessToken)
+        );
     }
 
     /// <summary>
@@ -411,8 +439,13 @@ public class RivianAccountService
     /// </summary>
     public async Task DeleteAccountAsync(RivianAccount account, CancellationToken cancellationToken = default)
     {
-        // Remove the polling job first
-        _jobManager.RemoveAccountJob(account.Id);
+        // Remove state updates based on mode
+        // In GraphQL mode, remove the Hangfire polling job
+        // In WebSocket mode, the background service will notice the account is gone on next refresh
+        if (_pollingConfig.Mode == PollingMode.GraphQL)
+        {
+            _jobManager.RemoveAccountJob(account.Id);
+        }
 
         // Get all vehicles for this account
         var vehicleIds = await _db.Vehicles

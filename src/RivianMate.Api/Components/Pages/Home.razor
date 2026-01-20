@@ -9,6 +9,7 @@
 @attribute [Authorize]
 @inject VehicleService VehicleService
 @inject BatteryHealthService BatteryHealthService
+@inject ActivityFeedService ActivityFeedService
 @inject RivianAccountService RivianAccountService
 @inject DashboardConfigService DashboardConfigService
 @inject AuthenticationStateProvider AuthStateProvider
@@ -217,6 +218,7 @@
     private List<RivianMate.Core.Entities.BatteryHealthSnapshot>? _healthHistory;
     private List<RivianMate.Core.Entities.ChargingSession>? _recentSessions;
     private List<RivianMate.Core.Entities.Drive>? _recentDrives;
+    private List<RivianMate.Core.Entities.ActivityFeedItem>? _recentActivity;
     private double? _efficiency;
     private bool _isOnline = false;
     private Guid _userId;
@@ -322,6 +324,7 @@
             DateTime.UtcNow.AddMonths(-12));
         _recentSessions = await VehicleService.GetRecentChargingSessionsAsync(_vehicle.Id, 4);
         _recentDrives = await VehicleService.GetRecentDrivesAsync(_vehicle.Id, 4);
+        _recentActivity = await ActivityFeedService.GetRecentActivityAsync(_vehicle.Id, 6);
         _efficiency = await VehicleService.GetAverageEfficiencyAsync(_vehicle.Id);
 
         // Determine online status from power state and last update time
@@ -610,10 +613,13 @@
     {
         VehicleState = _currentState,
         VehiclePublicId = _vehicle?.PublicId,
+        VehicleModel = _vehicle?.Model ?? VehicleModel.Unknown,
+        VehicleYear = _vehicle?.Year,
         HealthSummary = _healthSummary,
         HealthHistory = _healthHistory,
         RecentSessions = _recentSessions,
         RecentDrives = _recentDrives,
+        RecentActivity = _recentActivity,
         Efficiency = _efficiency,
         TimeZoneService = TimeZoneService,
         Section = section

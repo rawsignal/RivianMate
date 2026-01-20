@@ -1,0 +1,254 @@
+@page "/recalls"
+@page "/recalls/{VehicleId:guid}"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
+@using RivianMate.Infrastructure.Nhtsa
+@attribute [Authorize]
+@inject NhtsaRecallService RecallService
+@inject VehicleService VehicleService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ILogger<Recalls> Logger
+
+<PageTitle>Safety Recalls - RivianMate</PageTitle>
+
+<!-- Page Header -->
+<div style="margin-bottom: var(--space-6);">
+    <a href="/" style="font-size: 0.875rem; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+        <Icon Name="chevron-left" Size="16" />
+        Back to Dashboard
+    </a>
+    <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+        <Icon Name="alert-triangle" Size="28" Style="color: var(--color-accent);" />
+        Safety Recalls
+    </h1>
+    @if (_vehicle != null)
+    {
+        <p style="color: var(--color-text-muted); margin-top: var(--space-2);">
+            @_vehicle.Year @_vehicle.Model @(!string.IsNullOrEmpty(_vehicle.Name) ? $"({_vehicle.Name})" : "")
+        </p>
+    }
+</div>
+
+@if (_loading)
+{
+    <div class="card" style="text-align: center; padding: var(--space-12);">
+        <div class="spinner" style="width: 48px; height: 48px; margin: 0 auto var(--space-4);"></div>
+        <p>Checking NHTSA for recalls...</p>
+    </div>
+}
+else if (_notFound)
+{
+    <NotFound Title="Vehicle Not Found"
+              Message="The requested vehicle was not found or you don't have access to it."
+              Icon="alert-triangle" />
+}
+else if (_error != null)
+{
+    <div class="card" style="text-align: center; padding: var(--space-12);">
+        <Icon Name="alert-triangle" Size="64" Style="color: var(--color-warning); margin-bottom: var(--space-4);" />
+        <h3 style="margin-bottom: var(--space-4);">Unable to Check Recalls</h3>
+        <p style="color: var(--color-text-muted);">@_error</p>
+        <button class="btn btn-primary" style="margin-top: var(--space-4);" @onclick="RetryAsync">
+            <Icon Name="refresh-cw" Size="16" />
+            Try Again
+        </button>
+    </div>
+}
+else if (_recalls == null || !_recalls.Any())
+{
+    <div class="card" style="text-align: center; padding: var(--space-12);">
+        <Icon Name="check-circle" Size="64" Style="color: var(--color-success); margin-bottom: var(--space-4);" />
+        <h3 style="margin-bottom: var(--space-4);">No Recalls Found</h3>
+        <p style="color: var(--color-text-muted);">
+            No safety recalls found for @_vehicle?.Year @_vehicle?.Model vehicles.
+        </p>
+        <p style="color: var(--color-text-muted); font-size: 0.875rem; margin-top: var(--space-4);">
+            @if (!string.IsNullOrEmpty(_vehicle?.Vin))
+            {
+                <a href="@GetNhtsaVinUrl()" target="_blank" rel="noopener noreferrer" style="color: var(--color-accent);">
+                    Verify with your VIN on NHTSA.gov
+                    <Icon Name="external-link" Size="14" />
+                </a>
+            }
+            else
+            {
+                <span>Data provided by the National Highway Traffic Safety Administration</span>
+            }
+        </p>
+    </div>
+}
+else
+{
+    <div class="recall-disclaimer" style="margin-bottom: var(--space-4);">
+        <div>
+            <p>
+                <Icon Name="info" Size="16" /> This information is based on recalls issued for your vehicle's make, model, and year.
+                To confirm whether your specific vehicle has any unrepaired recalls, check NHTSA directly.
+            </p>
+            @if (!string.IsNullOrEmpty(_vehicle?.Vin))
+            {
+                <a href="@GetNhtsaVinUrl()" target="_blank" rel="noopener noreferrer" style="color: var(--color-accent); display: inline-flex; align-items: center; gap: var(--space-1); margin-top: var(--space-2);">
+                    Check your VIN on NHTSA.gov
+                    <Icon Name="external-link" Size="14" />
+                </a>
+            }
+        </div>
+    </div>
+
+    <div class="recalls-page-summary card" style="margin-bottom: var(--space-4);">
+        <div class="recalls-page-count">
+            <span class="count">@_recalls.Count</span>
+            <span class="label">Open Safety Recall@(_recalls.Count != 1 ? "s" : "")</span>
+        </div>
+        <p style="color: var(--color-text-muted); font-size: 0.875rem;">
+            Contact your Rivian Service Center to schedule recall repairs.
+        </p>
+    </div>
+
+    @foreach (var recall in _recalls)
+    {
+        <div class="card recall-detail-card">
+            <div class="recall-header">
+                <div class="recall-campaign">
+                    <Icon Name="alert-circle" Size="20" Style="color: var(--color-warning);" />
+                    <span>Campaign @recall.CampaignNumber</span>
+                </div>
+                @if (recall.ReportReceivedDate.HasValue)
+                {
+                    <span class="recall-date">@recall.ReportReceivedDate.Value.ToString("MMMM d, yyyy")</span>
+                }
+            </div>
+
+            <h3 class="recall-component-title">@recall.Component</h3>
+
+            @if (!string.IsNullOrEmpty(recall.Summary))
+            {
+                <div class="recall-section">
+                    <h4>Summary</h4>
+                    <p>@recall.Summary</p>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(recall.Consequence))
+            {
+                <div class="recall-section">
+                    <h4>Safety Risk</h4>
+                    <p>@recall.Consequence</p>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(recall.Remedy))
+            {
+                <div class="recall-section">
+                    <h4>Remedy</h4>
+                    <p>@recall.Remedy</p>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(recall.Notes))
+            {
+                <div class="recall-section">
+                    <h4>Notes</h4>
+                    <p>@recall.Notes</p>
+                </div>
+            }
+        </div>
+    }
+
+    <p style="text-align: center; margin-top: var(--space-6); color: var(--color-text-muted); font-size: 0.8125rem;">
+        Data provided by the National Highway Traffic Safety Administration (NHTSA)
+    </p>
+}
+
+@code {
+    [Parameter]
+    public Guid? VehicleId { get; set; }
+
+    private Vehicle? _vehicle;
+    private List<RecallInfo>? _recalls;
+    private bool _loading = true;
+    private bool _notFound = false;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userId = Guid.Parse(authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "");
+
+            // Get vehicle
+            if (VehicleId.HasValue)
+            {
+                _vehicle = await VehicleService.GetVehicleByPublicIdAsync(VehicleId.Value, userId);
+            }
+            else
+            {
+                var vehicles = await VehicleService.GetVehiclesForUserAsync(userId);
+                _vehicle = vehicles.FirstOrDefault();
+            }
+
+            if (_vehicle == null)
+            {
+                _notFound = true;
+            }
+            else if (_vehicle.Model == VehicleModel.Unknown || !_vehicle.Year.HasValue)
+            {
+                _error = "Vehicle model or year information is missing. Unable to check recalls.";
+            }
+            else
+            {
+                await LoadRecallsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading recalls page");
+            _notFound = true;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadRecallsAsync()
+    {
+        if (_vehicle == null || _vehicle.Model == VehicleModel.Unknown || !_vehicle.Year.HasValue)
+            return;
+
+        _error = null;
+        var result = await RecallService.GetRivianRecallsAsync(_vehicle.Model, _vehicle.Year.Value);
+
+        if (result.Success)
+        {
+            _recalls = result.Recalls.OrderByDescending(r => r.ReportReceivedDate).ToList();
+        }
+        else
+        {
+            _error = result.Error;
+        }
+    }
+
+    private async Task RetryAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        await LoadRecallsAsync();
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private string GetNhtsaVinUrl()
+    {
+        var vin = _vehicle?.Vin ?? "";
+        return $"https://www.nhtsa.gov/recalls?vymm={Uri.EscapeDataString(vin)}";
+    }
+}

@@ -67,18 +67,20 @@ public class AccountPollingJob
 
         try
         {
-            var hasAwakeVehicle = await PollAccountVehiclesAsync(account, cancellationToken);
+            var (hasAwakeVehicle, vehicleErrors) = await PollAccountVehiclesAsync(account, cancellationToken);
 
             // Update last sync
             account.LastSyncAt = DateTime.UtcNow;
-            account.LastSyncError = null;
+            account.LastSyncError = vehicleErrors.Count > 0
+                ? string.Join("; ", vehicleErrors)
+                : null;
             await _db.SaveChangesAsync(cancellationToken);
 
             // Adjust polling frequency based on vehicle state
             _jobManager.UpdateAccountPollingInterval(accountId, hasAwakeVehicle);
 
-            _logger.LogDebug("Poll complete for account {AccountId}, awake vehicles: {HasAwake}",
-                accountId, hasAwakeVehicle);
+            _logger.LogDebug("Poll complete for account {AccountId}, awake vehicles: {HasAwake}, errors: {ErrorCount}",
+                accountId, hasAwakeVehicle, vehicleErrors.Count);
         }
         catch (RateLimitedException ex)
         {
@@ -102,7 +104,7 @@ public class AccountPollingJob
         }
     }
 
-    private async Task<bool> PollAccountVehiclesAsync(RivianAccount account, CancellationToken cancellationToken)
+    private async Task<(bool AnyAwake, List<string> Errors)> PollAccountVehiclesAsync(RivianAccount account, CancellationToken cancellationToken)
     {
         using var client = _rivianAccountService.CreateApiClient(account);
 
@@ -113,10 +115,12 @@ public class AccountPollingJob
         if (!vehicles.Any())
         {
             _logger.LogDebug("No active vehicles for account {AccountId}", account.Id);
-            return false;
+            return (false, new List<string>());
         }
 
         var anyAwake = false;
+        var errors = new List<string>();
+        var hasRefreshedToken = false;
 
         foreach (var vehicle in vehicles)
         {
@@ -125,14 +129,91 @@ public class AccountPollingJob
                 var isAwake = await PollVehicleAsync(vehicle, client, cancellationToken);
                 if (isAwake) anyAwake = true;
             }
+            catch (ExternalServiceException ex) when (IsLikelyTokenExpiration(ex) && !hasRefreshedToken)
+            {
+                // Try refreshing the CSRF token and retry once
+                _logger.LogWarning("Possible token expiration for account {AccountId}, attempting CSRF refresh...", account.Id);
+
+                if (await TryRefreshCsrfTokenAsync(client, account, cancellationToken))
+                {
+                    hasRefreshedToken = true;
+                    _logger.LogInformation("CSRF token refreshed for account {AccountId}, retrying vehicle poll...", account.Id);
+
+                    try
+                    {
+                        var isAwake = await PollVehicleAsync(vehicle, client, cancellationToken);
+                        if (isAwake) anyAwake = true;
+                    }
+                    catch (Exception retryEx)
+                    {
+                        _logger.LogError(retryEx, "Error polling vehicle {VehicleId} after token refresh", vehicle.Id);
+                        errors.Add($"Vehicle {vehicle.Name}: {retryEx.Message} (after token refresh)");
+                    }
+                }
+                else
+                {
+                    _logger.LogError("Failed to refresh CSRF token for account {AccountId}", account.Id);
+                    errors.Add($"Vehicle {vehicle.Name}: {ex.Message} (token refresh failed)");
+                }
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error polling vehicle {VehicleId} for account {AccountId}",
                     vehicle.Id, account.Id);
+                errors.Add($"Vehicle {vehicle.Name}: {ex.Message}");
             }
         }
 
-        return anyAwake;
+        return (anyAwake, errors);
+    }
+
+    /// <summary>
+    /// Check if an exception is likely caused by token expiration.
+    /// Rivian returns INTERNAL_SERVER_ERROR or UNAUTHENTICATED when tokens expire.
+    /// </summary>
+    private static bool IsLikelyTokenExpiration(ExternalServiceException ex)
+    {
+        var message = ex.Message.ToLowerInvariant();
+        return message.Contains("internal_server_error") ||
+               message.Contains("unauthenticated") ||
+               message.Contains("unauthorized") ||
+               message.Contains("unexpected error occurred");
+    }
+
+    /// <summary>
+    /// Try to refresh the CSRF token and update stored tokens.
+    /// </summary>
+    private async Task<bool> TryRefreshCsrfTokenAsync(
+        Infrastructure.Rivian.RivianApiClient client,
+        RivianAccount account,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!await client.CreateCsrfTokenAsync(cancellationToken))
+            {
+                return false;
+            }
+
+            // Get the new tokens and save them to the database
+            var tokens = client.GetTokens();
+            await _rivianAccountService.UpdateTokensAsync(
+                account,
+                tokens.CsrfToken,
+                tokens.AppSessionToken,
+                tokens.UserSessionToken,
+                tokens.AccessToken,
+                tokens.RefreshToken,
+                cancellationToken);
+
+            _logger.LogInformation("Updated stored tokens for account {AccountId} after CSRF refresh", account.Id);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error refreshing CSRF token for account {AccountId}", account.Id);
+            return false;
+        }
     }
 
     private async Task<bool> PollVehicleAsync(
@@ -140,7 +221,8 @@ public class AccountPollingJob
         Infrastructure.Rivian.RivianApiClient client,
         CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Polling vehicle {VehicleName} ({VehicleId})", vehicle.Name, vehicle.Id);
+        _logger.LogInformation("Polling vehicle {VehicleName} (ID: {VehicleId}, RivianId: {RivianVehicleId})",
+            vehicle.Name, vehicle.Id, vehicle.RivianVehicleId);
 
         var (state, rawJson) = await client.GetVehicleStateAsync(vehicle.RivianVehicleId, cancellationToken);
 

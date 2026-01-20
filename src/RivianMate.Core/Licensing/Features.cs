@@ -14,6 +14,7 @@ public static class Features
     public const string BatteryCareTips = "battery_care_tips";
     public const string AdvancedAnalytics = "advanced_analytics";
     public const string DriveHistory = "drive_history";
+    public const string ActivityFeed = "activity_feed";
     public const string ExportData = "export_data";
     public const string Notifications = "notifications";
     public const string ApiAccess = "api_access";
@@ -32,6 +33,7 @@ public static class Features
         BatteryCareTips,
         AdvancedAnalytics,
         DriveHistory,
+        ActivityFeed,
         ExportData,
     };
 

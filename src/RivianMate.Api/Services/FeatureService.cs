@@ -86,6 +86,7 @@ public class FeatureService
     public bool HasBatteryCareTips => IsEnabled(Features.BatteryCareTips);
     public bool HasAdvancedAnalytics => IsEnabled(Features.AdvancedAnalytics);
     public bool HasDriveHistory => IsEnabled(Features.DriveHistory);
+    public bool HasActivityFeed => IsEnabled(Features.ActivityFeed);
     public bool HasExportData => IsEnabled(Features.ExportData);
     public bool HasNotifications => IsEnabled(Features.Notifications);
     public bool HasApiAccess => IsEnabled(Features.ApiAccess);
