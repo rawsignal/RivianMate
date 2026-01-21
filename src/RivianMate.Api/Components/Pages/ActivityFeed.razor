@@ -118,12 +118,10 @@ else
             </div>
         </div>
 
-        @if (_activities.Count >= _pageSize)
-        {
-            <div style="text-align: center; margin-top: var(--space-4);">
-                <button class="btn btn-secondary" @onclick="LoadMore">Load More</button>
-            </div>
-        }
+        <Pagination CurrentPage="_currentPage"
+                    PageSize="_pageSize"
+                    TotalCount="_totalCount"
+                    OnPageChanged="GoToPage" />
     }
 }
 
@@ -136,14 +134,18 @@ else
     private bool _loading = true;
     private bool _notFound = false;
 
-    // Filters
+    // Filters - default to last 30 days
     private string _selectedType = "";
-    private DateTime? _startDate;
+    private DateTime? _startDate = DateTime.Today.AddDays(-30);
     private DateTime? _endDate;
-    private int _pageSize = 50;
-    private int _currentPage = 1;
 
-    private bool _hasFilters => !string.IsNullOrEmpty(_selectedType) || _startDate.HasValue || _endDate.HasValue;
+    // Pagination
+    private int _pageSize = 10;
+    private int _currentPage = 1;
+    private int _totalCount = 0;
+
+    private bool _hasFilters => !string.IsNullOrEmpty(_selectedType) ||
+        _startDate != DateTime.Today.AddDays(-30) || _endDate.HasValue;
 
     protected override async Task OnInitializedAsync()
     {
@@ -193,22 +195,24 @@ else
             filterType = parsedType;
         }
 
-        _activities = await ActivityFeedService.GetRecentActivityAsync(
-            _vehicle.Id,
-            _pageSize * _currentPage,
-            filterType);
+        // Convert local dates to UTC for server-side filtering
+        DateTime? sinceUtc = _startDate.HasValue
+            ? TimeZoneService.ToUtc(_startDate.Value)
+            : null;
+        DateTime? untilUtc = _endDate.HasValue
+            ? TimeZoneService.ToUtc(_endDate.Value.AddDays(1)) // Include the entire end day
+            : null;
 
-        // Apply date filters client-side (since we need to convert to local time)
-        if (_startDate.HasValue || _endDate.HasValue)
-        {
-            _activities = _activities.Where(a =>
-            {
-                var localDate = TimeZoneService.ToLocalTime(a.Timestamp).Date;
-                if (_startDate.HasValue && localDate < _startDate.Value) return false;
-                if (_endDate.HasValue && localDate > _endDate.Value) return false;
-                return true;
-            }).ToList();
-        }
+        var (items, totalCount) = await ActivityFeedService.GetActivityPagedAsync(
+            _vehicle.Id,
+            _currentPage,
+            _pageSize,
+            filterType,
+            sinceUtc,
+            untilUtc);
+
+        _activities = items;
+        _totalCount = totalCount;
     }
 
     private async Task FilterChanged()
@@ -220,15 +224,15 @@ else
     private async Task ClearFilters()
     {
         _selectedType = "";
-        _startDate = null;
+        _startDate = DateTime.Today.AddDays(-30);
         _endDate = null;
         _currentPage = 1;
         await LoadActivityAsync();
     }
 
-    private async Task LoadMore()
+    private async Task GoToPage(int page)
     {
-        _currentPage++;
+        _currentPage = page;
         await LoadActivityAsync();
     }
 

@@ -55,7 +55,7 @@ else
         <div class="grid-4">
             <div class="mini-stat">
                 <p class="mini-stat-label">Total Drives</p>
-                <p class="mini-stat-value">@_drives.Count</p>
+                <p class="mini-stat-value">@_totalDrives</p>
             </div>
             <div class="mini-stat">
                 <p class="mini-stat-label">Total Distance</p>
@@ -109,6 +109,11 @@ else
                     </div>
                 }
             </div>
+
+            <Pagination CurrentPage="_currentPage"
+                        PageSize="_pageSize"
+                        TotalCount="_totalCount"
+                        OnPageChanged="GoToPage" />
         </div>
 
         <!-- Drive Details -->
@@ -238,7 +243,7 @@ else
                                 {
                                     <div class="drive-detail-item">
                                         <span class="drive-detail-label">Drive Mode</span>
-                                        <span class="drive-detail-value">@_selectedDrive.DriveMode</span>
+                                        <span class="drive-detail-value">@FormatDriveMode(_selectedDrive.DriveMode)</span>
                                     </div>
                                 }
                             </div>
@@ -294,7 +299,13 @@ else
     private double _totalDistance;
     private double _totalEnergy;
     private double? _avgEfficiency;
+    private int _totalDrives;
     private Guid _userId;
+
+    // Pagination
+    private int _pageSize = 10;
+    private int _currentPage = 1;
+    private int _totalCount = 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -371,15 +382,24 @@ else
 
             if (_vehicle != null)
             {
-                _drives = await VehicleService.GetDrivesAsync(_vehicle.Id);
+                // Load all drives first for summary stats
+                var allDrives = await VehicleService.GetDrivesAsync(_vehicle.Id);
+                if (allDrives?.Any() == true)
+                {
+                    _totalDrives = allDrives.Count;
+                    _totalDistance = allDrives.Sum(d => d.DistanceMiles ?? 0);
+                    _totalEnergy = allDrives.Sum(d => d.EnergyUsedKwh ?? 0);
+                    _avgEfficiency = _totalEnergy > 0 ? _totalDistance / _totalEnergy : null;
+                }
 
-                // Calculate summary stats
+                // Load paginated drives for display
+                var (drives, totalCount) = await VehicleService.GetDrivesPagedAsync(
+                    _vehicle.Id, _currentPage, _pageSize);
+                _drives = drives;
+                _totalCount = totalCount;
+
                 if (_drives?.Any() == true)
                 {
-                    _totalDistance = _drives.Sum(d => d.DistanceMiles ?? 0);
-                    _totalEnergy = _drives.Sum(d => d.EnergyUsedKwh ?? 0);
-                    _avgEfficiency = _totalEnergy > 0 ? _totalDistance / _totalEnergy : null;
-
                     // Select the first drive by default
                     if (_drives.FirstOrDefault() is { } firstDrive)
                     {
@@ -422,6 +442,28 @@ else
         _ = SelectDriveAsync(drive);
     }
 
+    private async Task GoToPage(int page)
+    {
+        if (_vehicle == null) return;
+
+        _currentPage = page;
+        var (drives, _) = await VehicleService.GetDrivesPagedAsync(
+            _vehicle.Id, _currentPage, _pageSize);
+        _drives = drives;
+
+        // Select first drive on the new page
+        if (_drives?.Any() == true)
+        {
+            await SelectDriveAsync(_drives.First());
+        }
+        else
+        {
+            _selectedDrive = null;
+            _positions = null;
+            _positionCount = 0;
+        }
+    }
+
     private string FormatDriveDate(DateTime utcTime)
     {
         var localTime = TimeZoneService.ToLocalTime(utcTime);
@@ -444,6 +486,21 @@ else
         if (duration.TotalMinutes < 60) return $"{(int)duration.TotalMinutes} min";
         return $"{(int)duration.TotalHours}h {duration.Minutes}m";
     }
+
+    private static string FormatDriveMode(string? mode) => mode switch
+    {
+        "everyday" => "All-Purpose",
+        "sport" => "Sport",
+        "conserve" => "Conserve",
+        "snow" => "Snow",
+        "tow" => "Towing",
+        "offroad_auto" => "Off-Road Auto",
+        "offroad_rock" => "Rock Crawl",
+        "offroad_rally" => "Rally",
+        "offroad_drift" => "Drift",
+        "offroad_soft" => "Soft Sand",
+        _ => mode ?? "Unknown"
+    };
 
     public async ValueTask DisposeAsync()
     {

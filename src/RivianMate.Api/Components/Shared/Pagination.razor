@@ -1,0 +1,98 @@
+@* Reusable pagination component *@
+
+@if (TotalPages > 1)
+{
+    <div class="pagination">
+        <button class="pagination-btn" disabled="@(CurrentPage == 1)" @onclick="() => GoToPage(1)">
+            <Icon Name="chevrons-left" Size="16" />
+        </button>
+        <button class="pagination-btn" disabled="@(CurrentPage == 1)" @onclick="() => GoToPage(CurrentPage - 1)">
+            <Icon Name="chevron-left" Size="16" />
+        </button>
+
+        @foreach (var pageNum in GetPageNumbers())
+        {
+            @if (pageNum == -1)
+            {
+                <span class="pagination-ellipsis">...</span>
+            }
+            else
+            {
+                <button class="pagination-btn @(pageNum == CurrentPage ? "active" : "")" @onclick="() => GoToPage(pageNum)">
+                    @pageNum
+                </button>
+            }
+        }
+
+        <button class="pagination-btn" disabled="@(CurrentPage == TotalPages)" @onclick="() => GoToPage(CurrentPage + 1)">
+            <Icon Name="chevron-right" Size="16" />
+        </button>
+        <button class="pagination-btn" disabled="@(CurrentPage == TotalPages)" @onclick="() => GoToPage(TotalPages)">
+            <Icon Name="chevrons-right" Size="16" />
+        </button>
+
+        <span class="pagination-info">
+            @(StartIndex)-@EndIndex of @TotalCount
+        </span>
+    </div>
+}
+
+@code {
+    [Parameter] public int CurrentPage { get; set; } = 1;
+    [Parameter] public int PageSize { get; set; } = 10;
+    [Parameter] public int TotalCount { get; set; }
+    [Parameter] public EventCallback<int> OnPageChanged { get; set; }
+
+    private int TotalPages => TotalCount > 0 ? (int)Math.Ceiling((double)TotalCount / PageSize) : 1;
+    private int StartIndex => TotalCount > 0 ? (CurrentPage - 1) * PageSize + 1 : 0;
+    private int EndIndex => Math.Min(CurrentPage * PageSize, TotalCount);
+
+    private async Task GoToPage(int page)
+    {
+        if (page < 1 || page > TotalPages || page == CurrentPage)
+            return;
+
+        await OnPageChanged.InvokeAsync(page);
+    }
+
+    private IEnumerable<int> GetPageNumbers()
+    {
+        const int maxVisible = 5;
+
+        if (TotalPages <= maxVisible)
+        {
+            return Enumerable.Range(1, TotalPages);
+        }
+
+        var pages = new List<int>();
+        var start = Math.Max(1, CurrentPage - 2);
+        var end = Math.Min(TotalPages, start + maxVisible - 1);
+
+        if (end == TotalPages)
+        {
+            start = Math.Max(1, end - maxVisible + 1);
+        }
+
+        if (start > 1)
+        {
+            pages.Add(1);
+            if (start > 2)
+                pages.Add(-1); // Ellipsis
+        }
+
+        for (int i = start; i <= end; i++)
+        {
+            if (!pages.Contains(i))
+                pages.Add(i);
+        }
+
+        if (end < TotalPages)
+        {
+            if (end < TotalPages - 1)
+                pages.Add(-1); // Ellipsis
+            pages.Add(TotalPages);
+        }
+
+        return pages;
+    }
+}

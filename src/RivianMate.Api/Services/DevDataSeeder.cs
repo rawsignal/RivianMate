@@ -89,9 +89,12 @@ public class DevDataSeeder
         await _db.SaveChangesAsync();
 
         // Generate historical data for each vehicle
-        foreach (var vehicle in vehicles)
+        for (int i = 0; i < vehicles.Count; i++)
         {
-            await GenerateVehicleDataAsync(vehicle);
+            var vehicle = vehicles[i];
+            // First vehicle gets real production data, others get synthetic
+            var useRealDriveData = i == 0;
+            await GenerateVehicleDataAsync(vehicle, useRealDriveData);
         }
 
         _logger.LogInformation(
@@ -239,7 +242,7 @@ public class DevDataSeeder
         };
     }
 
-    private async Task GenerateVehicleDataAsync(Vehicle vehicle)
+    private async Task GenerateVehicleDataAsync(Vehicle vehicle, bool useRealDriveData = false)
     {
         var random = new Random(vehicle.Id);
         var scenarios = GetVehicleScenario(vehicle.RivianVehicleId);
@@ -260,36 +263,276 @@ public class DevDataSeeder
         var recentStates = GenerateRecentVehicleStates(vehicle, scenarios, random);
         _db.VehicleStates.AddRange(recentStates);
 
+        // Generate activity feed items (for the last 30 days)
+        var activities = GenerateActivityFeedItems(vehicle, scenarios, random);
+        _db.ActivityFeed.AddRange(activities);
+
         // Save everything except drives/positions first
         await _db.SaveChangesAsync();
 
-        // Generate drives with positions (for the last 30 days)
-        // We need to save drives first to get IDs, then add positions
-        var (drives, positionsByDriveIndex) = GenerateDrivesWithPositions(vehicle, scenarios, random);
-
-        _db.Drives.AddRange(drives);
-        await _db.SaveChangesAsync(); // Drives now have IDs
-
-        // Now assign the correct DriveIds to positions and add them
-        var allPositions = new List<Position>();
-        for (int i = 0; i < drives.Count; i++)
+        int driveCount;
+        if (useRealDriveData)
         {
-            if (positionsByDriveIndex.TryGetValue(i, out var drivePositions))
+            // Use real production drive data with actual GPS traces
+            await SeedRealDriveDataAsync(vehicle);
+            driveCount = 4; // Known count from real data
+        }
+        else
+        {
+            // Generate synthetic drives with positions (for the last 30 days)
+            // We need to save drives first to get IDs, then add positions
+            var (drives, positionsByDriveIndex) = GenerateDrivesWithPositions(vehicle, scenarios, random);
+
+            _db.Drives.AddRange(drives);
+            await _db.SaveChangesAsync(); // Drives now have IDs
+
+            // Now assign the correct DriveIds to positions and add them
+            var allPositions = new List<Position>();
+            for (int i = 0; i < drives.Count; i++)
             {
-                foreach (var pos in drivePositions)
+                if (positionsByDriveIndex.TryGetValue(i, out var drivePositions))
                 {
-                    pos.DriveId = drives[i].Id;
+                    foreach (var pos in drivePositions)
+                    {
+                        pos.DriveId = drives[i].Id;
+                    }
+                    allPositions.AddRange(drivePositions);
                 }
-                allPositions.AddRange(drivePositions);
+            }
+
+            _db.Positions.AddRange(allPositions);
+            await _db.SaveChangesAsync();
+            driveCount = drives.Count;
+        }
+
+        _logger.LogInformation(
+            "Generated data for {VehicleName}: {Snapshots} snapshots, {Sessions} sessions, {Drives} drives, {Activities} activities{RealData}",
+            vehicle.Name, snapshots.Count, sessions.Count, driveCount, activities.Count,
+            useRealDriveData ? " (real drive data)" : "");
+    }
+
+    private List<ActivityFeedItem> GenerateActivityFeedItems(
+        Vehicle vehicle, VehicleScenario scenario, Random random)
+    {
+        var activities = new List<ActivityFeedItem>();
+        var vehicleName = vehicle.Name ?? vehicle.Model.ToString();
+        var startDate = DateTime.UtcNow.AddDays(-30);
+
+        // Generate varied activities over the last 30 days
+        for (int day = 0; day < 30; day++)
+        {
+            var dayDate = startDate.AddDays(day);
+
+            // Morning: Wake up, unlock, drive away
+            if (random.NextDouble() < 0.7) // 70% chance of activity each day
+            {
+                var morningTime = dayDate.Date.AddHours(7 + random.Next(0, 3)).AddMinutes(random.Next(0, 60));
+
+                // Wake up
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = morningTime,
+                    Type = ActivityType.Power,
+                    Message = $"{vehicleName} woke up"
+                });
+
+                // Unlock
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = morningTime.AddSeconds(random.Next(5, 30)),
+                    Type = ActivityType.Security,
+                    Message = $"{vehicleName} was unlocked"
+                });
+
+                // Doors opened then closed
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = morningTime.AddSeconds(random.Next(30, 60)),
+                    Type = ActivityType.Closure,
+                    Message = $"{vehicleName}'s doors were opened"
+                });
+
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = morningTime.AddSeconds(random.Next(60, 120)),
+                    Type = ActivityType.Closure,
+                    Message = $"{vehicleName}'s doors were closed"
+                });
+
+                // Shift to drive
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = morningTime.AddMinutes(random.Next(1, 3)),
+                    Type = ActivityType.Gear,
+                    Message = $"{vehicleName} shifted to Drive"
+                });
+            }
+
+            // Evening: Return home, park, lock, sleep
+            if (random.NextDouble() < 0.7)
+            {
+                var eveningTime = dayDate.Date.AddHours(17 + random.Next(0, 4)).AddMinutes(random.Next(0, 60));
+
+                // Shift to park
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = eveningTime,
+                    Type = ActivityType.Gear,
+                    Message = $"{vehicleName} shifted to Park"
+                });
+
+                // Doors opened and closed
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = eveningTime.AddSeconds(random.Next(10, 30)),
+                    Type = ActivityType.Closure,
+                    Message = $"{vehicleName}'s doors were opened"
+                });
+
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = eveningTime.AddSeconds(random.Next(30, 60)),
+                    Type = ActivityType.Closure,
+                    Message = $"{vehicleName}'s doors were closed"
+                });
+
+                // Lock
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = eveningTime.AddMinutes(random.Next(1, 5)),
+                    Type = ActivityType.Security,
+                    Message = $"{vehicleName} was locked"
+                });
+
+                // Sleep (after some idle time)
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = eveningTime.AddMinutes(random.Next(10, 30)),
+                    Type = ActivityType.Power,
+                    Message = $"{vehicleName} went to sleep"
+                });
+            }
+
+            // Occasional charging events
+            if (random.NextDouble() < 0.3) // 30% chance of charging each day
+            {
+                var chargeTime = dayDate.Date.AddHours(20 + random.Next(0, 4)).AddMinutes(random.Next(0, 60));
+
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = chargeTime,
+                    Type = ActivityType.Charging,
+                    Message = $"{vehicleName}'s charger was connected"
+                });
+
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = chargeTime.AddMinutes(random.Next(1, 5)),
+                    Type = ActivityType.Charging,
+                    Message = $"{vehicleName} started charging"
+                });
+
+                // Charging complete (next morning usually)
+                var completeTime = chargeTime.AddHours(random.Next(3, 8));
+                if (completeTime < DateTime.UtcNow)
+                {
+                    activities.Add(new ActivityFeedItem
+                    {
+                        VehicleId = vehicle.Id,
+                        Timestamp = completeTime,
+                        Type = ActivityType.Charging,
+                        Message = $"{vehicleName} finished charging"
+                    });
+                }
+            }
+
+            // Occasional preconditioning
+            if (random.NextDouble() < 0.15) // 15% chance
+            {
+                var preconditionTime = dayDate.Date.AddHours(6 + random.Next(0, 2)).AddMinutes(random.Next(0, 60));
+
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = preconditionTime,
+                    Type = ActivityType.Climate,
+                    Message = $"{vehicleName}'s climate preconditioning started"
+                });
+
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = preconditionTime.AddMinutes(random.Next(10, 20)),
+                    Type = ActivityType.Climate,
+                    Message = $"{vehicleName}'s climate preconditioning stopped"
+                });
+            }
+
+            // Occasional frunk/tailgate/gear tunnel access
+            if (random.NextDouble() < 0.1) // 10% chance
+            {
+                var accessTime = dayDate.Date.AddHours(random.Next(8, 20)).AddMinutes(random.Next(0, 60));
+                var closure = vehicle.Model == VehicleModel.R1T
+                    ? (random.NextDouble() < 0.5 ? "Tailgate" : "Left Gear Tunnel")
+                    : "Liftgate";
+
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = accessTime,
+                    Type = ActivityType.Closure,
+                    Message = $"{vehicleName}'s {closure} was opened"
+                });
+
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = accessTime.AddMinutes(random.Next(1, 10)),
+                    Type = ActivityType.Closure,
+                    Message = $"{vehicleName}'s {closure} was closed"
+                });
+            }
+
+            // Occasional Frunk access
+            if (random.NextDouble() < 0.05) // 5% chance
+            {
+                var frunkTime = dayDate.Date.AddHours(random.Next(8, 20)).AddMinutes(random.Next(0, 60));
+
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = frunkTime,
+                    Type = ActivityType.Closure,
+                    Message = $"{vehicleName}'s Frunk was opened"
+                });
+
+                activities.Add(new ActivityFeedItem
+                {
+                    VehicleId = vehicle.Id,
+                    Timestamp = frunkTime.AddMinutes(random.Next(1, 5)),
+                    Type = ActivityType.Closure,
+                    Message = $"{vehicleName}'s Frunk was closed"
+                });
             }
         }
 
-        _db.Positions.AddRange(allPositions);
-        await _db.SaveChangesAsync();
-
-        _logger.LogInformation(
-            "Generated data for {VehicleName}: {Snapshots} snapshots, {Sessions} sessions, {Drives} drives with {Positions} positions",
-            vehicle.Name, snapshots.Count, sessions.Count, drives.Count, allPositions.Count);
+        // Filter out any future activities and sort by timestamp
+        return activities
+            .Where(a => a.Timestamp <= DateTime.UtcNow)
+            .OrderBy(a => a.Timestamp)
+            .ToList();
     }
 
     private VehicleScenario GetVehicleScenario(string vehicleId) => vehicleId switch
@@ -947,6 +1190,216 @@ public class DevDataSeeder
             OtaCurrentVersion = vehicle.SoftwareVersion,
             OtaStatus = "idle"
         };
+    }
+
+    /// <summary>
+    /// Seeds real drive data from production for testing route maps with actual GPS traces.
+    /// Called after synthetic data generation for the first vehicle.
+    /// </summary>
+    private async Task SeedRealDriveDataAsync(Vehicle vehicle)
+    {
+        _logger.LogInformation("Seeding real drive data for {VehicleName}...", vehicle.Name);
+
+        // Real drives exported from production (Ontario, Canada area)
+        var drives = new List<Drive>
+        {
+            new Drive
+            {
+                VehicleId = vehicle.Id,
+                StartTime = DateTime.Parse("2026-01-20T22:51:29.322297Z").ToUniversalTime(),
+                EndTime = DateTime.Parse("2026-01-20T22:52:39.679385Z").ToUniversalTime(),
+                IsActive = false,
+                StartOdometer = 16682.724141016464,
+                EndOdometer = 16682.83785194464,
+                DistanceMiles = 0.11371092817716999,
+                StartBatteryLevel = 70.599998,
+                EndBatteryLevel = 70.400002,
+                EnergyUsedKwh = 0.26199475999999833,
+                StartRangeEstimate = 203.188317,
+                EndRangeEstimate = 202.566946,
+                EfficiencyMilesPerKwh = 0.4340198566458761,
+                EfficiencyWhPerMile = 2304.042049430739,
+                StartLatitude = 43.9792519,
+                StartLongitude = -79.224884,
+                EndLatitude = 43.9778519,
+                EndLongitude = -79.2244034,
+                MaxSpeedMph = 8.27,
+                AverageSpeedMph = 5.5935,
+                StartElevation = 241.86,
+                EndElevation = 240.718,
+                ElevationGain = 0.013,
+                DriveMode = "everyday"
+            },
+            new Drive
+            {
+                VehicleId = vehicle.Id,
+                StartTime = DateTime.Parse("2026-01-20T23:05:30.560425Z").ToUniversalTime(),
+                EndTime = DateTime.Parse("2026-01-20T23:09:01.968731Z").ToUniversalTime(),
+                IsActive = false,
+                StartOdometer = 16682.83785194464,
+                EndOdometer = 16683.88672651714,
+                DistanceMiles = 1.0488745724978799,
+                StartBatteryLevel = 69.599998,
+                EndBatteryLevel = 68.700005,
+                EnergyUsedKwh = 1.1789908299999934,
+                StartRangeEstimate = 200.08146200000002,
+                EndRangeEstimate = 197.595978,
+                EfficiencyMilesPerKwh = 0.8896376000633404,
+                EfficiencyWhPerMile = 1124.0532099012025,
+                StartLatitude = 43.9778519,
+                StartLongitude = -79.2244034,
+                EndLatitude = 43.972496,
+                EndLongitude = -79.2422485,
+                MaxSpeedMph = 13.317,
+                AverageSpeedMph = 9.349583333333335,
+                StartElevation = 240.719,
+                EndElevation = 229.832,
+                ElevationGain = 7.378999999999991,
+                DriveMode = "everyday"
+            },
+            new Drive
+            {
+                VehicleId = vehicle.Id,
+                StartTime = DateTime.Parse("2026-01-20T23:13:32.37995Z").ToUniversalTime(),
+                EndTime = DateTime.Parse("2026-01-20T23:22:35.869992Z").ToUniversalTime(),
+                IsActive = false,
+                StartOdometer = 16683.88672651714,
+                EndOdometer = 16686.65244969379,
+                DistanceMiles = 2.7657231766497716,
+                StartBatteryLevel = 68.300003,
+                EndBatteryLevel = 66.700005,
+                EnergyUsedKwh = 2.095997379999999,
+                StartRangeEstimate = 196.974607,
+                EndRangeEstimate = 192.003639,
+                EfficiencyMilesPerKwh = 1.3195260657481227,
+                EfficiencyWhPerMile = 757.8478561035753,
+                StartLatitude = 43.9724922,
+                StartLongitude = -79.2422791,
+                EndLatitude = 43.9547386,
+                EndLongitude = -79.2767334,
+                MaxSpeedMph = 14.756,
+                AverageSpeedMph = 9.475,
+                StartElevation = 229.974,
+                EndElevation = 216.269,
+                ElevationGain = 14.221999999999952,
+                DriveMode = "everyday"
+            },
+            new Drive
+            {
+                VehicleId = vehicle.Id,
+                StartTime = DateTime.Parse("2026-01-20T23:50:15.997412Z").ToUniversalTime(),
+                EndTime = DateTime.Parse("2026-01-21T00:03:15.471669Z").ToUniversalTime(),
+                IsActive = false,
+                StartOdometer = 16686.65244969379,
+                EndOdometer = 16690.431629284976,
+                DistanceMiles = 3.7791795911871304,
+                StartBatteryLevel = 65.599998,
+                EndBatteryLevel = 62.700001,
+                EnergyUsedKwh = 3.7989960699999985,
+                StartRangeEstimate = 188.896784,
+                EndRangeEstimate = 180.19759,
+                EfficiencyMilesPerKwh = 0.9947837590648342,
+                EfficiencyWhPerMile = 1005.2435927784642,
+                StartLatitude = 43.9547195,
+                StartLongitude = -79.2768326,
+                EndLatitude = 43.9792328,
+                EndLongitude = -79.224884,
+                MaxSpeedMph = 14.178,
+                AverageSpeedMph = 8.615195876288661,
+                StartElevation = 215.661,
+                EndElevation = 242.232,
+                ElevationGain = 44.07299999999995,
+                DriveMode = "everyday"
+            }
+        };
+
+        _db.Drives.AddRange(drives);
+        await _db.SaveChangesAsync();
+
+        // Now add positions for each drive
+        var allPositions = new List<Position>();
+
+        // Drive 1 positions (short backup out of driveway)
+        allPositions.AddRange(new[]
+        {
+            new Position { DriveId = drives[0].Id, Timestamp = DateTime.Parse("2026-01-20T22:51:29.322297Z").ToUniversalTime(), Latitude = 43.9792519, Longitude = -79.224884, Altitude = 241.86, Speed = 0, Heading = 66.0642, BatteryLevel = 70.599998, Odometer = 16682.724141016464, Gear = GearStatus.Reverse },
+            new Position { DriveId = drives[0].Id, Timestamp = DateTime.Parse("2026-01-20T22:52:20.463268Z").ToUniversalTime(), Latitude = 43.9792519, Longitude = -79.224884, Altitude = 241.86, Speed = 0, Heading = 66.0615, BatteryLevel = 70.599998, Odometer = 16682.743403523422, Gear = GearStatus.Reverse },
+            new Position { DriveId = drives[0].Id, Timestamp = DateTime.Parse("2026-01-20T22:52:28.214391Z").ToUniversalTime(), Latitude = 43.9781265, Longitude = -79.2245941, Altitude = 240.57, Speed = 8.27, Heading = 150.8234, BatteryLevel = 70.400002, Odometer = 16682.782549908534, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[0].Id, Timestamp = DateTime.Parse("2026-01-20T22:52:34.057741Z").ToUniversalTime(), Latitude = 43.9778824, Longitude = -79.2244263, Altitude = 240.583, Speed = 2.917, Heading = 155.2334, BatteryLevel = 70.400002, Odometer = 16682.83785194464, Gear = GearStatus.Drive }
+        });
+
+        // Drive 2 positions
+        allPositions.AddRange(new[]
+        {
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:05:30.560425Z").ToUniversalTime(), Latitude = 43.9778519, Longitude = -79.2244034, Altitude = 240.719, Speed = 0, Heading = 155.3333, BatteryLevel = 69.599998, Odometer = 16682.83785194464, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:05:39.801479Z").ToUniversalTime(), Latitude = 43.9776497, Longitude = -79.2243271, Altitude = 239.975, Speed = 5.221, Heading = 175.0269, BatteryLevel = 69.599998, Odometer = 16682.84282291418, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:05:47.312678Z").ToUniversalTime(), Latitude = 43.9774666, Longitude = -79.2245255, Altitude = 240.101, Speed = 6.582, Heading = 242.6452, BatteryLevel = 69.599998, Odometer = 16682.868920504254, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:05:54.218305Z").ToUniversalTime(), Latitude = 43.9772186, Longitude = -79.2256241, Altitude = 240.99, Speed = 10.927, Heading = 253.0471, BatteryLevel = 69.599998, Odometer = 16682.92297979798, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:06:02.230639Z").ToUniversalTime(), Latitude = 43.9770737, Longitude = -79.2262802, Altitude = 242.561, Speed = 10.638, Heading = 252.3937, BatteryLevel = 69.599998, Odometer = 16682.989466515548, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:06:10.421085Z").ToUniversalTime(), Latitude = 43.9768295, Longitude = -79.2273407, Altitude = 244.591, Speed = 5.802, Heading = 249.5981, BatteryLevel = 69.599998, Odometer = 16682.989466515548, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:06:16.358869Z").ToUniversalTime(), Latitude = 43.9765816, Longitude = -79.2274551, Altitude = 244.465, Speed = 7.664, Heading = 167.634, BatteryLevel = 69.400002, Odometer = 16683.035447983773, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:06:22.312224Z").ToUniversalTime(), Latitude = 43.976223, Longitude = -79.2273102, Altitude = 246.596, Speed = 8.478, Heading = 164.6366, BatteryLevel = 69.400002, Odometer = 16683.083293565578, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:06:35.031382Z").ToUniversalTime(), Latitude = 43.975647, Longitude = -79.2278214, Altitude = 246.677, Speed = 12.621, Heading = 251.8711, BatteryLevel = 69.400002, Odometer = 16683.083293565578, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:06:43.30777Z").ToUniversalTime(), Latitude = 43.9752922, Longitude = -79.2294235, Altitude = 244.425, Speed = 13.317, Heading = 252.0849, BatteryLevel = 69.400002, Odometer = 16683.083293565578, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:06:49.199888Z").ToUniversalTime(), Latitude = 43.9751167, Longitude = -79.2301941, Altitude = 244.295, Speed = 13.304, Heading = 252.6461, BatteryLevel = 69.200005, Odometer = 16683.202596834486, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:06:55.077806Z").ToUniversalTime(), Latitude = 43.974968, Longitude = -79.2308502, Altitude = 244.094, Speed = 6.846, Heading = 252.9251, BatteryLevel = 69.200005, Odometer = 16683.282132347093, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:07:18.466437Z").ToUniversalTime(), Latitude = 43.9748955, Longitude = -79.231163, Altitude = 244.215, Speed = 7.069, Heading = 250.8289, BatteryLevel = 69.099998, Odometer = 16683.294559770937, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:07:24.446693Z").ToUniversalTime(), Latitude = 43.9747772, Longitude = -79.2316666, Altitude = 243.305, Speed = 8.763, Heading = 254.1606, BatteryLevel = 69.099998, Odometer = 16683.294559770937, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:07:30.796335Z").ToUniversalTime(), Latitude = 43.9746513, Longitude = -79.2322083, Altitude = 242.786, Speed = 10.447, Heading = 251.5713, BatteryLevel = 69, Odometer = 16683.33991986797, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:07:40.547121Z").ToUniversalTime(), Latitude = 43.97435, Longitude = -79.23349, Altitude = 242.052, Speed = 10.512, Heading = 252.7368, BatteryLevel = 69, Odometer = 16683.405163843156, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:07:52.842768Z").ToUniversalTime(), Latitude = 43.9740715, Longitude = -79.2347412, Altitude = 239.226, Speed = 10.234, Heading = 252.6435, BatteryLevel = 68.900002, Odometer = 16683.47102918953, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:07:59.831919Z").ToUniversalTime(), Latitude = 43.973793, Longitude = -79.2359695, Altitude = 235.916, Speed = 10.651, Heading = 253.0329, BatteryLevel = 68.900002, Odometer = 16683.535651793525, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:08:09.212712Z").ToUniversalTime(), Latitude = 43.9735146, Longitude = -79.2372131, Altitude = 234.192, Speed = 10.524, Heading = 253.4724, BatteryLevel = 68.900002, Odometer = 16683.60089576871, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:08:15.005138Z").ToUniversalTime(), Latitude = 43.9733887, Longitude = -79.2378311, Altitude = 233.461, Speed = 10.372, Heading = 253.3935, BatteryLevel = 68.900002, Odometer = 16683.666139743895, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:08:28.172199Z").ToUniversalTime(), Latitude = 43.9729576, Longitude = -79.2396851, Altitude = 232.773, Speed = 10.64, Heading = 254.5497, BatteryLevel = 68.800003, Odometer = 16683.730140976695, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:08:33.81481Z").ToUniversalTime(), Latitude = 43.9728203, Longitude = -79.240303, Altitude = 230.592, Speed = 9.963, Heading = 252.9998, BatteryLevel = 68.800003, Odometer = 16683.730140976695, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:08:39.254984Z").ToUniversalTime(), Latitude = 43.9726868, Longitude = -79.2409058, Altitude = 229.724, Speed = 10.395, Heading = 252.7398, BatteryLevel = 68.800003, Odometer = 16683.79538495188, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:08:44.760691Z").ToUniversalTime(), Latitude = 43.9725456, Longitude = -79.2415314, Altitude = 229.336, Speed = 10.513, Heading = 252.8996, BatteryLevel = 68.800003, Odometer = 16683.79538495188, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[1].Id, Timestamp = DateTime.Parse("2026-01-20T23:08:54.365268Z").ToUniversalTime(), Latitude = 43.9724998, Longitude = -79.2421951, Altitude = 229.766, Speed = 2.907, Heading = 310.1447, BatteryLevel = 68.700005, Odometer = 16683.86000755587, Gear = GearStatus.Drive }
+        });
+
+        // Drive 3 positions (longer drive) - sample of key points
+        allPositions.AddRange(new[]
+        {
+            new Position { DriveId = drives[2].Id, Timestamp = DateTime.Parse("2026-01-20T23:13:32.37995Z").ToUniversalTime(), Latitude = 43.9724922, Longitude = -79.2422791, Altitude = 229.974, Speed = 0, Heading = 263.4757, BatteryLevel = 68.300003, Odometer = 16683.88672651714, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[2].Id, Timestamp = DateTime.Parse("2026-01-20T23:14:33.16495Z").ToUniversalTime(), Latitude = 43.9720039, Longitude = -79.2439194, Altitude = 230.961, Speed = 11.497, Heading = 253.3549, BatteryLevel = 68.200005, Odometer = 16683.94824226517, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[2].Id, Timestamp = DateTime.Parse("2026-01-20T23:15:19.48251Z").ToUniversalTime(), Latitude = 43.9708443, Longitude = -79.2492065, Altitude = 235.134, Speed = 9.647, Heading = 253.4281, BatteryLevel = 68.099998, Odometer = 16684.22910204406, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[2].Id, Timestamp = DateTime.Parse("2026-01-20T23:16:33.035386Z").ToUniversalTime(), Latitude = 43.969265, Longitude = -79.2563324, Altitude = 235.399, Speed = 13.279, Heading = 253.2443, BatteryLevel = 67.800003, Odometer = 16684.557807404755, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[2].Id, Timestamp = DateTime.Parse("2026-01-20T23:17:48.67314Z").ToUniversalTime(), Latitude = 43.9679222, Longitude = -79.2623367, Altitude = 232.398, Speed = 13.306, Heading = 253.0702, BatteryLevel = 67.599998, Odometer = 16684.87594945518, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[2].Id, Timestamp = DateTime.Parse("2026-01-20T23:18:33.958749Z").ToUniversalTime(), Latitude = 43.9663544, Longitude = -79.2693939, Altitude = 224.543, Speed = 13.032, Heading = 248.9677, BatteryLevel = 67.599998, Odometer = 16685.28605444206, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[2].Id, Timestamp = DateTime.Parse("2026-01-20T23:19:13.549114Z").ToUniversalTime(), Latitude = 43.9636116, Longitude = -79.269783, Altitude = 220.773, Speed = 10.558, Heading = 173.6376, BatteryLevel = 67.300003, Odometer = 16685.52776783584, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[2].Id, Timestamp = DateTime.Parse("2026-01-20T23:19:52.653977Z").ToUniversalTime(), Latitude = 43.9609299, Longitude = -79.2666092, Altitude = 220.718, Speed = 10.772, Heading = 131.57, BatteryLevel = 67.200005, Odometer = 16685.793093334923, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[2].Id, Timestamp = DateTime.Parse("2026-01-20T23:20:29.47623Z").ToUniversalTime(), Latitude = 43.9592018, Longitude = -79.268631, Altitude = 217.696, Speed = 13.298, Heading = 244.4622, BatteryLevel = 67.099998, Odometer = 16685.960242185636, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[2].Id, Timestamp = DateTime.Parse("2026-01-20T23:21:09.659504Z").ToUniversalTime(), Latitude = 43.9577522, Longitude = -79.2749786, Altitude = 218.963, Speed = 12.21, Heading = 250.1537, BatteryLevel = 66.900002, Odometer = 16686.296404000637, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[2].Id, Timestamp = DateTime.Parse("2026-01-20T23:21:59.147143Z").ToUniversalTime(), Latitude = 43.9555397, Longitude = -79.2763138, Altitude = 217.725, Speed = 5.289, Heading = 161.6979, BatteryLevel = 66.800003, Odometer = 16686.543709735146, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[2].Id, Timestamp = DateTime.Parse("2026-01-20T23:22:19.231599Z").ToUniversalTime(), Latitude = 43.9547768, Longitude = -79.2766876, Altitude = 216.182, Speed = 2.983, Heading = 183.5587, BatteryLevel = 66.700005, Odometer = 16686.623866618946, Gear = GearStatus.Drive }
+        });
+
+        // Drive 4 positions (return trip) - sample of key points
+        allPositions.AddRange(new[]
+        {
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-20T23:50:15.997412Z").ToUniversalTime(), Latitude = 43.9547195, Longitude = -79.2768326, Altitude = 215.661, Speed = 0, Heading = 252.805, BatteryLevel = 65.599998, Odometer = 16686.65244969379, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-20T23:51:46.029898Z").ToUniversalTime(), Latitude = 43.9572258, Longitude = -79.2759781, Altitude = 218.643, Speed = 4.627, Heading = 344.4612, BatteryLevel = 65.599998, Odometer = 16686.874279209416, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-20T23:52:22.319216Z").ToUniversalTime(), Latitude = 43.9582787, Longitude = -79.2716904, Altitude = 219.849, Speed = 13.513, Heading = 75.9884, BatteryLevel = 65.400002, Odometer = 16687.132148254193, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-20T23:53:05.422895Z").ToUniversalTime(), Latitude = 43.9599113, Longitude = -79.2655182, Altitude = 219.063, Speed = 10.699, Heading = 71.5832, BatteryLevel = 65.200005, Odometer = 16687.426678199314, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-20T23:54:00.501334Z").ToUniversalTime(), Latitude = 43.9615974, Longitude = -79.2588043, Altitude = 223.024, Speed = 11.507, Heading = 76.5976, BatteryLevel = 65.099998, Odometer = 16687.748548476895, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-20T23:55:39.210503Z").ToUniversalTime(), Latitude = 43.9625702, Longitude = -79.2541046, Altitude = 224.168, Speed = 11.493, Heading = 66.4878, BatteryLevel = 64.800003, Odometer = 16688.046806649167, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-20T23:56:35.395776Z").ToUniversalTime(), Latitude = 43.9644012, Longitude = -79.2467499, Altitude = 226.749, Speed = 4.062, Heading = 72.8355, BatteryLevel = 64.599998, Odometer = 16688.446969696968, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-20T23:57:31.052984Z").ToUniversalTime(), Latitude = 43.9654388, Longitude = -79.2422791, Altitude = 226.052, Speed = 4.767, Heading = 67.8667, BatteryLevel = 64.300003, Odometer = 16688.657614531137, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-20T23:58:46.739257Z").ToUniversalTime(), Latitude = 43.9666176, Longitude = -79.2363815, Altitude = 230.197, Speed = 3.447, Heading = 100.7956, BatteryLevel = 63.900002, Odometer = 16688.9807275511, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-20T23:59:27.505658Z").ToUniversalTime(), Latitude = 43.9676933, Longitude = -79.231369, Altitude = 233.392, Speed = 9.305, Heading = 72.0131, BatteryLevel = 63.700001, Odometer = 16689.27215064026, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-21T00:00:16.323879Z").ToUniversalTime(), Latitude = 43.9708023, Longitude = -79.231102, Altitude = 237.728, Speed = 10.699, Heading = 350.4032, BatteryLevel = 63.600002, Odometer = 16689.531883798616, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-21T00:00:51.212756Z").ToUniversalTime(), Latitude = 43.9741211, Longitude = -79.2318802, Altitude = 241.155, Speed = 9.673, Heading = 353.9201, BatteryLevel = 63.299999, Odometer = 16689.734450807286, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-21T00:01:25.798936Z").ToUniversalTime(), Latitude = 43.9754829, Longitude = -79.2284317, Altitude = 245.599, Speed = 13.652, Heading = 73.1394, BatteryLevel = 63.100002, Odometer = 16689.983620655374, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-21T00:02:15.775919Z").ToUniversalTime(), Latitude = 43.9772682, Longitude = -79.2252808, Altitude = 241.407, Speed = 8.658, Heading = 73.2841, BatteryLevel = 62.900002, Odometer = 16690.176245724964, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-21T00:02:50.431523Z").ToUniversalTime(), Latitude = 43.9789467, Longitude = -79.2252197, Altitude = 241.857, Speed = 5.729, Heading = 328.2819, BatteryLevel = 62.799999, Odometer = 16690.378191362444, Gear = GearStatus.Drive },
+            new Position { DriveId = drives[3].Id, Timestamp = DateTime.Parse("2026-01-21T00:03:15.471669Z").ToUniversalTime(), Latitude = 43.9792328, Longitude = -79.224884, Altitude = 242.232, Speed = 0.002, Heading = 61.697, BatteryLevel = 62.700001, Odometer = 16690.431629284976, Gear = GearStatus.Park }
+        });
+
+        _db.Positions.AddRange(allPositions);
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation("Seeded {DriveCount} real drives with {PositionCount} positions", drives.Count, allPositions.Count);
     }
 
     private enum DegradationPattern

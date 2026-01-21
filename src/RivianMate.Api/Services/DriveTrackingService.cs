@@ -140,7 +140,8 @@ public class DriveTrackingService
             Speed = state.Speed,
             Heading = state.Heading,
             BatteryLevel = state.BatteryLevel,
-            Odometer = state.Odometer
+            Odometer = state.Odometer,
+            Gear = state.GearStatus
         };
 
         _db.Positions.Add(position);

@@ -279,6 +279,7 @@ using (var scope = app.Services.CreateScope())
         await AddColumnIfNotExistsAsync("Vehicles", "ImageData", "BLOB");
         await AddColumnIfNotExistsAsync("Vehicles", "ImageContentType", "TEXT");
         await AddColumnIfNotExistsAsync("Vehicles", "ImageVersion", "INTEGER");
+        await AddColumnIfNotExistsAsync("Positions", "Gear", "INTEGER DEFAULT 0");
 
         logger.LogInformation("SQLite database ready");
 

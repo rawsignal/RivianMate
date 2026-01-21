@@ -341,7 +341,7 @@
             DateTime.UtcNow.AddMonths(-12));
         _recentSessions = await VehicleService.GetRecentChargingSessionsAsync(_vehicle.Id, 4);
         _recentDrives = await VehicleService.GetRecentDrivesAsync(_vehicle.Id, 4);
-        _recentActivity = await ActivityFeedService.GetRecentActivityAsync(_vehicle.Id, 6);
+        _recentActivity = await ActivityFeedService.GetRecentActivityAsync(_vehicle.Id, 3);
         _efficiency = await VehicleService.GetAverageEfficiencyAsync(_vehicle.Id);
 
         // Determine online status from power state and last update time

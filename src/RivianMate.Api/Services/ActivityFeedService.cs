@@ -215,13 +215,54 @@ public class ActivityFeedService
     }
 
     /// <summary>
-    /// Get recent activity for a vehicle.
+    /// Get recent activity for a vehicle (simple count-based).
     /// </summary>
     public async Task<List<ActivityFeedItem>> GetRecentActivityAsync(
         int vehicleId,
         int count = 50,
         ActivityType? filterType = null,
+        DateTime? since = null,
+        DateTime? until = null,
         CancellationToken cancellationToken = default)
+    {
+        var query = BuildActivityQuery(vehicleId, filterType, since, until);
+
+        return await query
+            .OrderByDescending(a => a.Timestamp)
+            .Take(count)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Get paginated activity for a vehicle with total count.
+    /// </summary>
+    public async Task<(List<ActivityFeedItem> Items, int TotalCount)> GetActivityPagedAsync(
+        int vehicleId,
+        int page = 1,
+        int pageSize = 10,
+        ActivityType? filterType = null,
+        DateTime? since = null,
+        DateTime? until = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = BuildActivityQuery(vehicleId, filterType, since, until);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var items = await query
+            .OrderByDescending(a => a.Timestamp)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, totalCount);
+    }
+
+    private IQueryable<ActivityFeedItem> BuildActivityQuery(
+        int vehicleId,
+        ActivityType? filterType,
+        DateTime? since,
+        DateTime? until)
     {
         var query = _db.ActivityFeed
             .Where(a => a.VehicleId == vehicleId);
@@ -231,9 +272,16 @@ public class ActivityFeedService
             query = query.Where(a => a.Type == filterType.Value);
         }
 
-        return await query
-            .OrderByDescending(a => a.Timestamp)
-            .Take(count)
-            .ToListAsync(cancellationToken);
+        if (since.HasValue)
+        {
+            query = query.Where(a => a.Timestamp >= since.Value);
+        }
+
+        if (until.HasValue)
+        {
+            query = query.Where(a => a.Timestamp <= until.Value);
+        }
+
+        return query;
     }
 }

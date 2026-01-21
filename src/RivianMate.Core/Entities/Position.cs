@@ -1,3 +1,4 @@
+using RivianMate.Core.Enums;
 using RivianMate.Core.Interfaces;
 
 namespace RivianMate.Core.Entities;
@@ -38,4 +39,9 @@ public class Position : IDriveOwnedEntity
     /// Odometer at this position
     /// </summary>
     public double? Odometer { get; set; }
+
+    /// <summary>
+    /// Gear status at this position (Drive or Reverse)
+    /// </summary>
+    public GearStatus Gear { get; set; }
 }

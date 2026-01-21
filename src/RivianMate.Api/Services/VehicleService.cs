@@ -542,6 +542,29 @@ public class VehicleService
     }
 
     /// <summary>
+    /// Get paginated charging sessions for a vehicle.
+    /// </summary>
+    public async Task<(List<ChargingSession> Items, int TotalCount)> GetChargingSessionsPagedAsync(
+        int vehicleId,
+        int page = 1,
+        int pageSize = 10,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _db.ChargingSessions
+            .Where(s => s.VehicleId == vehicleId && !s.IsActive)
+            .OrderByDescending(s => s.StartTime);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, totalCount);
+    }
+
+    /// <summary>
     /// Get recent charging sessions for a vehicle.
     /// </summary>
     public async Task<List<ChargingSession>> GetRecentChargingSessionsAsync(
@@ -578,6 +601,29 @@ public class VehicleService
             .Where(d => d.VehicleId == vehicleId && !d.IsActive)
             .OrderByDescending(d => d.StartTime)
             .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Get paginated completed drives for a vehicle.
+    /// </summary>
+    public async Task<(List<Drive> Items, int TotalCount)> GetDrivesPagedAsync(
+        int vehicleId,
+        int page = 1,
+        int pageSize = 10,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _db.Drives
+            .Where(d => d.VehicleId == vehicleId && !d.IsActive)
+            .OrderByDescending(d => d.StartTime);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, totalCount);
     }
 
     /// <summary>

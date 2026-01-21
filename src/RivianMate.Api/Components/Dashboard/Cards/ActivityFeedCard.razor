@@ -6,7 +6,7 @@
     @if (RecentActivity?.Any() == true)
     {
         <div class="activity-list">
-            @foreach (var activity in RecentActivity.Take(6))
+            @foreach (var activity in RecentActivity.Take(3))
             {
                 <div class="activity-item">
                     <div class="activity-icon @GetActivityTypeClass(activity.Type)">
