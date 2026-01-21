@@ -408,10 +408,6 @@ public class RivianApiClient : IDisposable
                     tirePressureStatusFrontRight { timeStamp value }
                     tirePressureStatusRearLeft { timeStamp value }
                     tirePressureStatusRearRight { timeStamp value }
-                    tirePressureFrontLeft { timeStamp value }
-                    tirePressureFrontRight { timeStamp value }
-                    tirePressureRearLeft { timeStamp value }
-                    tirePressureRearRight { timeStamp value }
                     trailerStatus { timeStamp value }
                     twelveVoltBatteryHealth { timeStamp value }
                     vehicleMileage { timeStamp value }

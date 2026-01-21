@@ -287,7 +287,22 @@ public class AccountPollingJob
             {
                 vehicle.ImageData = imageData;
                 vehicle.ImageContentType = contentType ?? "image/png";
+                vehicle.ImageUrl = imageUrl;
                 vehicle.ImageVersion = workingVersion;
+
+                // Try to extract paint color and wheel config from the image URL
+                var (paintColor, wheelConfig) = RivianMate.Core.VehicleImageUrlParser.ParseVehicleConfig(imageUrl);
+                if (!string.IsNullOrEmpty(paintColor) && string.IsNullOrEmpty(vehicle.ExteriorColor))
+                {
+                    vehicle.ExteriorColor = paintColor;
+                    _logger.LogInformation("Extracted paint color from image URL: {Color}", paintColor);
+                }
+                if (!string.IsNullOrEmpty(wheelConfig) && string.IsNullOrEmpty(vehicle.WheelConfig))
+                {
+                    vehicle.WheelConfig = wheelConfig;
+                    _logger.LogInformation("Extracted wheel config from image URL: {Wheels}", wheelConfig);
+                }
+
                 await _db.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation("Saved vehicle image for {VehicleId} ({Size} bytes, version {Version})",

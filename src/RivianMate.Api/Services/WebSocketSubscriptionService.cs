@@ -19,6 +19,7 @@ public class WebSocketSubscriptionService : BackgroundService
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<WebSocketSubscriptionService> _logger;
     private readonly PollingConfiguration _config;
+    private readonly VehicleStateNotifier _stateNotifier;
 
     // Track active subscriptions per account
     private readonly ConcurrentDictionary<int, AccountSubscription> _accountSubscriptions = new();
@@ -109,11 +110,13 @@ public class WebSocketSubscriptionService : BackgroundService
     public WebSocketSubscriptionService(
         IServiceProvider serviceProvider,
         IOptions<PollingConfiguration> config,
-        ILogger<WebSocketSubscriptionService> logger)
+        ILogger<WebSocketSubscriptionService> logger,
+        VehicleStateNotifier stateNotifier)
     {
         _serviceProvider = serviceProvider;
         _config = config.Value;
         _logger = logger;
+        _stateNotifier = stateNotifier;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -358,6 +361,9 @@ public class WebSocketSubscriptionService : BackgroundService
 
                 // Record battery health snapshot if needed
                 await MaybeRecordBatteryHealthAsync(vehicleId, vehicleState, batteryHealthService, db);
+
+                // Notify UI components about the state change
+                await _stateNotifier.NotifyStateChangedAsync(vehicleId);
             }
 
             // Update account last sync
@@ -525,7 +531,22 @@ public class WebSocketSubscriptionService : BackgroundService
                 {
                     dbVehicle.ImageData = imageData;
                     dbVehicle.ImageContentType = contentType ?? "image/png";
+                    dbVehicle.ImageUrl = imageUrl;
                     dbVehicle.ImageVersion = workingVersion;
+
+                    // Try to extract paint color and wheel config from the image URL
+                    var (paintColor, wheelConfig) = RivianMate.Core.VehicleImageUrlParser.ParseVehicleConfig(imageUrl);
+                    if (!string.IsNullOrEmpty(paintColor) && string.IsNullOrEmpty(dbVehicle.ExteriorColor))
+                    {
+                        dbVehicle.ExteriorColor = paintColor;
+                        _logger.LogInformation("Extracted paint color from image URL: {Color}", paintColor);
+                    }
+                    if (!string.IsNullOrEmpty(wheelConfig) && string.IsNullOrEmpty(dbVehicle.WheelConfig))
+                    {
+                        dbVehicle.WheelConfig = wheelConfig;
+                        _logger.LogInformation("Extracted wheel config from image URL: {Wheels}", wheelConfig);
+                    }
+
                     await db.SaveChangesAsync(cancellationToken);
 
                     _logger.LogInformation("Saved vehicle image for {VehicleId} ({Size} bytes, version {Version})",

@@ -187,6 +187,7 @@ builder.Services.AddScoped<LicenseService>();
 builder.Services.AddScoped<FeatureService>();
 builder.Services.AddScoped<TimeZoneService>();
 builder.Services.AddSingleton<VehicleStateBuffer>(); // Singleton to maintain state across requests
+builder.Services.AddSingleton<VehicleStateNotifier>(); // Singleton to notify UI of state changes
 builder.Services.AddScoped<ActivityFeedService>();
 builder.Services.AddScoped<VehicleService>();
 builder.Services.AddScoped<BatteryHealthService>();
@@ -239,30 +240,45 @@ using (var scope = app.Services.CreateScope())
         logger.LogInformation("Using SQLite database, creating schema...");
         await db.Database.EnsureCreatedAsync();
 
-        // Ensure new columns exist (EnsureCreated doesn't update existing tables)
-        try
+        // EnsureCreated doesn't update existing tables, so we may need to add new columns
+        // Check column existence first to avoid noisy error logs
+        async Task<bool> ColumnExistsAsync(string table, string column)
         {
-            await db.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE Vehicles ADD COLUMN ImageData BLOB");
-            logger.LogInformation("Added ImageData column to Vehicles table");
+            var conn = db.Database.GetDbConnection();
+            await conn.OpenAsync();
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"PRAGMA table_info({table})";
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    if (reader.GetString(1).Equals(column, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+                return false;
+            }
+            finally
+            {
+                await conn.CloseAsync();
+            }
         }
-        catch { /* Column already exists */ }
 
-        try
+        async Task AddColumnIfNotExistsAsync(string table, string column, string type)
         {
-            await db.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE Vehicles ADD COLUMN ImageContentType TEXT");
-            logger.LogInformation("Added ImageContentType column to Vehicles table");
+            if (!await ColumnExistsAsync(table, column))
+            {
+                // Table/column/type are hardcoded constants, not user input
+                #pragma warning disable EF1002
+                await db.Database.ExecuteSqlRawAsync($"ALTER TABLE {table} ADD COLUMN {column} {type}");
+                #pragma warning restore EF1002
+                logger.LogInformation("Added {Column} column to {Table} table", column, table);
+            }
         }
-        catch { /* Column already exists */ }
 
-        try
-        {
-            await db.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE Vehicles ADD COLUMN ImageVersion INTEGER");
-            logger.LogInformation("Added ImageVersion column to Vehicles table");
-        }
-        catch { /* Column already exists */ }
+        await AddColumnIfNotExistsAsync("Vehicles", "ImageData", "BLOB");
+        await AddColumnIfNotExistsAsync("Vehicles", "ImageContentType", "TEXT");
+        await AddColumnIfNotExistsAsync("Vehicles", "ImageVersion", "INTEGER");
 
         logger.LogInformation("SQLite database ready");
 

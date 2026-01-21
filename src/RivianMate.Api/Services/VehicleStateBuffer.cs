@@ -147,6 +147,14 @@ public class VehicleStateBuffer
             return true;
         }
 
+        // Service mode changed
+        if (last.IsInServiceMode != current.IsInServiceMode)
+        {
+            _logger.LogDebug("Vehicle {Id}: IsInServiceMode changed {Old} -> {New}",
+                current.VehicleId, last.IsInServiceMode, current.IsInServiceMode);
+            return true;
+        }
+
         // === Battery changes ===
 
         if (HasSignificantChange(last.BatteryLevel, current.BatteryLevel, BatteryLevelThreshold))

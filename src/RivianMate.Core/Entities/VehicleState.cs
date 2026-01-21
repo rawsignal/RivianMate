@@ -85,6 +85,12 @@ public class VehicleState : IVehicleOwnedEntity
     public PowerState PowerState { get; set; } = PowerState.Unknown;
     public GearStatus GearStatus { get; set; } = GearStatus.Unknown;
     public string? DriveMode { get; set; }  // "everyday", "sport", "conserve", "off-road", etc.
+
+    /// <summary>
+    /// Service mode status ("on" or "off"). When on, vehicle is at service center
+    /// and most data is unavailable.
+    /// </summary>
+    public bool IsInServiceMode { get; set; }
     
     // === Charging ===
     public ChargerState ChargerState { get; set; } = ChargerState.Unknown;

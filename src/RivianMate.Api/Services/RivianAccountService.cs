@@ -27,6 +27,7 @@ public class RivianAccountService
     private readonly NhtsaVinDecoderService _nhtsaService;
     private readonly PollingJobManager _jobManager;
     private readonly PollingConfiguration _pollingConfig;
+    private readonly VehicleStateNotifier _stateNotifier;
     private readonly ILogger<RivianAccountService> _logger;
     private readonly ILogger<RivianApiClient> _rivianLogger;
 
@@ -37,6 +38,7 @@ public class RivianAccountService
         NhtsaVinDecoderService nhtsaService,
         PollingJobManager jobManager,
         IOptions<PollingConfiguration> pollingConfig,
+        VehicleStateNotifier stateNotifier,
         ILogger<RivianAccountService> logger,
         ILogger<RivianApiClient> rivianLogger)
     {
@@ -46,6 +48,7 @@ public class RivianAccountService
         _nhtsaService = nhtsaService;
         _jobManager = jobManager;
         _pollingConfig = pollingConfig.Value;
+        _stateNotifier = stateNotifier;
         _logger = logger;
         _rivianLogger = rivianLogger;
     }
@@ -404,6 +407,10 @@ public class RivianAccountService
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Synced {Count} vehicles from Rivian account {AccountId}", syncedVehicles.Count, account.Id);
+
+        // Notify UI components that vehicles have changed
+        await _stateNotifier.NotifyVehiclesChangedAsync();
+
         return syncedVehicles;
     }
 

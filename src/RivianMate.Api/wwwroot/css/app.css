@@ -30,6 +30,7 @@
     --color-success: #22C55E;
     --color-info: #60A5FA;
     --color-warning: #F59E0B;
+    --color-warning-rgb: 245, 158, 11;
     --color-error: #EF4444;
 
     /* Earth Tones */
@@ -970,6 +971,42 @@ a.btn-primary:hover {
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
+}
+
+/* ===== Service Mode Banner ===== */
+.service-mode-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    margin-top: var(--space-4);
+    background: linear-gradient(135deg, rgba(var(--color-warning-rgb), 0.15), rgba(var(--color-warning-rgb), 0.08));
+    border: 1px solid rgba(var(--color-warning-rgb), 0.3);
+    border-radius: var(--radius-lg);
+    color: var(--color-warning);
+}
+
+.service-mode-banner :global(svg) {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.service-mode-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.service-mode-title {
+    font-weight: 600;
+    font-size: 0.9375rem;
+    color: var(--color-text-primary);
+}
+
+.service-mode-description {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    line-height: 1.4;
 }
 
 /* ===== Projection Stats ===== */

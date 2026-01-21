@@ -154,7 +154,7 @@ public class VehicleService
         // For partial updates, merge with previous state to fill in missing fields
         if (isPartialUpdate && previousState != null)
         {
-            incomingState = MergeWithPreviousState(incomingState, previousState);
+            incomingState = MergeWithPreviousState(incomingState, previousState, rivianState);
         }
 
         // Calculate projected range at 100%
@@ -342,6 +342,7 @@ public class VehicleService
             PowerState = ParsePowerState(rs.PowerState?.Value),
             GearStatus = ParseGearStatus(rs.GearStatus?.Value),
             DriveMode = rs.DriveMode?.Value,
+            IsInServiceMode = rs.ServiceMode?.Value?.ToLower() == "on",
 
             // Charging
             ChargerState = ParseChargerState(rs.ChargerState?.Value ?? rs.ChargerStatus?.Value),
@@ -828,7 +829,7 @@ public class VehicleService
     /// WebSocket updates from Rivian often send different fields in separate messages,
     /// so we need to combine them to get a complete picture.
     /// </summary>
-    private static VehicleState MergeWithPreviousState(VehicleState newState, VehicleState previousState)
+    private static VehicleState MergeWithPreviousState(VehicleState newState, VehicleState previousState, RivianVehicleState rivianState)
     {
         // Keep the new timestamp
         // For each field, if the new value is null/default, use the previous value
@@ -872,6 +873,9 @@ public class VehicleService
             newState.GearStatus = previousState.GearStatus;
         if (string.IsNullOrEmpty(newState.DriveMode))
             newState.DriveMode = previousState.DriveMode;
+        // Only update IsInServiceMode if the API actually provided a value
+        if (rivianState.ServiceMode == null)
+            newState.IsInServiceMode = previousState.IsInServiceMode;
 
         // Odometer
         newState.Odometer ??= previousState.Odometer;
@@ -973,6 +977,7 @@ public class VehicleService
         existing.PowerState = incoming.PowerState;
         existing.GearStatus = incoming.GearStatus;
         existing.DriveMode = incoming.DriveMode;
+        existing.IsInServiceMode = incoming.IsInServiceMode;
 
         // Odometer
         existing.Odometer = incoming.Odometer;

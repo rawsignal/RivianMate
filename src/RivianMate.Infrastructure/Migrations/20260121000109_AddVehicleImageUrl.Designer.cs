@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RivianMate.Infrastructure.Data;
@@ -11,9 +12,11 @@ using RivianMate.Infrastructure.Data;
 namespace RivianMate.Infrastructure.Migrations
 {
     [DbContext(typeof(RivianMateDbContext))]
-    partial class RivianMateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260121000109_AddVehicleImageUrl")]
+    partial class AddVehicleImageUrl
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -900,9 +903,6 @@ namespace RivianMate.Infrastructure.Migrations
                         .HasColumnType("double precision");
 
                     b.Property<bool?>("IsDefrostActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsInServiceMode")
                         .HasColumnType("boolean");
 
                     b.Property<bool?>("IsPetModeActive")

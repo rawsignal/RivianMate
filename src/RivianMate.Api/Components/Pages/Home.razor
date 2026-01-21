@@ -7,6 +7,7 @@
 @using RivianMate.Api.Components.Dashboard
 @using RivianMate.Core.Enums
 @attribute [Authorize]
+@implements IDisposable
 @inject VehicleService VehicleService
 @inject BatteryHealthService BatteryHealthService
 @inject ActivityFeedService ActivityFeedService
@@ -17,6 +18,7 @@
 @inject ILogger<Home> Logger
 @inject TimeZoneService TimeZoneService
 @inject IJSRuntime JSRuntime
+@inject VehicleStateNotifier StateNotifier
 
 <PageTitle>Dashboard - RivianMate</PageTitle>
 
@@ -93,6 +95,17 @@
     <span class="status-dot @(_isOnline ? "" : "offline")"></span>
     <span>@(_isOnline ? "Online" : "Offline") · Last updated @GetLastUpdatedText()</span>
 </div>
+
+@if (_currentState?.IsInServiceMode == true)
+{
+    <div class="service-mode-banner">
+        <Icon Name="wrench" Size="18" />
+        <div class="service-mode-content">
+            <span class="service-mode-title">Vehicle in Service Mode</span>
+            <span class="service-mode-description">Your vehicle is currently at a service center. Most data is unavailable while in service mode.</span>
+        </div>
+    </div>
+}
 
 @if (_editMode && _hiddenCards?.Any() == true)
 {
@@ -243,6 +256,10 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Subscribe to real-time state updates
+        StateNotifier.OnVehicleStateChanged += OnVehicleStateChangedAsync;
+        StateNotifier.OnVehiclesChanged += OnVehiclesChangedAsync;
+
         try
         {
             // Get current user ID
@@ -793,4 +810,53 @@
         }
     }
 
+    // === Real-time Updates ===
+
+    private async Task OnVehicleStateChangedAsync(int vehicleId)
+    {
+        // Only refresh if it's the currently displayed vehicle
+        if (_vehicle?.Id != vehicleId)
+            return;
+
+        Logger.LogDebug("Received state update for current vehicle {VehicleId}, refreshing dashboard", vehicleId);
+
+        try
+        {
+            await LoadVehicleDataAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing dashboard after state update");
+        }
+    }
+
+    private async Task OnVehiclesChangedAsync()
+    {
+        Logger.LogDebug("Vehicles changed, refreshing vehicle list");
+
+        try
+        {
+            _vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
+
+            // If we don't have a selected vehicle yet, select the first one
+            if (_vehicle == null && _vehicles.Any())
+            {
+                _vehicle = _vehicles.First();
+                await LoadVehicleDataAsync();
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing vehicles after change");
+        }
+    }
+
+    public void Dispose()
+    {
+        StateNotifier.OnVehicleStateChanged -= OnVehicleStateChangedAsync;
+        StateNotifier.OnVehiclesChanged -= OnVehiclesChangedAsync;
+    }
 }
