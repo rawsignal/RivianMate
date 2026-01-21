@@ -1333,6 +1333,68 @@ a.btn-primary:hover {
     color: var(--color-text-muted);
 }
 
+/* Select Dropdowns */
+select,
+.form-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-color: var(--color-surface-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    font-family: var(--font-sans);
+    padding: var(--space-2) var(--space-8) var(--space-2) var(--space-3);
+    cursor: pointer;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238FA696' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--space-2) center;
+    background-size: 16px;
+}
+
+select:hover,
+.form-select:hover {
+    border-color: var(--color-accent);
+}
+
+select:focus,
+.form-select:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-bg);
+}
+
+/* Style options for browsers that support it (mainly Firefox) */
+select option,
+.form-select option {
+    background-color: var(--color-surface-elevated);
+    color: var(--color-text-primary);
+    padding: var(--space-2) var(--space-3);
+}
+
+select option:hover,
+.form-select option:hover,
+select option:focus,
+.form-select option:focus {
+    background-color: var(--color-accent-bg);
+}
+
+select option:checked,
+.form-select option:checked {
+    background-color: var(--color-accent-bg);
+    color: var(--color-accent);
+}
+
+/* Chrome/Safari dropdown styling via color-scheme */
+@supports (color-scheme: dark) {
+    select,
+    .form-select {
+        color-scheme: dark;
+    }
+}
+
 /* Password Input with Visibility Toggle */
 .password-input-wrapper {
     position: relative;

@@ -34,6 +34,10 @@ public class DashboardContext
 
     // Services
     public TimeZoneService? TimeZoneService { get; init; }
+    public UnitConversionService? UnitConversionService { get; init; }
+
+    // User preferences for unit display
+    public UserPreferences? UserPreferences { get; init; }
 
     // Section context
     public DashboardSection Section { get; init; }

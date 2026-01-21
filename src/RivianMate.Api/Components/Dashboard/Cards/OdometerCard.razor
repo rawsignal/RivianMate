@@ -1,5 +1,7 @@
 @using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services
 @using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
 
 @if (Compact)
 {
@@ -9,10 +11,10 @@
             @_definition.Title
         </div>
         <p class="bottom-stat-value">
-            @(VehicleState?.Odometer?.ToString("N0") ?? "—")
+            @FormatOdometerValue()
             @if (VehicleState?.Odometer != null)
             {
-                <span class="bottom-stat-unit">mi</span>
+                <span class="bottom-stat-unit">@GetDistanceUnit()</span>
             }
         </p>
     </div>
@@ -24,7 +26,7 @@ else
             @if (VehicleState?.Odometer != null)
             {
                 <div class="quick-stat-value">
-                    @VehicleState.Odometer.Value.ToString("N0")<span class="quick-stat-unit">mi</span>
+                    @FormatOdometerValue()<span class="quick-stat-unit">@GetDistanceUnit()</span>
                 </div>
             }
             else
@@ -41,6 +43,8 @@ else
 
     private VehicleState? VehicleState => Context?.VehicleState;
     private bool Compact => Context?.IsCompact ?? false;
+    private UnitConversionService? UnitService => Context?.UnitConversionService;
+    private DistanceUnit DistUnit => Context?.UserPreferences?.DistanceUnit ?? DistanceUnit.Miles;
 
     private static readonly DashboardCardDefinition _definition = new()
     {
@@ -48,4 +52,16 @@ else
         Icon = "gauge",
         Title = "Odometer"
     };
+
+    private string FormatOdometerValue()
+    {
+        if (VehicleState?.Odometer == null) return "—";
+        var converted = UnitService?.ConvertDistance(VehicleState.Odometer, DistUnit);
+        return converted?.ToString("N0") ?? "—";
+    }
+
+    private string GetDistanceUnit()
+    {
+        return UnitService?.GetDistanceUnit(DistUnit) ?? "mi";
+    }
 }

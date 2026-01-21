@@ -19,6 +19,8 @@
 @inject TimeZoneService TimeZoneService
 @inject IJSRuntime JSRuntime
 @inject VehicleStateNotifier StateNotifier
+@inject UserPreferencesService UserPreferencesService
+@inject UnitConversionService UnitConversionService
 
 <PageTitle>Dashboard - RivianMate</PageTitle>
 
@@ -235,6 +237,7 @@
     private double? _efficiency;
     private bool _isOnline = false;
     private Guid _userId;
+    private RivianMate.Core.Entities.UserPreferences? _userPreferences;
 
     // Vehicle selector state
     private bool _showVehicleSelector = false;
@@ -279,8 +282,9 @@
                 return;
             }
 
-            // Load dashboard configuration
+            // Load dashboard configuration and user preferences
             await LoadDashboardConfig();
+            _userPreferences = await UserPreferencesService.GetPreferencesAsync(_userId);
 
             // Get vehicles for this user
             _vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
@@ -639,6 +643,8 @@
         RecentActivity = _recentActivity,
         Efficiency = _efficiency,
         TimeZoneService = TimeZoneService,
+        UnitConversionService = UnitConversionService,
+        UserPreferences = _userPreferences,
         Section = section
     };
 

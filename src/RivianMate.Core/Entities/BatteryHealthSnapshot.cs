@@ -53,21 +53,41 @@ public class BatteryHealthSnapshot : IVehicleOwnedEntity
     public double OriginalCapacityKwh { get; set; }
     
     // === Calculated Health Metrics ===
-    
+
     /// <summary>
     /// Battery health percentage: (ReportedCapacity / OriginalCapacity) * 100
     /// </summary>
     public double HealthPercent { get; set; }
-    
+
     /// <summary>
     /// Capacity lost since new (kWh)
     /// </summary>
     public double CapacityLostKwh { get; set; }
-    
+
     /// <summary>
     /// Degradation in percentage points from 100%
     /// </summary>
     public double DegradationPercent { get; set; }
+
+    // === Smoothed/Normalized Values ===
+
+    /// <summary>
+    /// Rolling average of capacity readings to smooth out variance.
+    /// Uses weighted average favoring high-SoC, moderate-temp readings.
+    /// </summary>
+    public double? SmoothedCapacityKwh { get; set; }
+
+    /// <summary>
+    /// Health percentage calculated from smoothed capacity.
+    /// More reliable for trend analysis than raw HealthPercent.
+    /// </summary>
+    public double? SmoothedHealthPercent { get; set; }
+
+    /// <summary>
+    /// Confidence score (0-1) based on reading conditions.
+    /// Higher when SoC is high and temperature is moderate.
+    /// </summary>
+    public double? ReadingConfidence { get; set; }
     
     // === Trend Analysis (calculated from historical data) ===
     

@@ -10,6 +10,8 @@
 @attribute [Authorize]
 @inject VehicleService VehicleService
 @inject TimeZoneService TimeZoneService
+@inject UserPreferencesService UserPreferencesService
+@inject UnitConversionService UnitConversionService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ILogger<VehicleStatus> Logger
 
@@ -76,7 +78,9 @@ else
 
         <!-- Battery -->
         <div class="card">
-            <BatteryInfo VehicleState="_currentState" />
+            <BatteryInfo VehicleState="_currentState"
+                         UnitService="UnitConversionService"
+                         DistanceUnit="_preferences?.DistanceUnit ?? DistanceUnit.Miles" />
         </div>
 
         <!-- Charging -->
@@ -86,7 +90,9 @@ else
 
         <!-- Climate -->
         <div class="card">
-            <ClimateInfo VehicleState="_currentState" />
+            <ClimateInfo VehicleState="_currentState"
+                         UnitService="UnitConversionService"
+                         TemperatureUnit="_preferences?.TemperatureUnit ?? TemperatureUnit.Fahrenheit" />
         </div>
 
         <!-- Closures & Security -->
@@ -96,12 +102,16 @@ else
 
         <!-- Tire Pressure -->
         <div class="card">
-            <TirePressureInfo VehicleState="_currentState" />
+            <TirePressureInfo VehicleState="_currentState"
+                              UnitService="UnitConversionService"
+                              PressureUnit="_preferences?.TirePressureUnit ?? TirePressureUnit.Psi" />
         </div>
 
         <!-- Location -->
         <div class="card">
-            <LocationInfo VehicleState="_currentState" />
+            <LocationInfo VehicleState="_currentState"
+                          UnitService="UnitConversionService"
+                          DistanceUnit="_preferences?.DistanceUnit ?? DistanceUnit.Miles" />
         </div>
 
         <!-- Software -->
@@ -138,6 +148,7 @@ else
 
     private Vehicle? _vehicle;
     private VehicleState? _currentState;
+    private UserPreferences? _preferences;
     private bool _loading = true;
     private bool _notFound;
     private Guid _userId;
@@ -183,6 +194,9 @@ else
             {
                 _currentState = await VehicleService.GetLatestStateAsync(_vehicle.Id);
             }
+
+            // Load user preferences for unit display
+            _preferences = await UserPreferencesService.GetPreferencesAsync(_userId);
         }
         catch (Exception ex)
         {

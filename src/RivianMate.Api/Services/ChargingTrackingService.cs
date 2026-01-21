@@ -12,13 +12,19 @@ namespace RivianMate.Api.Services;
 public class ChargingTrackingService
 {
     private readonly RivianMateDbContext _db;
+    private readonly UserPreferencesService _preferencesService;
     private readonly ILogger<ChargingTrackingService> _logger;
+
+    // Fixed radius for home location detection (in meters)
+    private const double HomeRadiusMeters = 100;
 
     public ChargingTrackingService(
         RivianMateDbContext db,
+        UserPreferencesService preferencesService,
         ILogger<ChargingTrackingService> logger)
     {
         _db = db;
+        _preferencesService = preferencesService;
         _logger = logger;
     }
 
@@ -91,15 +97,15 @@ public class ChargingTrackingService
             ChargeType = DetermineChargeType(state, null)
         };
 
-        // Determine if this is home charging by comparing to saved home location
-        session.IsHomeCharging = IsHomeLocation(vehicle, state.Latitude, state.Longitude);
+        // Determine if this is home charging by comparing to user's saved home location
+        session.IsHomeCharging = await IsHomeLocationAsync(vehicle.OwnerId, state.Latitude, state.Longitude);
 
         _db.ChargingSessions.Add(session);
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "Started charging session {SessionId} for vehicle {VehicleId} at {Battery}%, location: ({Lat}, {Lng})",
-            session.Id, vehicleId, session.StartBatteryLevel, state.Latitude, state.Longitude);
+            "Started charging session {SessionId} for vehicle {VehicleId} at {Battery}%, location: ({Lat}, {Lng}), isHome: {IsHome}",
+            session.Id, vehicleId, session.StartBatteryLevel, state.Latitude, state.Longitude, session.IsHomeCharging);
     }
 
     private async Task UpdateChargingSessionAsync(
@@ -206,16 +212,60 @@ public class ChargingTrackingService
         return existing ?? ChargeType.Unknown;
     }
 
-    private static bool IsHomeLocation(Vehicle vehicle, double? latitude, double? longitude)
+    /// <summary>
+    /// Checks if the given location is within the home radius of the user's saved home location.
+    /// Uses the Haversine formula to calculate distance between two coordinates.
+    /// </summary>
+    private async Task<bool> IsHomeLocationAsync(Guid? ownerId, double? latitude, double? longitude)
     {
-        // TODO: Compare to user's saved home location
-        // For now, we'll return null to indicate unknown
-        if (latitude == null || longitude == null)
+        if (latitude == null || longitude == null || ownerId == null)
             return false;
 
-        // Future: Get user's home location from settings and compare
-        // A location within ~100 meters of home would be considered "home charging"
+        try
+        {
+            var preferences = await _preferencesService.GetPreferencesAsync(ownerId.Value);
 
-        return false;
+            // Check if user has a home location configured
+            if (preferences.HomeLatitude == null || preferences.HomeLongitude == null)
+                return false;
+
+            // Calculate distance using Haversine formula
+            var distanceMeters = CalculateDistanceMeters(
+                latitude.Value, longitude.Value,
+                preferences.HomeLatitude.Value, preferences.HomeLongitude.Value);
+
+            return distanceMeters <= HomeRadiusMeters;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error checking home location for owner {OwnerId}", ownerId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Calculates the distance between two coordinates in meters using the Haversine formula.
+    /// </summary>
+    private static double CalculateDistanceMeters(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double EarthRadiusMeters = 6371000;
+
+        var lat1Rad = DegreesToRadians(lat1);
+        var lat2Rad = DegreesToRadians(lat2);
+        var deltaLatRad = DegreesToRadians(lat2 - lat1);
+        var deltaLonRad = DegreesToRadians(lon2 - lon1);
+
+        var a = Math.Sin(deltaLatRad / 2) * Math.Sin(deltaLatRad / 2) +
+                Math.Cos(lat1Rad) * Math.Cos(lat2Rad) *
+                Math.Sin(deltaLonRad / 2) * Math.Sin(deltaLonRad / 2);
+
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+
+        return EarthRadiusMeters * c;
+    }
+
+    private static double DegreesToRadians(double degrees)
+    {
+        return degrees * Math.PI / 180;
     }
 }

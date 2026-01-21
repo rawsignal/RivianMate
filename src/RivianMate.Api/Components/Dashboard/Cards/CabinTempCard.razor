@@ -1,5 +1,7 @@
 @using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services
 @using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
 
 @if (Compact)
 {
@@ -9,10 +11,10 @@
             @_definition.Title
         </div>
         <p class="bottom-stat-value">
-            @(VehicleState?.CabinTemperature != null ? GetFahrenheit(VehicleState.CabinTemperature.Value) : "—")
+            @FormatTemperatureValue()
             @if (VehicleState?.CabinTemperature != null)
             {
-                <span class="bottom-stat-unit">°F</span>
+                <span class="bottom-stat-unit">@GetTemperatureUnit()</span>
             }
         </p>
     </div>
@@ -24,7 +26,7 @@ else
             @if (VehicleState?.CabinTemperature != null)
             {
                 <div class="quick-stat-value">
-                    @GetFahrenheit(VehicleState.CabinTemperature.Value)<span class="quick-stat-unit">°F</span>
+                    @FormatTemperatureValue()<span class="quick-stat-unit">@GetTemperatureUnit()</span>
                 </div>
             }
             else
@@ -41,6 +43,8 @@ else
 
     private VehicleState? VehicleState => Context?.VehicleState;
     private bool Compact => Context?.IsCompact ?? false;
+    private UnitConversionService? UnitService => Context?.UnitConversionService;
+    private TemperatureUnit TempUnit => Context?.UserPreferences?.TemperatureUnit ?? TemperatureUnit.Fahrenheit;
 
     private static readonly DashboardCardDefinition _definition = new()
     {
@@ -49,9 +53,15 @@ else
         Title = "Cabin Temp"
     };
 
-    private static string GetFahrenheit(double celsius)
+    private string FormatTemperatureValue()
     {
-        var fahrenheit = (celsius * 9 / 5) + 32;
-        return fahrenheit.ToString("0");
+        if (VehicleState?.CabinTemperature == null) return "—";
+        var converted = UnitService?.ConvertTemperature(VehicleState.CabinTemperature, TempUnit);
+        return converted?.ToString("0") ?? "—";
+    }
+
+    private string GetTemperatureUnit()
+    {
+        return UnitService?.GetTemperatureUnit(TempUnit) ?? "°F";
     }
 }

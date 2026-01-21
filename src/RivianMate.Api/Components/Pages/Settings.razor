@@ -4,10 +4,13 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using RivianMate.Api.Components.Shared
 @using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
 @attribute [Authorize]
 
 @inject RivianAccountService RivianAccountService
 @inject VehicleService VehicleService
+@inject UserPreferencesService UserPreferencesService
+@inject TimeZoneService TimeZoneService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavigationManager
 @inject ILogger<Settings> Logger
@@ -20,6 +23,159 @@
             <Icon Name="settings" Size="28" Style="color: var(--color-accent);" />
             Settings
         </h1>
+    </div>
+
+    <!-- Display Preferences Section -->
+    <div class="card mb-6">
+        <div class="card-header">
+            <h2 class="card-title">
+                <Icon Name="settings" Size="20" Style="color: var(--color-accent);" />
+                Display Preferences
+            </h2>
+        </div>
+        <div style="padding: var(--space-4);">
+            @if (_preferencesLoading)
+            {
+                <div style="text-align: center;">
+                    <div class="loading-spinner"></div>
+                </div>
+            }
+            else
+            {
+                <div class="form-group">
+                    <label class="form-label">Distance & Speed</label>
+                    <select class="form-select" @bind="_preferences!.DistanceUnit" @bind:after="SavePreferencesAsync">
+                        <option value="@DistanceUnit.Miles">Miles (mph)</option>
+                        <option value="@DistanceUnit.Kilometers">Kilometers (km/h)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Temperature</label>
+                    <select class="form-select" @bind="_preferences.TemperatureUnit" @bind:after="SavePreferencesAsync">
+                        <option value="@TemperatureUnit.Fahrenheit">Fahrenheit</option>
+                        <option value="@TemperatureUnit.Celsius">Celsius</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Tire Pressure</label>
+                    <select class="form-select" @bind="_preferences.TirePressureUnit" @bind:after="SavePreferencesAsync">
+                        <option value="@TirePressureUnit.Psi">PSI</option>
+                        <option value="@TirePressureUnit.Bar">bar</option>
+                        <option value="@TirePressureUnit.KPa">kPa</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Time Zone</label>
+                    <select class="form-select" style="max-width: 320px;"
+                            value="@(_preferences.TimeZoneId ?? "")"
+                            @onchange="OnTimeZoneChanged">
+                        <option value="">Auto-detect from browser</option>
+                        @foreach (var tz in TimeZoneService.CommonTimeZones)
+                        {
+                            <option value="@tz.Id">@tz.DisplayName</option>
+                        }
+                    </select>
+                    <p class="form-hint">Override browser timezone detection (useful if times show in UTC)</p>
+                </div>
+
+                @if (_preferencesSaveSuccess)
+                {
+                    <div class="alert alert-success" style="margin-top: var(--space-3);">
+                        <Icon Name="check" Size="16" />
+                        Preferences saved
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <!-- Home Charging Section -->
+    <div class="card mb-6">
+        <div class="card-header">
+            <h2 class="card-title">
+                <Icon Name="home" Size="20" Style="color: var(--color-accent);" />
+                Home Charging
+            </h2>
+        </div>
+        <div style="padding: var(--space-4);">
+            @if (_preferencesLoading)
+            {
+                <div style="text-align: center;">
+                    <div class="loading-spinner"></div>
+                </div>
+            }
+            else
+            {
+                <div class="form-group">
+                    <label class="form-label">Electricity Rate</label>
+                    <div style="display: flex; gap: var(--space-2); align-items: center;">
+                        <input type="number" step="0.001" min="0" max="1"
+                               class="form-input" style="width: 100px;"
+                               placeholder="0.15"
+                               value="@_preferences!.HomeElectricityRate"
+                               @onchange="OnElectricityRateChanged" />
+                        <select class="form-select" style="width: 120px;"
+                                @bind="_preferences.CurrencyCode" @bind:after="SavePreferencesAsync">
+                            @foreach (var currency in SupportedCurrencies.Codes)
+                            {
+                                <option value="@currency.Key">@currency.Key</option>
+                            }
+                        </select>
+                        <span style="color: var(--color-text-muted);">/kWh</span>
+                    </div>
+                    <p class="form-hint">Used to estimate home charging cost</p>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Home Location</label>
+                    <div style="display: flex; gap: var(--space-2); align-items: center; margin-bottom: var(--space-2);">
+                        <label style="color: var(--color-text-muted); font-size: 0.875rem; width: 30px;">Lat:</label>
+                        <input type="number" step="0.000001" min="-90" max="90"
+                               class="form-input" style="width: 140px;"
+                               placeholder="37.7749"
+                               value="@_preferences.HomeLatitude"
+                               @onchange="OnHomeLatitudeChanged" />
+                        <label style="color: var(--color-text-muted); font-size: 0.875rem; width: 30px; margin-left: var(--space-2);">Lon:</label>
+                        <input type="number" step="0.000001" min="-180" max="180"
+                               class="form-input" style="width: 140px;"
+                               placeholder="-122.4194"
+                               value="@_preferences.HomeLongitude"
+                               @onchange="OnHomeLongitudeChanged" />
+                    </div>
+                    <button class="btn btn-secondary" @onclick="UseCurrentVehicleLocationAsync"
+                            disabled="@(_isGettingLocation || _currentVehicleLocation == null)">
+                        @if (_isGettingLocation)
+                        {
+                            <span>Getting location...</span>
+                        }
+                        else
+                        {
+                            <Icon Name="map-pin" Size="16" />
+                            <span>Use Current Vehicle Location</span>
+                        }
+                    </button>
+                    @if (_preferences.HomeLatitude.HasValue && _preferences.HomeLongitude.HasValue)
+                    {
+                        <button class="btn btn-ghost" style="margin-left: var(--space-2);" @onclick="ClearHomeLocationAsync">
+                            <Icon Name="x" Size="16" />
+                            Clear
+                        </button>
+                    }
+                    <p class="form-hint">Charges within 100m will be marked as home charging</p>
+                </div>
+
+                @if (_preferencesSaveSuccess)
+                {
+                    <div class="alert alert-success" style="margin-top: var(--space-3);">
+                        <Icon Name="check" Size="16" />
+                        Preferences saved
+                    </div>
+                }
+            }
+        </div>
     </div>
 
     <!-- Rivian Accounts Section -->
@@ -246,6 +402,57 @@
         border: 1px solid rgba(239, 68, 68, 0.3);
     }
 
+    .form-group {
+        margin-bottom: var(--space-4);
+    }
+
+    .form-label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: var(--space-2);
+        color: var(--color-text-primary);
+    }
+
+    .form-input {
+        background: var(--color-surface-elevated);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        padding: var(--space-2) var(--space-3);
+        color: var(--color-text-primary);
+        font-size: 0.875rem;
+        width: 100%;
+        max-width: 280px;
+    }
+
+    .form-select {
+        width: 100%;
+        max-width: 280px;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 3px var(--color-accent-bg);
+    }
+
+    .form-hint {
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+        margin-top: var(--space-1);
+    }
+
+    .alert-success {
+        background: rgba(34, 197, 94, 0.1);
+        border: 1px solid rgba(34, 197, 94, 0.3);
+        color: #22c55e;
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-md);
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: 0.875rem;
+    }
+
     @@media (max-width: 640px) {
         .account-item {
             flex-direction: column;
@@ -272,6 +479,14 @@
     private int? _deletingAccountId;
     private string? _errorMessage;
 
+    // Preferences state
+    private UserPreferences? _preferences;
+    private bool _preferencesLoading = true;
+    private bool _preferencesSaveSuccess;
+    private bool _isGettingLocation;
+    private (double Lat, double Lon)? _currentVehicleLocation;
+    private System.Timers.Timer? _successTimer;
+
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -281,7 +496,178 @@
             _userId = userId;
         }
 
-        await LoadAccountsAsync();
+        // Load preferences and accounts in parallel
+        var preferencesTask = LoadPreferencesAsync();
+        var accountsTask = LoadAccountsAsync();
+        await Task.WhenAll(preferencesTask, accountsTask);
+
+        // Try to get current vehicle location for the "Use Current Vehicle Location" button
+        await LoadCurrentVehicleLocationAsync();
+    }
+
+    private async Task LoadPreferencesAsync()
+    {
+        _preferencesLoading = true;
+        try
+        {
+            _preferences = await UserPreferencesService.GetPreferencesAsync(_userId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load preferences");
+            _preferences = new UserPreferences { UserId = _userId };
+        }
+        finally
+        {
+            _preferencesLoading = false;
+        }
+    }
+
+    private async Task SavePreferencesAsync()
+    {
+        if (_preferences == null) return;
+
+        try
+        {
+            await UserPreferencesService.SavePreferencesAsync(_preferences);
+            ShowSaveSuccess();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save preferences");
+        }
+    }
+
+    private void ShowSaveSuccess()
+    {
+        _preferencesSaveSuccess = true;
+        StateHasChanged();
+
+        // Hide the success message after 2 seconds
+        _successTimer?.Dispose();
+        _successTimer = new System.Timers.Timer(2000);
+        _successTimer.Elapsed += (_, _) =>
+        {
+            _preferencesSaveSuccess = false;
+            InvokeAsync(StateHasChanged);
+            _successTimer?.Dispose();
+        };
+        _successTimer.AutoReset = false;
+        _successTimer.Start();
+    }
+
+    private async Task OnElectricityRateChanged(ChangeEventArgs e)
+    {
+        if (_preferences == null) return;
+
+        if (double.TryParse(e.Value?.ToString(), out var rate))
+        {
+            _preferences.HomeElectricityRate = rate;
+        }
+        else
+        {
+            _preferences.HomeElectricityRate = null;
+        }
+
+        await SavePreferencesAsync();
+    }
+
+    private async Task OnHomeLatitudeChanged(ChangeEventArgs e)
+    {
+        if (_preferences == null) return;
+
+        if (double.TryParse(e.Value?.ToString(), out var lat))
+        {
+            _preferences.HomeLatitude = lat;
+        }
+        else
+        {
+            _preferences.HomeLatitude = null;
+        }
+
+        await SavePreferencesAsync();
+    }
+
+    private async Task OnHomeLongitudeChanged(ChangeEventArgs e)
+    {
+        if (_preferences == null) return;
+
+        if (double.TryParse(e.Value?.ToString(), out var lon))
+        {
+            _preferences.HomeLongitude = lon;
+        }
+        else
+        {
+            _preferences.HomeLongitude = null;
+        }
+
+        await SavePreferencesAsync();
+    }
+
+    private async Task OnTimeZoneChanged(ChangeEventArgs e)
+    {
+        if (_preferences == null) return;
+
+        var value = e.Value?.ToString();
+        _preferences.TimeZoneId = string.IsNullOrEmpty(value) ? null : value;
+
+        await SavePreferencesAsync();
+
+        // Apply the new timezone immediately
+        TimeZoneService.SetUserPreferredTimeZone(_preferences.TimeZoneId);
+    }
+
+    private async Task LoadCurrentVehicleLocationAsync()
+    {
+        try
+        {
+            // Get the first vehicle for this user
+            if (_accounts == null || _accounts.Count == 0) return;
+
+            foreach (var account in _accounts)
+            {
+                var vehicles = await VehicleService.GetVehiclesForAccountAsync(account.Id);
+                if (vehicles.Count > 0)
+                {
+                    var latestState = await VehicleService.GetLatestStateAsync(vehicles[0].Id);
+                    if (latestState?.Latitude.HasValue == true && latestState?.Longitude.HasValue == true)
+                    {
+                        _currentVehicleLocation = (latestState.Latitude.Value, latestState.Longitude.Value);
+                        return;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load current vehicle location");
+        }
+    }
+
+    private async Task UseCurrentVehicleLocationAsync()
+    {
+        if (_preferences == null || _currentVehicleLocation == null) return;
+
+        _isGettingLocation = true;
+        try
+        {
+            _preferences.HomeLatitude = _currentVehicleLocation.Value.Lat;
+            _preferences.HomeLongitude = _currentVehicleLocation.Value.Lon;
+            await SavePreferencesAsync();
+        }
+        finally
+        {
+            _isGettingLocation = false;
+        }
+    }
+
+    private async Task ClearHomeLocationAsync()
+    {
+        if (_preferences == null) return;
+
+        _preferences.HomeLatitude = null;
+        _preferences.HomeLongitude = null;
+        await SavePreferencesAsync();
     }
 
     private async Task LoadAccountsAsync()

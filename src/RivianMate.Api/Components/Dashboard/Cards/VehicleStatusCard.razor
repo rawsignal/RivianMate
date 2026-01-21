@@ -1,5 +1,6 @@
 @using RivianMate.Api.Components.Shared
 @using RivianMate.Api.Components.VehicleStatus
+@using RivianMate.Api.Services
 @using RivianMate.Core.Entities
 @using RivianMate.Core.Enums
 
@@ -111,6 +112,8 @@
 
     private VehicleState? VehicleState => Context?.VehicleState;
     private Guid? VehiclePublicId => Context?.VehiclePublicId;
+    private UnitConversionService? UnitService => Context?.UnitConversionService;
+    private TemperatureUnit TempUnit => Context?.UserPreferences?.TemperatureUnit ?? TemperatureUnit.Fahrenheit;
 
     private static readonly DashboardCardDefinition _definition = new()
     {
@@ -167,11 +170,10 @@
         return "—";
     }
 
-    private static string FormatTemperature(double? celsius)
+    private string FormatTemperature(double? celsius)
     {
         if (celsius == null) return "—";
-        var fahrenheit = celsius.Value * 9 / 5 + 32;
-        return $"{fahrenheit:0}°F";
+        return UnitService?.FormatTemperature(celsius, TempUnit) ?? $"{celsius:0}°C";
     }
 
     private static string GetGearGuardClass(string? status) => status?.ToLower() switch

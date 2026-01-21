@@ -1,4 +1,6 @@
+@using RivianMate.Api.Services
 @using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
 
 <StatusSection Title="Climate" Icon="thermometer">
     <StatusItem Label="Cabin Temp" Value="@FormatTemperature(VehicleState?.CabinTemperature)" />
@@ -10,17 +12,13 @@
 
 @code {
     [Parameter] public VehicleState? VehicleState { get; set; }
-    [Parameter] public bool UseFahrenheit { get; set; } = true;
+    [Parameter] public UnitConversionService? UnitService { get; set; }
+    [Parameter] public TemperatureUnit TemperatureUnit { get; set; } = TemperatureUnit.Fahrenheit;
 
     private string FormatTemperature(double? celsius)
     {
         if (celsius == null) return "—";
-        if (UseFahrenheit)
-        {
-            var fahrenheit = celsius.Value * 9 / 5 + 32;
-            return $"{fahrenheit:0}°F";
-        }
-        return $"{celsius:0}°C";
+        return UnitService?.FormatTemperature(celsius, TemperatureUnit) ?? $"{celsius:0}°C";
     }
 
     private static string FormatBool(bool? value) => value switch

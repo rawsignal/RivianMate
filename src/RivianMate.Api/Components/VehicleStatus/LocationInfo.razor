@@ -1,4 +1,6 @@
+@using RivianMate.Api.Services
 @using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
 
 <StatusSection Title="Location" Icon="map-pin">
     @if (VehicleState?.Latitude != null && VehicleState?.Longitude != null)
@@ -6,7 +8,7 @@
         <StatusItem Label="Coordinates" Value="@FormatCoordinates(VehicleState.Latitude, VehicleState.Longitude)" />
         @if (VehicleState.Altitude != null)
         {
-            <StatusItem Label="Altitude" Value="@($"{VehicleState.Altitude:0} m")" />
+            <StatusItem Label="Altitude" Value="@FormatAltitude(VehicleState.Altitude)" />
         }
         @if (VehicleState.Speed != null && VehicleState.Speed > 0)
         {
@@ -25,6 +27,8 @@
 
 @code {
     [Parameter] public VehicleState? VehicleState { get; set; }
+    [Parameter] public UnitConversionService? UnitService { get; set; }
+    [Parameter] public DistanceUnit DistanceUnit { get; set; } = DistanceUnit.Miles;
 
     private static string FormatCoordinates(double? lat, double? lng)
     {
@@ -32,11 +36,22 @@
         return $"{lat:0.0000}°, {lng:0.0000}°";
     }
 
-    private static string FormatSpeed(double? metersPerSecond)
+    private string FormatAltitude(double? meters)
+    {
+        if (meters == null) return "—";
+        if (DistanceUnit == DistanceUnit.Kilometers)
+        {
+            return $"{meters:0} m";
+        }
+        // Convert to feet for imperial
+        var feet = meters.Value * 3.28084;
+        return $"{feet:0} ft";
+    }
+
+    private string FormatSpeed(double? metersPerSecond)
     {
         if (metersPerSecond == null) return "—";
-        var mph = metersPerSecond.Value * 2.237; // m/s to mph
-        return $"{mph:0} mph";
+        return UnitService?.FormatSpeed(metersPerSecond, DistanceUnit) ?? $"{metersPerSecond:0} m/s";
     }
 
     private static string FormatHeading(double? degrees)

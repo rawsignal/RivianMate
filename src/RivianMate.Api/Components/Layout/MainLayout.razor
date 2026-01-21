@@ -3,6 +3,8 @@
 @using RivianMate.Core.Licensing
 @using Microsoft.AspNetCore.Components.Authorization
 @inject TimeZoneService TimeZoneService
+@inject UserPreferencesService UserPreferencesService
+@inject AuthenticationStateProvider AuthStateProvider
 
 <div class="app-container">
     <nav class="sidebar">
@@ -106,6 +108,26 @@
         if (firstRender && !_timeZoneInitialized)
         {
             await TimeZoneService.InitializeAsync();
+
+            // Apply user's saved timezone preference as fallback
+            try
+            {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (Guid.TryParse(userIdClaim, out var userId))
+                {
+                    var preferences = await UserPreferencesService.GetPreferencesAsync(userId);
+                    if (!string.IsNullOrEmpty(preferences.TimeZoneId))
+                    {
+                        TimeZoneService.SetUserPreferredTimeZone(preferences.TimeZoneId);
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore errors loading preferences for timezone
+            }
+
             _timeZoneInitialized = true;
         }
     }

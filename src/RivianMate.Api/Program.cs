@@ -197,6 +197,8 @@ builder.Services.AddScoped<RivianAccountService>();
 builder.Services.AddScoped<DashboardConfigService>();
 builder.Services.AddScoped<DriveTrackingService>();
 builder.Services.AddScoped<ChargingTrackingService>();
+builder.Services.AddScoped<UserPreferencesService>();
+builder.Services.AddScoped<UnitConversionService>();
 builder.Services.AddScoped<DevDataSeeder>();
 
 // === Polling/WebSocket Configuration ===
@@ -280,6 +282,59 @@ using (var scope = app.Services.CreateScope())
         await AddColumnIfNotExistsAsync("Vehicles", "ImageContentType", "TEXT");
         await AddColumnIfNotExistsAsync("Vehicles", "ImageVersion", "INTEGER");
         await AddColumnIfNotExistsAsync("Positions", "Gear", "INTEGER DEFAULT 0");
+
+        // Battery health snapshot smoothing columns
+        await AddColumnIfNotExistsAsync("BatteryHealthSnapshots", "SmoothedCapacityKwh", "REAL");
+        await AddColumnIfNotExistsAsync("BatteryHealthSnapshots", "SmoothedHealthPercent", "REAL");
+        await AddColumnIfNotExistsAsync("BatteryHealthSnapshots", "ReadingConfidence", "REAL");
+
+        // Create UserPreferences table if it doesn't exist (for existing SQLite databases)
+        async Task<bool> TableExistsAsync(string table)
+        {
+            var conn = db.Database.GetDbConnection();
+            await conn.OpenAsync();
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'";
+                var result = await cmd.ExecuteScalarAsync();
+                return result != null;
+            }
+            finally
+            {
+                await conn.CloseAsync();
+            }
+        }
+
+        if (!await TableExistsAsync("UserPreferences"))
+        {
+            #pragma warning disable EF1002
+            await db.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE UserPreferences (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    UserId TEXT NOT NULL,
+                    DistanceUnit INTEGER NOT NULL DEFAULT 0,
+                    TemperatureUnit INTEGER NOT NULL DEFAULT 0,
+                    TirePressureUnit INTEGER NOT NULL DEFAULT 0,
+                    HomeElectricityRate REAL,
+                    CurrencyCode TEXT NOT NULL DEFAULT 'USD',
+                    HomeLatitude REAL,
+                    HomeLongitude REAL,
+                    TimeZoneId TEXT,
+                    CreatedAt TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL,
+                    FOREIGN KEY (UserId) REFERENCES AspNetUsers(Id) ON DELETE CASCADE
+                )");
+            await db.Database.ExecuteSqlRawAsync(
+                "CREATE UNIQUE INDEX IX_UserPreferences_UserId ON UserPreferences(UserId)");
+            #pragma warning restore EF1002
+            logger.LogInformation("Created UserPreferences table");
+        }
+        else
+        {
+            // Add TimeZoneId column if it doesn't exist (for existing UserPreferences tables)
+            await AddColumnIfNotExistsAsync("UserPreferences", "TimeZoneId", "TEXT");
+        }
 
         logger.LogInformation("SQLite database ready");
 

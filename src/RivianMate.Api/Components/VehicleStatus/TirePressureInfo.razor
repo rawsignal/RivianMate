@@ -1,3 +1,4 @@
+@using RivianMate.Api.Services
 @using RivianMate.Core.Entities
 @using RivianMate.Core.Enums
 
@@ -28,13 +29,15 @@
 
 @code {
     [Parameter] public VehicleState? VehicleState { get; set; }
+    [Parameter] public UnitConversionService? UnitService { get; set; }
+    [Parameter] public TirePressureUnit PressureUnit { get; set; } = TirePressureUnit.Psi;
 
-    private static string FormatPressure(double? psi, TirePressureStatus? status)
+    private string FormatPressure(double? psi, TirePressureStatus? status)
     {
         // Prefer actual PSI value if available
         if (psi.HasValue && psi.Value > 0)
         {
-            return $"{psi.Value:F0} PSI";
+            return UnitService?.FormatPressure(psi, PressureUnit) ?? $"{psi.Value:F0} PSI";
         }
 
         // Fall back to status text

@@ -1,12 +1,14 @@
 @using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services
 @using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
 
 <CardWrapper Definition="_definition">
     @if (VehicleState?.RangeEstimate != null)
     {
         <div class="quick-stat">
             <div class="quick-stat-value">
-                @VehicleState.RangeEstimate.Value.ToString("0")<span class="quick-stat-unit">mi</span>
+                @FormatRangeValue()<span class="quick-stat-unit">@GetDistanceUnit()</span>
             </div>
             @if (!string.IsNullOrEmpty(VehicleState.DriveMode))
             {
@@ -29,6 +31,8 @@
     public DashboardContext? Context { get; set; }
 
     private VehicleState? VehicleState => Context?.VehicleState;
+    private UnitConversionService? UnitService => Context?.UnitConversionService;
+    private DistanceUnit DistUnit => Context?.UserPreferences?.DistanceUnit ?? DistanceUnit.Miles;
 
     private static readonly DashboardCardDefinition _definition = new()
     {
@@ -36,6 +40,18 @@
         Icon = "map-pin",
         Title = "Estimated Range"
     };
+
+    private string FormatRangeValue()
+    {
+        if (VehicleState?.RangeEstimate == null) return "—";
+        var converted = UnitService?.ConvertRange(VehicleState.RangeEstimate, DistUnit);
+        return converted?.ToString("0") ?? "—";
+    }
+
+    private string GetDistanceUnit()
+    {
+        return UnitService?.GetDistanceUnit(DistUnit) ?? "mi";
+    }
 
     private static string FormatDriveMode(string? mode) => mode switch
     {

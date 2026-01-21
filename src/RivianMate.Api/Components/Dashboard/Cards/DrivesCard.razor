@@ -1,6 +1,7 @@
 @using RivianMate.Api.Components.Shared
 @using RivianMate.Api.Services
 @using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
 
 <CardWrapper Definition="@GetDefinition()">
     @if (RecentDrives?.Any() == true)
@@ -14,7 +15,7 @@
                     </div>
                     <div class="drive-details">
                         <div class="drive-header">
-                            <span class="drive-distance">@FormatDistance(drive.DistanceMiles) mi</span>
+                            <span class="drive-distance">@FormatDistance(drive.DistanceMiles)</span>
                             <span class="drive-time">@FormatDriveTime(drive.StartTime)</span>
                         </div>
                         <div class="drive-stats">
@@ -24,7 +25,7 @@
                             @if (drive.AverageSpeedMph.HasValue)
                             {
                                 <span class="drive-stat-separator">·</span>
-                                <span>@drive.AverageSpeedMph.Value.ToString("0") mph avg</span>
+                                <span>@FormatSpeed(drive.AverageSpeedMph.Value) avg</span>
                             }
                         </div>
                     </div>
@@ -48,6 +49,8 @@
     private List<Drive>? RecentDrives => Context?.RecentDrives;
     private Guid? VehiclePublicId => Context?.VehiclePublicId;
     private TimeZoneService? TimeZoneService => Context?.TimeZoneService;
+    private UnitConversionService? UnitService => Context?.UnitConversionService;
+    private DistanceUnit DistUnit => Context?.UserPreferences?.DistanceUnit ?? DistanceUnit.Miles;
 
     private static readonly DashboardCardDefinition _definition = new()
     {
@@ -63,16 +66,29 @@
         DetailUrl = VehiclePublicId.HasValue ? $"/drives/{VehiclePublicId}" : _definition.DetailUrl
     };
 
-    private static string FormatDistance(double? miles)
+    private string FormatDistance(double? miles)
     {
         if (miles == null) return "—";
-        return miles.Value.ToString("0.0");
+        var converted = UnitService?.ConvertDistance(miles, DistUnit);
+        var unit = UnitService?.GetDistanceUnit(DistUnit) ?? "mi";
+        return $"{converted?.ToString("0.0") ?? "—"} {unit}";
     }
 
-    private static string FormatEfficiency(double? efficiency)
+    private string FormatEfficiency(double? efficiency)
     {
-        if (efficiency == null) return "— mi/kWh";
-        return $"{efficiency.Value:0.0} mi/kWh";
+        if (efficiency == null) return "—";
+        var converted = UnitService?.ConvertEfficiency(efficiency, DistUnit);
+        var unit = UnitService?.GetEfficiencyUnit(DistUnit) ?? "mi/kWh";
+        return $"{converted?.ToString("0.0") ?? "—"} {unit}";
+    }
+
+    private string FormatSpeed(double mph)
+    {
+        // AverageSpeedMph is stored as mph, convert to m/s first then use service
+        var metersPerSecond = mph / 2.23694;
+        var converted = UnitService?.ConvertSpeed(metersPerSecond, DistUnit);
+        var unit = UnitService?.GetSpeedUnit(DistUnit) ?? "mph";
+        return $"{converted?.ToString("0") ?? mph.ToString("0")} {unit}";
     }
 
     private string FormatDriveTime(DateTime utcTime)

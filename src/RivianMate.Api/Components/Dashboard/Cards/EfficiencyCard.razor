@@ -1,4 +1,6 @@
 @using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services
+@using RivianMate.Core.Enums
 
 @if (Compact)
 {
@@ -8,10 +10,10 @@
             @_definition.Title
         </div>
         <p class="bottom-stat-value">
-            @(Efficiency?.ToString("0.0") ?? "—")
+            @FormatEfficiencyValue()
             @if (Efficiency != null)
             {
-                <span class="bottom-stat-unit">mi/kWh</span>
+                <span class="bottom-stat-unit">@GetEfficiencyUnit()</span>
             }
         </p>
     </div>
@@ -23,7 +25,7 @@ else
             @if (Efficiency != null)
             {
                 <div class="quick-stat-value">
-                    @Efficiency.Value.ToString("0.0")<span class="quick-stat-unit"> mi/kWh</span>
+                    @FormatEfficiencyValue()<span class="quick-stat-unit"> @GetEfficiencyUnit()</span>
                 </div>
             }
             else
@@ -40,6 +42,8 @@ else
 
     private double? Efficiency => Context?.Efficiency;
     private bool Compact => Context?.IsCompact ?? false;
+    private UnitConversionService? UnitService => Context?.UnitConversionService;
+    private DistanceUnit DistUnit => Context?.UserPreferences?.DistanceUnit ?? DistanceUnit.Miles;
 
     private static readonly DashboardCardDefinition _definition = new()
     {
@@ -47,4 +51,16 @@ else
         Icon = "zap",
         Title = "Efficiency"
     };
+
+    private string FormatEfficiencyValue()
+    {
+        if (Efficiency == null) return "—";
+        var converted = UnitService?.ConvertEfficiency(Efficiency, DistUnit);
+        return converted?.ToString("0.0") ?? "—";
+    }
+
+    private string GetEfficiencyUnit()
+    {
+        return UnitService?.GetEfficiencyUnit(DistUnit) ?? "mi/kWh";
+    }
 }

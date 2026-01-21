@@ -9,7 +9,8 @@
 @attribute [Authorize]
 @inject VehicleService VehicleService
 @inject TimeZoneService TimeZoneService
-@inject SettingsService SettingsService
+@inject UserPreferencesService UserPreferencesService
+@inject UnitConversionService UnitConversionService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject ILogger<Charging> Logger
@@ -230,7 +231,7 @@ else
                                 {
                                     <div class="session-detail-item">
                                         <span class="session-detail-label">Your Rate</span>
-                                        <span class="session-detail-value">@_homeElectricityRate.ToString("C3")/kWh</span>
+                                        <span class="session-detail-value">@FormatRateWithCurrency()</span>
                                     </div>
                                 }
                             </div>
@@ -290,21 +291,21 @@ else
                                 {
                                     <div class="session-detail-item">
                                         <span class="session-detail-label">Start Range</span>
-                                        <span class="session-detail-value">@_selectedSession.StartRangeEstimate.Value.ToString("0") mi</span>
+                                        <span class="session-detail-value">@FormatRange(_selectedSession.StartRangeEstimate)</span>
                                     </div>
                                 }
                                 @if (_selectedSession.EndRangeEstimate.HasValue)
                                 {
                                     <div class="session-detail-item">
                                         <span class="session-detail-label">End Range</span>
-                                        <span class="session-detail-value">@_selectedSession.EndRangeEstimate.Value.ToString("0") mi</span>
+                                        <span class="session-detail-value">@FormatRange(_selectedSession.EndRangeEstimate)</span>
                                     </div>
                                 }
                                 @if (_selectedSession.RangeAdded.HasValue)
                                 {
                                     <div class="session-detail-item">
                                         <span class="session-detail-label">Range Added</span>
-                                        <span class="session-detail-value">+@_selectedSession.RangeAdded.Value.ToString("0") mi</span>
+                                        <span class="session-detail-value">+@FormatRange(_selectedSession.RangeAdded)</span>
                                     </div>
                                 }
                             </div>
@@ -358,8 +359,11 @@ else
     private int _currentPage = 1;
     private int _totalCount = 0;
 
-    // Home electricity rate for estimating home charging cost (loaded from settings)
+    // User preferences for unit display and home charging rate
+    private UserPreferences? _userPreferences;
     private double _homeElectricityRate = 0.15; // $/kWh default
+    private string _currencyCode = "USD";
+    private DistanceUnit _distanceUnit = DistanceUnit.Miles;
 
     protected override async Task OnInitializedAsync()
     {
@@ -407,8 +411,11 @@ else
                 return;
             }
 
-            // Load home electricity rate from settings (for estimating home charging cost)
-            _homeElectricityRate = await SettingsService.GetDoubleAsync(SettingKeys.HomeElectricityRate, 0.15);
+            // Load user preferences for home electricity rate and currency
+            _userPreferences = await UserPreferencesService.GetPreferencesAsync(_userId);
+            _homeElectricityRate = _userPreferences?.HomeElectricityRate ?? 0.15;
+            _currencyCode = _userPreferences?.CurrencyCode ?? "USD";
+            _distanceUnit = _userPreferences?.DistanceUnit ?? DistanceUnit.Miles;
 
             Vehicle? vehicle = null;
 
@@ -587,7 +594,18 @@ else
     private string FormatCost(double? cost)
     {
         if (!cost.HasValue || cost < 0.01) return "—";
-        return cost.Value.ToString("C2");
+        return UnitConversionService.FormatCurrency(cost, _currencyCode);
+    }
+
+    private string FormatRange(double? miles)
+    {
+        if (!miles.HasValue) return "—";
+        return UnitConversionService.FormatRange(miles, _distanceUnit);
+    }
+
+    private string FormatRateWithCurrency()
+    {
+        return UnitConversionService.FormatCostPerKwh(_homeElectricityRate, _currencyCode);
     }
 
     public async ValueTask DisposeAsync()

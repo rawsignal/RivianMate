@@ -5,9 +5,12 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using RivianMate.Api.Components.Shared
 @using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
 @attribute [Authorize]
 @inject VehicleService VehicleService
 @inject TimeZoneService TimeZoneService
+@inject UserPreferencesService UserPreferencesService
+@inject UnitConversionService UnitConversionService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject ILogger<Drives> Logger
@@ -59,7 +62,7 @@ else
             </div>
             <div class="mini-stat">
                 <p class="mini-stat-label">Total Distance</p>
-                <p class="mini-stat-value">@_totalDistance.ToString("N0") <span class="mini-stat-unit">mi</span></p>
+                <p class="mini-stat-value">@FormatDistanceShort(_totalDistance) <span class="mini-stat-unit">@GetDistanceUnit()</span></p>
             </div>
             <div class="mini-stat">
                 <p class="mini-stat-label">Total Energy</p>
@@ -67,7 +70,7 @@ else
             </div>
             <div class="mini-stat">
                 <p class="mini-stat-label">Avg Efficiency</p>
-                <p class="mini-stat-value">@(_avgEfficiency?.ToString("0.0") ?? "—") <span class="mini-stat-unit">mi/kWh</span></p>
+                <p class="mini-stat-value">@FormatEfficiency(_avgEfficiency)</p>
             </div>
         </div>
     </div>
@@ -91,7 +94,7 @@ else
                         </div>
                         <div class="drive-list-content">
                             <div class="drive-list-header">
-                                <span class="drive-list-distance">@(drive.DistanceMiles?.ToString("0.0") ?? "—") mi</span>
+                                <span class="drive-list-distance">@FormatDistance(drive.DistanceMiles)</span>
                                 <span class="drive-list-date">@FormatDriveDate(drive.StartTime)</span>
                             </div>
                             <div class="drive-list-meta">
@@ -99,7 +102,7 @@ else
                                 @if (drive.EfficiencyMilesPerKwh.HasValue)
                                 {
                                     <span>·</span>
-                                    <span>@drive.EfficiencyMilesPerKwh.Value.ToString("0.0") mi/kWh</span>
+                                    <span>@FormatEfficiency(drive.EfficiencyMilesPerKwh)</span>
                                 }
                             </div>
                         </div>
@@ -166,15 +169,15 @@ else
                         <div class="drive-detail-grid">
                             <div class="drive-detail-item">
                                 <span class="drive-detail-label">Distance</span>
-                                <span class="drive-detail-value">@(_selectedDrive.DistanceMiles?.ToString("0.0") ?? "—") mi</span>
+                                <span class="drive-detail-value">@FormatDistance(_selectedDrive.DistanceMiles)</span>
                             </div>
                             <div class="drive-detail-item">
                                 <span class="drive-detail-label">Average Speed</span>
-                                <span class="drive-detail-value">@(_selectedDrive.AverageSpeedMph?.ToString("0") ?? "—") mph</span>
+                                <span class="drive-detail-value">@FormatSpeed(_selectedDrive.AverageSpeedMph)</span>
                             </div>
                             <div class="drive-detail-item">
                                 <span class="drive-detail-label">Max Speed</span>
-                                <span class="drive-detail-value">@(_selectedDrive.MaxSpeedMph?.ToString("0") ?? "—") mph</span>
+                                <span class="drive-detail-value">@FormatSpeed(_selectedDrive.MaxSpeedMph)</span>
                             </div>
                         </div>
                     </div>
@@ -192,11 +195,11 @@ else
                             </div>
                             <div class="drive-detail-item">
                                 <span class="drive-detail-label">Efficiency</span>
-                                <span class="drive-detail-value">@(_selectedDrive.EfficiencyMilesPerKwh?.ToString("0.0") ?? "—") mi/kWh</span>
+                                <span class="drive-detail-value">@FormatEfficiency(_selectedDrive.EfficiencyMilesPerKwh)</span>
                             </div>
                             <div class="drive-detail-item">
                                 <span class="drive-detail-label">Consumption</span>
-                                <span class="drive-detail-value">@(_selectedDrive.EfficiencyWhPerMile?.ToString("0") ?? "—") Wh/mi</span>
+                                <span class="drive-detail-value">@FormatConsumption(_selectedDrive.EfficiencyWhPerMile)</span>
                             </div>
                         </div>
                     </div>
@@ -236,7 +239,7 @@ else
                                 {
                                     <div class="drive-detail-item">
                                         <span class="drive-detail-label">Elevation Gain</span>
-                                        <span class="drive-detail-value">@((_selectedDrive.ElevationGain.Value * 3.28084).ToString("0")) ft</span>
+                                        <span class="drive-detail-value">@FormatElevation(_selectedDrive.ElevationGain)</span>
                                     </div>
                                 }
                                 @if (_selectedDrive.DriveMode != null)
@@ -307,6 +310,10 @@ else
     private int _currentPage = 1;
     private int _totalCount = 0;
 
+    // User preferences for unit display
+    private UserPreferences? _userPreferences;
+    private DistanceUnit _distanceUnit = DistanceUnit.Miles;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadDataAsync();
@@ -361,6 +368,10 @@ else
             {
                 return;
             }
+
+            // Load user preferences for unit display
+            _userPreferences = await UserPreferencesService.GetPreferencesAsync(_userId);
+            _distanceUnit = _userPreferences?.DistanceUnit ?? DistanceUnit.Miles;
 
             if (!VehicleId.HasValue)
             {
@@ -501,6 +512,66 @@ else
         "offroad_soft" => "Soft Sand",
         _ => mode ?? "Unknown"
     };
+
+    private string FormatDistance(double? miles)
+    {
+        if (!miles.HasValue) return "—";
+        return UnitConversionService.FormatDistance(miles, _distanceUnit, "0.0");
+    }
+
+    private string FormatDistanceShort(double? miles)
+    {
+        if (!miles.HasValue) return "—";
+        var converted = UnitConversionService.ConvertDistance(miles, _distanceUnit);
+        return converted?.ToString("N0") ?? "—";
+    }
+
+    private string GetDistanceUnit()
+    {
+        return UnitConversionService.GetDistanceUnit(_distanceUnit);
+    }
+
+    private string FormatSpeed(double? mph)
+    {
+        if (!mph.HasValue) return "—";
+        // Convert mph to m/s, then use the service
+        var metersPerSecond = mph.Value / 2.23694;
+        return UnitConversionService.FormatSpeed(metersPerSecond, _distanceUnit);
+    }
+
+    private string FormatEfficiency(double? miPerKwh)
+    {
+        if (!miPerKwh.HasValue) return "—";
+        return UnitConversionService.FormatEfficiency(miPerKwh, _distanceUnit);
+    }
+
+    private string GetEfficiencyUnit()
+    {
+        return UnitConversionService.GetEfficiencyUnit(_distanceUnit);
+    }
+
+    private string FormatConsumption(double? whPerMile)
+    {
+        if (!whPerMile.HasValue) return "—";
+        if (_distanceUnit == DistanceUnit.Kilometers)
+        {
+            // Convert Wh/mi to Wh/km (divide by miles-to-km factor)
+            var whPerKm = whPerMile.Value / 1.60934;
+            return $"{whPerKm:0} Wh/km";
+        }
+        return $"{whPerMile:0} Wh/mi";
+    }
+
+    private string FormatElevation(double? meters)
+    {
+        if (!meters.HasValue) return "—";
+        if (_distanceUnit == DistanceUnit.Kilometers)
+        {
+            return $"{meters:0} m";
+        }
+        var feet = meters.Value * 3.28084;
+        return $"{feet:0} ft";
+    }
 
     public async ValueTask DisposeAsync()
     {

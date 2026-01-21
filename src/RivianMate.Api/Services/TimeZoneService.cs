@@ -4,7 +4,7 @@ namespace RivianMate.Api.Services;
 
 /// <summary>
 /// Service for managing user timezone detection and time conversions.
-/// Uses JavaScript interop to detect the browser's timezone.
+/// Uses JavaScript interop to detect the browser's timezone, with fallback to user preferences.
 /// </summary>
 public class TimeZoneService
 {
@@ -12,6 +12,7 @@ public class TimeZoneService
     private TimeZoneInfo? _userTimeZone;
     private string? _userTimeZoneId;
     private bool _initialized;
+    private bool _usingUserPreference;
 
     public TimeZoneService(IJSRuntime jsRuntime)
     {
@@ -34,11 +35,74 @@ public class TimeZoneService
         }
         catch (Exception)
         {
-            // JS interop might fail during prerendering
-            _userTimeZone = TimeZoneInfo.Local;
-            _userTimeZoneId = _userTimeZone.Id;
+            // JS interop might fail during prerendering - use UTC as initial fallback
+            // User preferences will be applied when SetUserPreferredTimeZone is called
+            _userTimeZone = TimeZoneInfo.Utc;
+            _userTimeZoneId = "UTC";
+            _initialized = true;
         }
     }
+
+    /// <summary>
+    /// Set the user's preferred timezone from their saved preferences.
+    /// This serves as a fallback when browser detection fails or to override browser settings.
+    /// </summary>
+    public void SetUserPreferredTimeZone(string? timeZoneId)
+    {
+        if (string.IsNullOrEmpty(timeZoneId))
+            return;
+
+        // Only apply user preference if we're using UTC (browser detection likely failed)
+        // or if user explicitly set a preference
+        var tz = GetTimeZoneFromIana(timeZoneId);
+        if (tz.Id != "UTC" || timeZoneId.Equals("UTC", StringComparison.OrdinalIgnoreCase))
+        {
+            _userTimeZoneId = timeZoneId;
+            _userTimeZone = tz;
+            _usingUserPreference = true;
+        }
+    }
+
+    /// <summary>
+    /// Whether the service is using the user's saved preference (vs browser-detected timezone).
+    /// </summary>
+    public bool IsUsingUserPreference => _usingUserPreference;
+
+    /// <summary>
+    /// Common timezones for user selection in settings.
+    /// Returns tuples of (IANA ID, Display Name).
+    /// </summary>
+    public static IReadOnlyList<(string Id, string DisplayName)> CommonTimeZones { get; } = new List<(string, string)>
+    {
+        ("Pacific/Honolulu", "Hawaii (HST)"),
+        ("America/Anchorage", "Alaska (AKST)"),
+        ("America/Los_Angeles", "Pacific Time (PST)"),
+        ("America/Phoenix", "Arizona (MST)"),
+        ("America/Denver", "Mountain Time (MST)"),
+        ("America/Chicago", "Central Time (CST)"),
+        ("America/New_York", "Eastern Time (EST)"),
+        ("America/Halifax", "Atlantic Time (AST)"),
+        ("America/St_Johns", "Newfoundland (NST)"),
+        ("America/Sao_Paulo", "São Paulo (BRT)"),
+        ("Atlantic/Azores", "Azores (AZOT)"),
+        ("UTC", "UTC"),
+        ("Europe/London", "London (GMT)"),
+        ("Europe/Paris", "Paris (CET)"),
+        ("Europe/Berlin", "Berlin (CET)"),
+        ("Europe/Helsinki", "Helsinki (EET)"),
+        ("Europe/Moscow", "Moscow (MSK)"),
+        ("Asia/Dubai", "Dubai (GST)"),
+        ("Asia/Kolkata", "India (IST)"),
+        ("Asia/Bangkok", "Bangkok (ICT)"),
+        ("Asia/Singapore", "Singapore (SGT)"),
+        ("Asia/Shanghai", "China (CST)"),
+        ("Asia/Tokyo", "Tokyo (JST)"),
+        ("Asia/Seoul", "Seoul (KST)"),
+        ("Australia/Perth", "Perth (AWST)"),
+        ("Australia/Adelaide", "Adelaide (ACST)"),
+        ("Australia/Sydney", "Sydney (AEST)"),
+        ("Pacific/Auckland", "New Zealand (NZST)")
+    };
 
     /// <summary>
     /// Get the user's detected timezone ID (IANA format, e.g., "America/New_York").
