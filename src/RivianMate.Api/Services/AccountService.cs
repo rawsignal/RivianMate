@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using RivianMate.Api.Services.Jobs;
 using RivianMate.Core.Entities;
 using RivianMate.Infrastructure.Data;
 
@@ -14,18 +13,15 @@ public class AccountService
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RivianMateDbContext _db;
-    private readonly PollingJobManager _jobManager;
     private readonly ILogger<AccountService> _logger;
 
     public AccountService(
         UserManager<ApplicationUser> userManager,
         RivianMateDbContext db,
-        PollingJobManager jobManager,
         ILogger<AccountService> logger)
     {
         _userManager = userManager;
         _db = db;
-        _jobManager = jobManager;
         _logger = logger;
     }
 
@@ -71,7 +67,7 @@ public class AccountService
     /// <summary>
     /// Delete user account and ALL associated data.
     /// This removes: Rivian accounts, vehicles, vehicle states, charging sessions,
-    /// drives, positions, battery health snapshots, dashboard configs, and Hangfire jobs.
+    /// drives, positions, battery health snapshots, and dashboard configs.
     /// </summary>
     public async Task<IdentityResult> DeleteAccountAsync(ApplicationUser user)
     {
@@ -82,21 +78,14 @@ public class AccountService
             .Where(ra => ra.UserId == user.Id)
             .ToListAsync();
 
-        // 2. Remove Hangfire polling jobs for each Rivian account
-        foreach (var account in rivianAccounts)
-        {
-            _jobManager.RemoveAccountJob(account.Id);
-            _logger.LogDebug("Removed polling job for Rivian account {AccountId}", account.Id);
-        }
-
-        // 3. Get all vehicle IDs for this user (owned or linked via Rivian accounts)
+        // 2. Get all vehicle IDs for this user (owned or linked via Rivian accounts)
         var vehicleIds = await _db.Vehicles
             .Where(v => v.OwnerId == user.Id || rivianAccounts.Select(ra => ra.Id).Contains(v.RivianAccountId ?? 0))
             .Select(v => v.Id)
             .Distinct()
             .ToListAsync();
 
-        // 4. Delete all vehicles (cascade will remove states, sessions, drives, positions, snapshots)
+        // 3. Delete all vehicles (cascade will remove states, sessions, drives, positions, snapshots)
         if (vehicleIds.Any())
         {
             var vehicles = await _db.Vehicles
@@ -107,14 +96,14 @@ public class AccountService
             _logger.LogInformation("Deleting {VehicleCount} vehicles for user {UserId}", vehicles.Count, user.Id);
         }
 
-        // 5. Delete all Rivian accounts
+        // 4. Delete all Rivian accounts
         if (rivianAccounts.Any())
         {
             _db.RivianAccounts.RemoveRange(rivianAccounts);
             _logger.LogInformation("Deleting {AccountCount} Rivian accounts for user {UserId}", rivianAccounts.Count, user.Id);
         }
 
-        // 6. Delete dashboard configurations
+        // 5. Delete dashboard configurations
         var dashboardConfigs = await _db.UserDashboardConfigs
             .Where(dc => dc.UserId == user.Id)
             .ToListAsync();
@@ -125,14 +114,14 @@ public class AccountService
             _logger.LogDebug("Deleting {ConfigCount} dashboard configs for user {UserId}", dashboardConfigs.Count, user.Id);
         }
 
-        // 7. Save all deletions
+        // 6. Save all deletions
         await _db.SaveChangesAsync();
 
         _logger.LogInformation(
             "User {UserId} account data deleted: {VehicleCount} vehicles, {AccountCount} Rivian accounts, {ConfigCount} dashboard configs",
             user.Id, vehicleIds.Count, rivianAccounts.Count, dashboardConfigs.Count);
 
-        // 8. Delete the Identity user
+        // 7. Delete the Identity user
         return await _userManager.DeleteAsync(user);
     }
 

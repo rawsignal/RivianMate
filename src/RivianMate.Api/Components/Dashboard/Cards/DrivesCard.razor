@@ -18,6 +18,19 @@
                             <span class="drive-distance">@FormatDistance(drive.DistanceMiles)</span>
                             <span class="drive-time">@FormatDriveTime(drive.StartTime)</span>
                         </div>
+                        @if (!string.IsNullOrEmpty(drive.StartAddress) || !string.IsNullOrEmpty(drive.EndAddress))
+                        {
+                            <div class="drive-route-vertical">
+                                <div class="drive-route-point">
+                                    <span class="drive-route-dot start"></span>
+                                    <span class="drive-route-addr">@(drive.StartAddress ?? "Unknown")</span>
+                                </div>
+                                <div class="drive-route-point">
+                                    <span class="drive-route-dot end"></span>
+                                    <span class="drive-route-addr">@(drive.EndAddress ?? "Unknown")</span>
+                                </div>
+                            </div>
+                        }
                         <div class="drive-stats">
                             <span>@FormatEfficiency(drive.EfficiencyMilesPerKwh)</span>
                             <span class="drive-stat-separator">·</span>

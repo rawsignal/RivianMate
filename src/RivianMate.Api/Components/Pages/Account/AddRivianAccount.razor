@@ -9,9 +9,7 @@
 @using RivianMate.Core.Entities
 @attribute [Authorize]
 
-@using RivianMate.Api.Services.Jobs
 @inject RivianAccountService RivianAccountService
-@inject PollingJobManager PollingJobManager
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavigationManager
 @inject ILogger<AddRivianAccount> Logger
@@ -282,12 +280,6 @@
             // Sync vehicles
             var vehicles = await RivianAccountService.SyncVehiclesAsync(account);
             _syncedVehicleCount = vehicles.Count;
-
-            // Trigger immediate poll now that vehicles exist
-            if (vehicles.Count > 0)
-            {
-                PollingJobManager.TriggerImmediatePoll(account.Id);
-            }
 
             _step = LoginStep.Success;
         }

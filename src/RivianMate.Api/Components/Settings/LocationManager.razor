@@ -1,0 +1,812 @@
+@using Microsoft.JSInterop
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+
+@inject UserLocationService LocationService
+@inject VehicleService VehicleService
+@inject IJSRuntime JS
+@inject ILogger<LocationManager> Logger
+
+@implements IAsyncDisposable
+
+<div class="location-manager">
+    <div class="location-layout">
+        <!-- Left side: Location list -->
+        <div class="location-list-panel">
+            <div class="location-list-header">
+                <h3>Your Locations</h3>
+            </div>
+
+            @if (_isLoading)
+            {
+                <div class="location-loading">
+                    <div class="loading-spinner"></div>
+                </div>
+            }
+            else if (_locations.Count == 0)
+            {
+                <div class="location-empty">
+                    <Icon Name="map-pin" Size="32" Style="opacity: 0.5;" />
+                    <p>No locations saved yet.</p>
+                    <p class="location-hint">Click the map to add a location.</p>
+                </div>
+            }
+            else
+            {
+                <div class="location-items">
+                    @foreach (var (location, index) in _locations.Select((l, i) => (l, i)))
+                    {
+                        <div class="location-item @(_editingLocationId == location.Id ? "editing" : "")" @onclick="() => HighlightLocation(location)">
+                            <div class="location-color" style="background-color: @GetLocationColor(index);"></div>
+                            <div class="location-details">
+                                <span class="location-name">
+                                    @location.Name
+                                    @if (location.IsDefault)
+                                    {
+                                        <span class="location-default-badge">Default</span>
+                                    }
+                                </span>
+                                <span class="location-coords">@location.Latitude.ToString("F6"), @location.Longitude.ToString("F6")</span>
+                            </div>
+                            <div class="location-actions">
+                                <button class="btn btn-ghost btn-icon" @onclick="() => StartEditLocation(location)" @onclick:stopPropagation="true" title="Edit">
+                                    <Icon Name="edit-2" Size="16" />
+                                </button>
+                                <button class="btn btn-ghost btn-icon" @onclick="() => DeleteLocation(location)" @onclick:stopPropagation="true" title="Delete">
+                                    <Icon Name="trash-2" Size="16" Style="color: var(--color-error);" />
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="location-buttons">
+                <button class="btn btn-secondary" @onclick="UseCurrentVehicleLocation"
+                        disabled="@(_vehicleLocation == null || _isAddingFromVehicle)">
+                    @if (_isAddingFromVehicle)
+                    {
+                        <span>Adding...</span>
+                    }
+                    else
+                    {
+                        <Icon Name="car" Size="16" />
+                        <span>Use Vehicle Location</span>
+                    }
+                </button>
+            </div>
+        </div>
+
+        <!-- Right side: Map -->
+        <div class="location-map-panel">
+            <div id="location-map" class="location-map"></div>
+            <div class="map-hint">
+                <Icon Name="info" Size="14" />
+                <span>Click map to add • Drag markers to move</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit/Add Modal -->
+    @if (_showModal)
+    {
+        <div class="modal-overlay" @onclick="CloseModal">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h3>@(_editingLocation == null ? "Add Location" : "Edit Location")</h3>
+                    <button class="btn btn-ghost btn-icon" @onclick="CloseModal">
+                        <Icon Name="x" Size="20" />
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Name</label>
+                        <input type="text" class="form-input" @bind="_modalName" placeholder="e.g., Home, Work, Beach House" maxlength="100" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Coordinates</label>
+                        <div class="coord-inputs">
+                            <div class="coord-input">
+                                <label>Lat:</label>
+                                <input type="number" step="0.000001" min="-90" max="90" class="form-input"
+                                       @bind="_modalLatitude" />
+                            </div>
+                            <div class="coord-input">
+                                <label>Lon:</label>
+                                <input type="number" step="0.000001" min="-180" max="180" class="form-input"
+                                       @bind="_modalLongitude" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-checkbox">
+                            <input type="checkbox" @bind="_modalIsDefault" />
+                            <span>Set as default location</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveLocation" disabled="@string.IsNullOrWhiteSpace(_modalName)">
+                        @(_editingLocation == null ? "Add" : "Save")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (_saveSuccess)
+    {
+        <div class="alert alert-success location-alert">
+            <Icon Name="check" Size="16" />
+            Location saved
+        </div>
+    }
+</div>
+
+<style>
+    .location-manager {
+        position: relative;
+    }
+
+    .location-layout {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: var(--space-4);
+        min-height: 400px;
+    }
+
+    .location-list-panel {
+        display: flex;
+        flex-direction: column;
+        background: var(--color-surface-elevated);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--color-border);
+        overflow: hidden;
+    }
+
+    .location-list-header {
+        padding: var(--space-3) var(--space-4);
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .location-list-header h3 {
+        margin: 0;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+
+    .location-loading,
+    .location-empty {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: var(--space-4);
+        color: var(--color-text-muted);
+        text-align: center;
+    }
+
+    .location-empty p {
+        margin: var(--space-2) 0 0;
+        font-size: 0.875rem;
+    }
+
+    .location-hint {
+        font-size: 0.75rem !important;
+        opacity: 0.7;
+    }
+
+    .location-items {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    .location-item {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-3) var(--space-4);
+        border-bottom: 1px solid var(--color-border);
+        cursor: pointer;
+        transition: background-color 0.15s;
+    }
+
+    .location-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .location-item.editing {
+        background: rgba(255, 171, 0, 0.1);
+    }
+
+    .location-item:last-child {
+        border-bottom: none;
+    }
+
+    .location-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .location-details {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .location-name {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-weight: 500;
+        color: var(--color-text-primary);
+        font-size: 0.875rem;
+    }
+
+    .location-default-badge {
+        font-size: 0.625rem;
+        padding: 1px 4px;
+        background: rgba(255, 171, 0, 0.2);
+        color: var(--color-accent);
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .location-coords {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+        font-family: monospace;
+    }
+
+    .location-actions {
+        display: flex;
+        gap: var(--space-1);
+        opacity: 0;
+        transition: opacity 0.15s;
+    }
+
+    .location-item:hover .location-actions {
+        opacity: 1;
+    }
+
+    .btn-icon {
+        padding: var(--space-1);
+    }
+
+    .location-buttons {
+        padding: var(--space-3) var(--space-4);
+        border-top: 1px solid var(--color-border);
+    }
+
+    .location-buttons .btn {
+        width: 100%;
+    }
+
+    .location-map-panel {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+    }
+
+    .location-map {
+        flex: 1;
+        min-height: 350px;
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--color-border);
+        overflow: hidden;
+    }
+
+    .map-hint {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+        padding: 0 var(--space-2);
+    }
+
+    /* Modal styles */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: var(--color-surface);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--color-border);
+        width: 100%;
+        max-width: 400px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: var(--space-4);
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 1rem;
+    }
+
+    .modal-body {
+        padding: var(--space-4);
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: var(--space-2);
+        padding: var(--space-4);
+        border-top: 1px solid var(--color-border);
+    }
+
+    .form-group {
+        margin-bottom: var(--space-4);
+    }
+
+    .form-group:last-child {
+        margin-bottom: 0;
+    }
+
+    .form-label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: var(--space-2);
+        color: var(--color-text-primary);
+        font-size: 0.875rem;
+    }
+
+    .form-input {
+        width: 100%;
+        background: var(--color-surface-elevated);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        padding: var(--space-2) var(--space-3);
+        color: var(--color-text-primary);
+        font-size: 0.875rem;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 3px var(--color-accent-bg);
+    }
+
+    .coord-inputs {
+        display: flex;
+        gap: var(--space-3);
+    }
+
+    .coord-input {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+    }
+
+    .coord-input label {
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+        width: 30px;
+    }
+
+    .coord-input .form-input {
+        width: auto;
+        flex: 1;
+    }
+
+    .form-checkbox {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        cursor: pointer;
+        font-size: 0.875rem;
+    }
+
+    .form-checkbox input {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+    }
+
+    .location-alert {
+        position: absolute;
+        bottom: var(--space-4);
+        right: var(--space-4);
+        padding: var(--space-2) var(--space-3);
+        animation: slideIn 0.3s ease;
+    }
+
+    @@keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @@media (max-width: 768px) {
+        .location-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .location-list-panel {
+            order: 2;
+        }
+
+        .location-map-panel {
+            order: 1;
+        }
+
+        .location-map {
+            min-height: 300px;
+        }
+    }
+
+    /* Leaflet marker styles */
+    :global(.location-marker) {
+        background: transparent !important;
+        border: none !important;
+    }
+
+    :global(.location-pin-container) {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.4));
+    }
+
+    :global(.location-pin-svg) {
+        display: block;
+    }
+
+    :global(.location-pin-label) {
+        margin-top: 2px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 600;
+        color: white;
+        white-space: nowrap;
+        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+        max-width: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
+
+@code {
+    [Parameter] public Guid UserId { get; set; }
+    [Parameter] public List<RivianAccount>? Accounts { get; set; }
+
+    private List<UserLocation> _locations = new();
+    private bool _isLoading = true;
+    private bool _saveSuccess;
+    private System.Timers.Timer? _successTimer;
+
+    // Modal state
+    private bool _showModal;
+    private UserLocation? _editingLocation;
+    private int? _editingLocationId;
+    private string _modalName = "";
+    private double _modalLatitude;
+    private double _modalLongitude;
+    private bool _modalIsDefault;
+
+    // Vehicle location
+    private (double Lat, double Lon)? _vehicleLocation;
+    private bool _isAddingFromVehicle;
+
+    // JS Interop reference
+    private DotNetObjectReference<LocationManager>? _dotNetRef;
+
+    // Color palette matching locationmap.js
+    private static readonly string[] Colors = {
+        "#FFAB00", "#4A90E2", "#22C55E", "#EF4444",
+        "#8B5CF6", "#F97316", "#06B6D4", "#EC4899"
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadLocationsAsync();
+            await LoadVehicleLocationAsync();
+            await InitializeMapAsync();
+        }
+    }
+
+    private async Task InitializeMapAsync()
+    {
+        try
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("locationMap.initialize", "location-map", _dotNetRef);
+            await UpdateMapMarkersAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize location map");
+        }
+    }
+
+    private async Task LoadLocationsAsync()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            _locations = await LocationService.GetLocationsAsync(UserId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load locations");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadVehicleLocationAsync()
+    {
+        try
+        {
+            if (Accounts == null || Accounts.Count == 0) return;
+
+            foreach (var account in Accounts)
+            {
+                var vehicles = await VehicleService.GetVehiclesForAccountAsync(account.Id);
+                if (vehicles.Count > 0)
+                {
+                    var latestState = await VehicleService.GetLatestStateAsync(vehicles[0].Id);
+                    if (latestState?.Latitude.HasValue == true && latestState?.Longitude.HasValue == true)
+                    {
+                        _vehicleLocation = (latestState.Latitude.Value, latestState.Longitude.Value);
+                        StateHasChanged();
+                        return;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load vehicle location");
+        }
+    }
+
+    private async Task UpdateMapMarkersAsync()
+    {
+        try
+        {
+            // Clear existing markers
+            await JS.InvokeVoidAsync("locationMap.clearLocations");
+
+            // Add markers for each location
+            for (var i = 0; i < _locations.Count; i++)
+            {
+                var loc = _locations[i];
+                await JS.InvokeVoidAsync("locationMap.setLocation", loc.Id, loc.Name, loc.Latitude, loc.Longitude, i);
+            }
+
+            // Fit map to show all locations
+            if (_locations.Count > 0)
+            {
+                var locationData = _locations.Select(l => new { latitude = l.Latitude, longitude = l.Longitude }).ToArray();
+                await JS.InvokeVoidAsync("locationMap.fitToLocations", (object)locationData);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to update map markers");
+        }
+    }
+
+    [JSInvokable]
+    public void OnMapClicked(double lat, double lon)
+    {
+        // Open modal to add new location at clicked coordinates
+        _editingLocation = null;
+        _editingLocationId = null;
+        _modalName = GetNextLocationName();
+        _modalLatitude = Math.Round(lat, 6);
+        _modalLongitude = Math.Round(lon, 6);
+        _modalIsDefault = _locations.Count == 0;
+        _showModal = true;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnMarkerDragged(int locationId, double lat, double lon)
+    {
+        var location = _locations.FirstOrDefault(l => l.Id == locationId);
+        if (location != null)
+        {
+            try
+            {
+                await LocationService.UpdateLocationAsync(
+                    locationId, UserId, location.Name,
+                    Math.Round(lat, 6), Math.Round(lon, 6), location.IsDefault);
+
+                // Update local state
+                location.Latitude = Math.Round(lat, 6);
+                location.Longitude = Math.Round(lon, 6);
+
+                ShowSaveSuccess();
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to update location after drag");
+            }
+        }
+    }
+
+    private string GetNextLocationName()
+    {
+        var names = new[] { "Home", "Work", "Cabin", "Beach House", "Parents", "Office" };
+        foreach (var name in names)
+        {
+            if (!_locations.Any(l => l.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                return name;
+        }
+        return $"Location {_locations.Count + 1}";
+    }
+
+    private void StartEditLocation(UserLocation location)
+    {
+        _editingLocation = location;
+        _editingLocationId = location.Id;
+        _modalName = location.Name;
+        _modalLatitude = location.Latitude;
+        _modalLongitude = location.Longitude;
+        _modalIsDefault = location.IsDefault;
+        _showModal = true;
+    }
+
+    private async Task SaveLocation()
+    {
+        if (string.IsNullOrWhiteSpace(_modalName)) return;
+
+        try
+        {
+            if (_editingLocation != null)
+            {
+                // Update existing location
+                await LocationService.UpdateLocationAsync(
+                    _editingLocation.Id, UserId, _modalName.Trim(),
+                    _modalLatitude, _modalLongitude, _modalIsDefault);
+            }
+            else
+            {
+                // Add new location
+                await LocationService.AddLocationAsync(
+                    UserId, _modalName.Trim(),
+                    _modalLatitude, _modalLongitude, _modalIsDefault);
+            }
+
+            await LoadLocationsAsync();
+            await UpdateMapMarkersAsync();
+            CloseModal();
+            ShowSaveSuccess();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save location");
+        }
+    }
+
+    private async Task DeleteLocation(UserLocation location)
+    {
+        try
+        {
+            await LocationService.DeleteLocationAsync(location.Id, UserId);
+            await LoadLocationsAsync();
+            await UpdateMapMarkersAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to delete location");
+        }
+    }
+
+    private void UseCurrentVehicleLocation()
+    {
+        if (_vehicleLocation == null) return;
+
+        _isAddingFromVehicle = true;
+
+        // Open modal with vehicle location
+        _editingLocation = null;
+        _editingLocationId = null;
+        _modalName = GetNextLocationName();
+        _modalLatitude = Math.Round(_vehicleLocation.Value.Lat, 6);
+        _modalLongitude = Math.Round(_vehicleLocation.Value.Lon, 6);
+        _modalIsDefault = _locations.Count == 0;
+        _showModal = true;
+
+        _isAddingFromVehicle = false;
+    }
+
+    private async Task HighlightLocation(UserLocation location)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("locationMap.highlightLocation", location.Id);
+            await JS.InvokeVoidAsync("locationMap.centerOnLocation", location.Latitude, location.Longitude, 15);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to highlight location");
+        }
+    }
+
+    private void CloseModal()
+    {
+        _showModal = false;
+        _editingLocation = null;
+        _editingLocationId = null;
+    }
+
+    private string GetLocationColor(int index)
+    {
+        return Colors[index % Colors.Length];
+    }
+
+    private void ShowSaveSuccess()
+    {
+        _saveSuccess = true;
+        StateHasChanged();
+
+        _successTimer?.Dispose();
+        _successTimer = new System.Timers.Timer(2000);
+        _successTimer.Elapsed += (_, _) =>
+        {
+            _saveSuccess = false;
+            InvokeAsync(StateHasChanged);
+            _successTimer?.Dispose();
+        };
+        _successTimer.AutoReset = false;
+        _successTimer.Start();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _successTimer?.Dispose();
+
+        try
+        {
+            await JS.InvokeVoidAsync("locationMap.dispose");
+        }
+        catch
+        {
+            // Ignore errors during disposal
+        }
+
+        _dotNetRef?.Dispose();
+    }
+}

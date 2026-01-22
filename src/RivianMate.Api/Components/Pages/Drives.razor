@@ -106,6 +106,19 @@ else
                                 <span class="drive-list-distance">@FormatDistance(drive.DistanceMiles)</span>
                                 <span class="drive-list-date">@FormatDriveDate(drive.StartTime)</span>
                             </div>
+                            @if (!string.IsNullOrEmpty(drive.StartAddress) || !string.IsNullOrEmpty(drive.EndAddress))
+                            {
+                                <div class="drive-route-vertical">
+                                    <div class="drive-route-point">
+                                        <span class="drive-route-dot start"></span>
+                                        <span class="drive-route-addr">@(drive.StartAddress ?? "Unknown")</span>
+                                    </div>
+                                    <div class="drive-route-point">
+                                        <span class="drive-route-dot end"></span>
+                                        <span class="drive-route-addr">@(drive.EndAddress ?? "Unknown")</span>
+                                    </div>
+                                </div>
+                            }
                             <div class="drive-list-meta">
                                 @FormatDuration(drive.StartTime, drive.EndTime)
                                 @if (drive.EfficiencyMilesPerKwh.HasValue)
@@ -169,10 +182,32 @@ else
                         </div>
                     </div>
 
+                    <!-- Route -->
+                    @if (!string.IsNullOrEmpty(_selectedDrive.StartAddress) || !string.IsNullOrEmpty(_selectedDrive.EndAddress))
+                    {
+                        <div class="drive-detail-section">
+                            <h4>
+                                <Icon Name="map-pin" Size="16" />
+                                Route
+                            </h4>
+                            <div class="drive-detail-route">
+                                <div class="route-point">
+                                    <div class="route-marker start"></div>
+                                    <span>@(_selectedDrive.StartAddress ?? "Unknown location")</span>
+                                </div>
+                                <div class="route-line"></div>
+                                <div class="route-point">
+                                    <div class="route-marker end"></div>
+                                    <span>@(_selectedDrive.EndAddress ?? "Unknown location")</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
                     <!-- Distance & Speed -->
                     <div class="drive-detail-section">
                         <h4>
-                            <Icon Name="map-pin" Size="16" />
+                            <Icon Name="navigation" Size="16" />
                             Distance & Speed
                         </h4>
                         <div class="drive-detail-grid">

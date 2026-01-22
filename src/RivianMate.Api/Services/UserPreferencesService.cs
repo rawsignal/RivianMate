@@ -83,9 +83,9 @@ public class UserPreferencesService
             existing.TirePressureUnit = preferences.TirePressureUnit;
             existing.HomeElectricityRate = preferences.HomeElectricityRate;
             existing.CurrencyCode = preferences.CurrencyCode;
-            existing.HomeLatitude = preferences.HomeLatitude;
-            existing.HomeLongitude = preferences.HomeLongitude;
+            existing.TimeZoneId = preferences.TimeZoneId;
             existing.UpdatedAt = DateTime.UtcNow;
+            // Note: HomeLatitude/HomeLongitude are deprecated - use UserLocation entities
         }
         else
         {
@@ -128,21 +128,29 @@ public class UserPreferencesService
     }
 
     /// <summary>
-    /// Updates only the home location
+    /// Updates only the home location.
+    /// DEPRECATED: Use UserLocationService instead.
     /// </summary>
+    [Obsolete("Use UserLocationService instead for multi-location support")]
     public async Task UpdateHomeLocationAsync(Guid userId, double? latitude, double? longitude)
     {
+        #pragma warning disable CS0618 // Obsolete warning
         var preferences = await GetPreferencesAsync(userId);
         preferences.HomeLatitude = latitude;
         preferences.HomeLongitude = longitude;
         await SavePreferencesAsync(preferences);
+        #pragma warning restore CS0618
     }
 
     /// <summary>
-    /// Clears the home location
+    /// Clears the home location.
+    /// DEPRECATED: Use UserLocationService instead.
     /// </summary>
+    [Obsolete("Use UserLocationService instead for multi-location support")]
     public async Task ClearHomeLocationAsync(Guid userId)
     {
+        #pragma warning disable CS0618 // Obsolete warning
         await UpdateHomeLocationAsync(userId, null, null);
+        #pragma warning restore CS0618
     }
 }

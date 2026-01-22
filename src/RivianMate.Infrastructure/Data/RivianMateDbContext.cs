@@ -51,6 +51,7 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
     public DbSet<UserDashboardConfig> UserDashboardConfigs => Set<UserDashboardConfig>();
     public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
     public DbSet<UserLocation> UserLocations => Set<UserLocation>();
+    public DbSet<GeocodingCache> GeocodingCache => Set<GeocodingCache>();
 
     // For ASP.NET Data Protection key storage
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -264,6 +265,19 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
                 .WithMany()
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // === GeocodingCache ===
+        modelBuilder.Entity<GeocodingCache>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.Latitude, e.Longitude }).IsUnique();
+
+            entity.Property(e => e.Address).HasMaxLength(500);
+            entity.Property(e => e.ShortAddress).HasMaxLength(200);
+            entity.Property(e => e.City).HasMaxLength(100);
+            entity.Property(e => e.State).HasMaxLength(100);
+            entity.Property(e => e.Country).HasMaxLength(100);
         });
     }
 

@@ -198,7 +198,10 @@ builder.Services.AddScoped<DashboardConfigService>();
 builder.Services.AddScoped<DriveTrackingService>();
 builder.Services.AddScoped<ChargingTrackingService>();
 builder.Services.AddScoped<UserPreferencesService>();
+builder.Services.AddScoped<UserLocationService>();
 builder.Services.AddScoped<UnitConversionService>();
+builder.Services.AddHttpClient<GeocodingService>();
+builder.Services.AddScoped<GeocodeAddressJob>();
 builder.Services.AddScoped<DevDataSeeder>();
 
 // === Polling/WebSocket Configuration ===
@@ -209,11 +212,8 @@ builder.Services.Configure<PollingConfiguration>(
 builder.Services.Configure<DataRetentionConfiguration>(
     builder.Configuration.GetSection("RivianMate:DataRetention"));
 
-// === Polling Job Services ===
-builder.Services.AddScoped<AccountPollingJob>();
+// === Background Job Services ===
 builder.Services.AddScoped<DataRetentionJob>();
-builder.Services.AddScoped<PollingJobManager>();
-builder.Services.AddHostedService<PollingJobSynchronizer>();
 
 // === WebSocket Subscription Service (conditionally enabled) ===
 var pollingMode = builder.Configuration.GetValue<string>("RivianMate:Polling:Mode") ?? "GraphQL";
@@ -341,6 +341,63 @@ using (var scope = app.Services.CreateScope())
             await AddColumnIfNotExistsAsync("UserPreferences", "TimeZoneId", "TEXT");
         }
 
+        // Create UserLocations table if it doesn't exist
+        if (!await TableExistsAsync("UserLocations"))
+        {
+            #pragma warning disable EF1002
+            await db.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE UserLocations (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    UserId TEXT NOT NULL,
+                    Name TEXT NOT NULL DEFAULT 'Home',
+                    Latitude REAL NOT NULL,
+                    Longitude REAL NOT NULL,
+                    IsDefault INTEGER NOT NULL DEFAULT 0,
+                    CreatedAt TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL,
+                    FOREIGN KEY (UserId) REFERENCES AspNetUsers(Id) ON DELETE CASCADE
+                )");
+            await db.Database.ExecuteSqlRawAsync(
+                "CREATE INDEX IX_UserLocations_UserId ON UserLocations(UserId)");
+            #pragma warning restore EF1002
+            logger.LogInformation("Created UserLocations table");
+
+            // Migrate existing home locations from UserPreferences
+            #pragma warning disable EF1002
+            var migrated = await db.Database.ExecuteSqlRawAsync(@"
+                INSERT INTO UserLocations (UserId, Name, Latitude, Longitude, IsDefault, CreatedAt, UpdatedAt)
+                SELECT UserId, 'Home', HomeLatitude, HomeLongitude, 1, datetime('now'), datetime('now')
+                FROM UserPreferences
+                WHERE HomeLatitude IS NOT NULL AND HomeLongitude IS NOT NULL");
+            #pragma warning restore EF1002
+            if (migrated > 0)
+            {
+                logger.LogInformation("Migrated {Count} home locations from UserPreferences to UserLocations", migrated);
+            }
+        }
+
+        // Create GeocodingCache table if it doesn't exist
+        if (!await TableExistsAsync("GeocodingCache"))
+        {
+            #pragma warning disable EF1002
+            await db.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE GeocodingCache (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Latitude REAL NOT NULL,
+                    Longitude REAL NOT NULL,
+                    Address TEXT NOT NULL,
+                    ShortAddress TEXT,
+                    City TEXT,
+                    State TEXT,
+                    Country TEXT,
+                    CreatedAt TEXT NOT NULL
+                )");
+            await db.Database.ExecuteSqlRawAsync(
+                "CREATE UNIQUE INDEX IX_GeocodingCache_Lat_Lon ON GeocodingCache(Latitude, Longitude)");
+            #pragma warning restore EF1002
+            logger.LogInformation("Created GeocodingCache table");
+        }
+
         logger.LogInformation("SQLite database ready");
 
         // Seed development data for SQLite
@@ -420,6 +477,13 @@ if (retentionConfig.Enabled && retentionConfig.Tables.Count > 0)
         job => job.ExecuteAsync(CancellationToken.None),
         retentionConfig.Schedule);
 }
+
+// Geocode addresses for drives - runs daily at 3 AM, processes up to 100 drives per run
+// Can also be manually triggered from Hangfire dashboard
+RecurringJob.AddOrUpdate<GeocodeAddressJob>(
+    "geocode-drive-addresses",
+    job => job.BackfillAddressesAsync(100, CancellationToken.None),
+    "0 3 * * *"); // Daily at 3:00 AM
 
 app.UseAntiforgery();
 

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using RivianMate.Api.Services.Jobs;
 using RivianMate.Core;
 using RivianMate.Core.Entities;
 using RivianMate.Core.Enums;
@@ -234,5 +235,8 @@ public class DriveTrackingService
         _logger.LogInformation(
             "Ended drive {DriveId} for vehicle {VehicleId}: {Distance:F1} miles, {Energy:F1} kWh, {Efficiency:F2} mi/kWh",
             drive.Id, drive.VehicleId, drive.DistanceMiles, drive.EnergyUsedKwh, drive.EfficiencyMilesPerKwh);
+
+        // Enqueue geocoding job to get start/end addresses
+        GeocodeAddressJob.EnqueueForDrive(drive.Id);
     }
 }

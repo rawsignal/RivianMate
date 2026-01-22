@@ -46,17 +46,22 @@ public class UserPreferences : IUserOwnedEntity
     /// </summary>
     public string CurrencyCode { get; set; } = "USD";
 
-    // === Home Location ===
-    // Used to auto-detect when charging is at home (100m radius)
+    // === Home Location (DEPRECATED) ===
+    // These fields are deprecated and will be removed in a future version.
+    // Use UserLocation entities instead for multi-location support.
 
     /// <summary>
-    /// Home location latitude
+    /// Home location latitude.
+    /// DEPRECATED: Use UserLocation entities instead.
     /// </summary>
+    [Obsolete("Use UserLocation entities instead")]
     public double? HomeLatitude { get; set; }
 
     /// <summary>
-    /// Home location longitude
+    /// Home location longitude.
+    /// DEPRECATED: Use UserLocation entities instead.
     /// </summary>
+    [Obsolete("Use UserLocation entities instead")]
     public double? HomeLongitude { get; set; }
 
     // === Timezone ===

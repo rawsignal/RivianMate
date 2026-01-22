@@ -2634,6 +2634,59 @@ select option:checked,
     opacity: 0.5;
 }
 
+.drive-route-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: var(--space-1) 0;
+    padding-left: 2px;
+    position: relative;
+}
+
+/* Vertical connecting line */
+.drive-route-vertical::before {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 10px;
+    bottom: 10px;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--color-success), var(--color-error));
+    border-radius: 1px;
+}
+
+.drive-route-point {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    position: relative;
+    z-index: 1;
+}
+
+.drive-route-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 2px solid var(--color-surface);
+}
+
+.drive-route-dot.start {
+    background-color: var(--color-success);
+}
+
+.drive-route-dot.end {
+    background-color: var(--color-error);
+}
+
+.drive-route-addr {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* Drives Page - Full List */
 .drives-list-full {
     display: flex;
@@ -2770,6 +2823,46 @@ select option:checked,
     font-size: 1rem;
     font-weight: 500;
     color: var(--color-text-primary);
+}
+
+.drive-detail-route {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    background: var(--color-surface-elevated);
+    border-radius: var(--radius-md);
+}
+
+.route-point {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: 0.875rem;
+    color: var(--color-text-primary);
+}
+
+.route-marker {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.route-marker.start {
+    background-color: var(--color-success);
+}
+
+.route-marker.end {
+    background-color: var(--color-error);
+}
+
+.route-line {
+    width: 2px;
+    height: 16px;
+    background: linear-gradient(to bottom, var(--color-success), var(--color-error));
+    margin-left: 5px;
+    border-radius: 1px;
 }
 
 @media (max-width: 768px) {

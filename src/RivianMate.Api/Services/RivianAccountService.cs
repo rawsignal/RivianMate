@@ -1,10 +1,6 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using RivianMate.Api.Configuration;
-using RivianMate.Api.Services.Jobs;
 using RivianMate.Core.Entities;
-using RivianMate.Core.Enums;
 using RivianMate.Infrastructure.Data;
 using RivianMate.Infrastructure.Nhtsa;
 using RivianMate.Infrastructure.Rivian;
@@ -25,8 +21,6 @@ public class RivianAccountService
     private readonly IDataProtector _protector;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly NhtsaVinDecoderService _nhtsaService;
-    private readonly PollingJobManager _jobManager;
-    private readonly PollingConfiguration _pollingConfig;
     private readonly VehicleStateNotifier _stateNotifier;
     private readonly ILogger<RivianAccountService> _logger;
     private readonly ILogger<RivianApiClient> _rivianLogger;
@@ -36,8 +30,6 @@ public class RivianAccountService
         IDataProtectionProvider dataProtectionProvider,
         IHttpClientFactory httpClientFactory,
         NhtsaVinDecoderService nhtsaService,
-        PollingJobManager jobManager,
-        IOptions<PollingConfiguration> pollingConfig,
         VehicleStateNotifier stateNotifier,
         ILogger<RivianAccountService> logger,
         ILogger<RivianApiClient> rivianLogger)
@@ -46,8 +38,6 @@ public class RivianAccountService
         _protector = dataProtectionProvider.CreateProtector("RivianMate.RivianAccounts");
         _httpClientFactory = httpClientFactory;
         _nhtsaService = nhtsaService;
-        _jobManager = jobManager;
-        _pollingConfig = pollingConfig.Value;
         _stateNotifier = stateNotifier;
         _logger = logger;
         _rivianLogger = rivianLogger;
@@ -195,16 +185,9 @@ public class RivianAccountService
 
             await _db.SaveChangesAsync(cancellationToken);
 
-            // Register for state updates based on mode
-            // In GraphQL mode, register Hangfire polling job
-            // In WebSocket mode, the background service will pick up the account on next refresh
-            if (_pollingConfig.Mode == PollingMode.GraphQL)
-            {
-                _jobManager.RegisterAccountJob(existingAccount.Id);
-            }
-
-            _logger.LogInformation("Updated existing Rivian account {AccountId} for user {UserId} (mode: {Mode})",
-                existingAccount.Id, userId, _pollingConfig.Mode);
+            // WebSocket service will pick up the account on next refresh
+            _logger.LogInformation("Updated existing Rivian account {AccountId} for user {UserId}",
+                existingAccount.Id, userId);
             return existingAccount;
         }
 
@@ -225,14 +208,9 @@ public class RivianAccountService
         _db.RivianAccounts.Add(account);
         await _db.SaveChangesAsync(cancellationToken);
 
-        // Register for state updates based on mode
-        if (_pollingConfig.Mode == PollingMode.GraphQL)
-        {
-            _jobManager.RegisterAccountJob(account.Id);
-        }
-
-        _logger.LogInformation("Created new Rivian account {AccountId} for user {UserId} (mode: {Mode})",
-            account.Id, userId, _pollingConfig.Mode);
+        // WebSocket service will pick up the account on next refresh
+        _logger.LogInformation("Created new Rivian account {AccountId} for user {UserId}",
+            account.Id, userId);
         return account;
     }
 
@@ -484,13 +462,7 @@ public class RivianAccountService
     /// </summary>
     public async Task DeleteAccountAsync(RivianAccount account, CancellationToken cancellationToken = default)
     {
-        // Remove state updates based on mode
-        // In GraphQL mode, remove the Hangfire polling job
-        // In WebSocket mode, the background service will notice the account is gone on next refresh
-        if (_pollingConfig.Mode == PollingMode.GraphQL)
-        {
-            _jobManager.RemoveAccountJob(account.Id);
-        }
+        // WebSocket service will notice the account is gone on next refresh
 
         // Get all vehicles for this account
         var vehicleIds = await _db.Vehicles
