@@ -2214,6 +2214,63 @@ select option:checked,
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
+/* Touch drag clone (mobile) */
+.touch-drag-clone {
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+}
+
+.touch-drag-clone .card-edit-controls {
+    display: none;
+}
+
+/* Mobile: make drag handle more prominent and touch-friendly */
+@media (max-width: 768px) {
+    .drag-handle {
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        min-height: 36px;
+        touch-action: none;
+    }
+
+    .card-edit-controls {
+        gap: var(--space-2);
+    }
+
+    .hide-button {
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        min-height: 36px;
+    }
+
+    /* Prevent text selection during drag */
+    .dashboard-card-wrapper.edit-mode {
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
+    }
+
+    /* Visual feedback when card can be dragged */
+    .dashboard-card-wrapper.edit-mode::before {
+        content: '';
+        position: absolute;
+        inset: -4px;
+        border: 2px dashed var(--color-border);
+        border-radius: calc(var(--radius-lg) + 4px);
+        opacity: 0.5;
+        pointer-events: none;
+    }
+}
+
+/* Prevent pull-to-refresh during drag on mobile */
+@media (max-width: 768px) {
+    .edit-mode-section {
+        overscroll-behavior: contain;
+    }
+}
+
 /* ===== Modal Styles ===== */
 .modal-overlay {
     position: fixed;
