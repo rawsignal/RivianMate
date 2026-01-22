@@ -50,6 +50,7 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
     public DbSet<RivianAccount> RivianAccounts => Set<RivianAccount>();
     public DbSet<UserDashboardConfig> UserDashboardConfigs => Set<UserDashboardConfig>();
     public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
+    public DbSet<UserLocation> UserLocations => Set<UserLocation>();
 
     // For ASP.NET Data Protection key storage
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -244,6 +245,20 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
             entity.HasIndex(e => e.UserId).IsUnique(); // One preferences row per user
 
             entity.Property(e => e.CurrencyCode).HasMaxLength(3);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // === UserLocation ===
+        modelBuilder.Entity<UserLocation>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UserId); // Multiple locations per user
+
+            entity.Property(e => e.Name).HasMaxLength(100);
 
             entity.HasOne(e => e.User)
                 .WithMany()

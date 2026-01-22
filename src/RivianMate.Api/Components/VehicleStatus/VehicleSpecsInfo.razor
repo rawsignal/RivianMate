@@ -9,19 +9,10 @@
     <StatusItem Label="VIN" Value="@(Vehicle?.Vin ?? "—")" />
     <StatusItem Label="Battery Pack" Value="@FormatBatteryPack(Vehicle?.BatteryPack)" />
     <StatusItem Label="Drive Type" Value="@FormatDriveType(Vehicle?.DriveType)" />
+    <StatusItem Label="Exterior Color" Value="@(Vehicle?.ExteriorColor ?? "—")" />
+    <StatusItem Label="Interior Color" Value="@(Vehicle?.InteriorColor ?? "—")" />
+    <StatusItem Label="Wheels" Value="@(Vehicle?.WheelConfig ?? "—")" />
     <StatusItem Label="EPA Range" Value="@FormatEpaRange(Vehicle?.EpaRangeMiles)" />
-    @if (!string.IsNullOrEmpty(Vehicle?.ExteriorColor))
-    {
-        <StatusItem Label="Exterior" Value="@Vehicle.ExteriorColor" />
-    }
-    @if (!string.IsNullOrEmpty(Vehicle?.InteriorColor))
-    {
-        <StatusItem Label="Interior" Value="@Vehicle.InteriorColor" />
-    }
-    @if (!string.IsNullOrEmpty(Vehicle?.WheelConfig))
-    {
-        <StatusItem Label="Wheels" Value="@Vehicle.WheelConfig" />
-    }
 </StatusSection>
 
 @code {

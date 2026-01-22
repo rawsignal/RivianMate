@@ -1,0 +1,1253 @@
+@page "/admin/api-explorer"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Text.Json
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+@using RivianMate.Infrastructure.Rivian
+@attribute [Authorize]
+@inject RivianAccountService RivianAccountService
+@inject VehicleService VehicleService
+@inject IConfiguration Configuration
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ILoggerFactory LoggerFactory
+@inject ILogger<ApiExplorer> Logger
+@inject IHttpClientFactory HttpClientFactory
+@implements IAsyncDisposable
+
+<PageTitle>API Explorer - RivianMate</PageTitle>
+
+@if (!_isAdmin)
+{
+    <NotFound Title="Access Denied" Message="This page is only accessible to administrators." Icon="shield-off" />
+}
+else
+{
+    <div class="api-explorer">
+        <!-- Header -->
+        <div style="margin-bottom: var(--space-6);">
+            <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+                <Icon Name="terminal" Size="28" Style="color: var(--color-accent);" />
+                Rivian API Explorer
+            </h1>
+            <p style="color: var(--color-text-muted);">
+                Send GraphQL queries and explore WebSocket subscriptions
+            </p>
+        </div>
+
+        <!-- Account Selector (shared) -->
+        <div class="card" style="margin-bottom: var(--space-4);">
+            <h3 style="margin-bottom: var(--space-3);">Account</h3>
+            @if (_accounts.Count == 0)
+            {
+                <p style="color: var(--color-text-muted);">No Rivian accounts linked. Go to Settings to add one.</p>
+            }
+            else
+            {
+                <div style="display: flex; gap: var(--space-3); align-items: center;">
+                    <select class="form-select" @bind="_selectedAccountId" @bind:after="OnAccountChanged" style="flex: 1;">
+                        @foreach (var account in _accounts)
+                        {
+                            <option value="@account.Id">@account.RivianEmail</option>
+                        }
+                    </select>
+                    @if (_vehicles.Count > 0)
+                    {
+                        <select class="form-select" @bind="_selectedVehicleId" style="flex: 1;">
+                            <option value="">Select Vehicle...</option>
+                            @foreach (var vehicle in _vehicles)
+                            {
+                                <option value="@vehicle.RivianVehicleId">@(vehicle.Name ?? vehicle.RivianVehicleId)</option>
+                            }
+                        </select>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs" style="margin-bottom: var(--space-4);">
+            <button class="tab @(_activeTab == "graphql" ? "active" : "")" @onclick='() => _activeTab = "graphql"'>
+                <Icon Name="code" Size="16" />
+                GraphQL
+            </button>
+            <button class="tab @(_activeTab == "rest" ? "active" : "")" @onclick='() => _activeTab = "rest"'>
+                <Icon Name="globe" Size="16" />
+                REST
+            </button>
+            <button class="tab @(_activeTab == "websocket" ? "active" : "")" @onclick='() => _activeTab = "websocket"'>
+                <Icon Name="radio" Size="16" />
+                WebSocket
+            </button>
+        </div>
+
+        @if (_activeTab == "graphql")
+        {
+            <!-- GraphQL Explorer -->
+            <div class="explorer-layout">
+                <!-- Left Panel: Request -->
+                <div class="request-panel">
+                    <!-- Preset Queries -->
+                    <div class="card" style="margin-bottom: var(--space-4);">
+                        <h3 style="margin-bottom: var(--space-3);">Preset Queries</h3>
+                        <div class="preset-buttons">
+                            @foreach (var preset in _graphqlPresets)
+                            {
+                                <button class="btn btn-secondary btn-sm" @onclick="() => LoadGraphQlPreset(preset)">
+                                    @preset.Name
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Query Input -->
+                    <div class="card" style="margin-bottom: var(--space-4);">
+                        <h3 style="margin-bottom: var(--space-3);">GraphQL Query</h3>
+                        <textarea class="code-input" @bind="_graphqlQuery" placeholder="Enter your GraphQL query..." spellcheck="false"></textarea>
+                    </div>
+
+                    <!-- Variables Input -->
+                    <div class="card" style="margin-bottom: var(--space-4);">
+                        <h3 style="margin-bottom: var(--space-3);">Variables (JSON)</h3>
+                        <textarea class="code-input small" @bind="_graphqlVariables" placeholder='{"key": "value"}' spellcheck="false"></textarea>
+                    </div>
+
+                    <!-- Operation Name -->
+                    <div class="card" style="margin-bottom: var(--space-4);">
+                        <h3 style="margin-bottom: var(--space-3);">Operation Name (optional)</h3>
+                        <input type="text" class="form-input" @bind="_graphqlOperationName" placeholder="e.g., GetVehicleState" />
+                    </div>
+
+                    <!-- Send Button -->
+                    <button class="btn btn-primary" style="width: 100%;" @onclick="SendGraphQlRequest" disabled="@(_graphqlLoading || _accounts.Count == 0)">
+                        @if (_graphqlLoading)
+                        {
+                            <span>Sending...</span>
+                        }
+                        else
+                        {
+                            <Icon Name="send" Size="16" />
+                            <span>Send Request</span>
+                        }
+                    </button>
+                </div>
+
+                <!-- Right Panel: Response -->
+                <div class="response-panel">
+                    <div class="card response-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3);">
+                            <h3>Response</h3>
+                            @if (!string.IsNullOrEmpty(_graphqlResponse))
+                            {
+                                <div style="display: flex; gap: var(--space-2);">
+                                    <span class="status-badge @(_graphqlStatusCode >= 200 && _graphqlStatusCode < 300 ? "success" : "error")">
+                                        @_graphqlStatusCode
+                                    </span>
+                                    <span style="color: var(--color-text-muted); font-size: 0.875rem;">
+                                        @_graphqlResponseTime ms
+                                    </span>
+                                </div>
+                            }
+                        </div>
+
+                        @if (_graphqlError != null)
+                        {
+                            <div class="error-box">
+                                <Icon Name="alert-circle" Size="16" />
+                                <span>@_graphqlError</span>
+                            </div>
+                        }
+
+                        <pre class="response-output">@(_graphqlResponse ?? "Response will appear here...")</pre>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (_activeTab == "rest")
+        {
+            <!-- REST Explorer -->
+            <div class="explorer-layout">
+                <!-- Left Panel: Request -->
+                <div class="request-panel">
+                    <!-- Preset Endpoints -->
+                    <div class="card" style="margin-bottom: var(--space-4);">
+                        <h3 style="margin-bottom: var(--space-3);">Preset Endpoints</h3>
+                        <div class="preset-buttons">
+                            @foreach (var preset in _restPresets)
+                            {
+                                <button class="btn btn-secondary btn-sm" @onclick="() => LoadRestPreset(preset)">
+                                    @preset.Name
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Method & URL -->
+                    <div class="card" style="margin-bottom: var(--space-4);">
+                        <h3 style="margin-bottom: var(--space-3);">Request</h3>
+                        <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-3);">
+                            <select class="form-select" @bind="_restMethod" style="width: 120px;">
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                                <option value="PUT">PUT</option>
+                                <option value="DELETE">DELETE</option>
+                            </select>
+                            <input type="text" class="form-input" @bind="_restUrl" placeholder="https://rivian.com/api/..." style="flex: 1;" />
+                        </div>
+                    </div>
+
+                    <!-- Headers -->
+                    <div class="card" style="margin-bottom: var(--space-4);">
+                        <h3 style="margin-bottom: var(--space-3);">Headers (JSON)</h3>
+                        <textarea class="code-input small" @bind="_restHeaders" placeholder='{"Content-Type": "application/json"}' spellcheck="false"></textarea>
+                        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: var(--space-2);">
+                            Auth headers (csrf-token, a-sess, Authorization) are auto-added from the selected account.
+                        </p>
+                    </div>
+
+                    <!-- Body -->
+                    <div class="card" style="margin-bottom: var(--space-4);">
+                        <h3 style="margin-bottom: var(--space-3);">Body (JSON)</h3>
+                        <textarea class="code-input" @bind="_restBody" placeholder='{"key": "value"}' spellcheck="false"></textarea>
+                    </div>
+
+                    <!-- Send Button -->
+                    <button class="btn btn-primary" style="width: 100%;" @onclick="SendRestRequest" disabled="@(_restLoading || _accounts.Count == 0)">
+                        @if (_restLoading)
+                        {
+                            <span>Sending...</span>
+                        }
+                        else
+                        {
+                            <Icon Name="send" Size="16" />
+                            <span>Send Request</span>
+                        }
+                    </button>
+                </div>
+
+                <!-- Right Panel: Response -->
+                <div class="response-panel">
+                    <div class="card response-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3);">
+                            <h3>Response</h3>
+                            @if (!string.IsNullOrEmpty(_restResponse))
+                            {
+                                <div style="display: flex; gap: var(--space-2);">
+                                    <span class="status-badge @(_restStatusCode >= 200 && _restStatusCode < 300 ? "success" : "error")">
+                                        @_restStatusCode
+                                    </span>
+                                    <span style="color: var(--color-text-muted); font-size: 0.875rem;">
+                                        @_restResponseTime ms
+                                    </span>
+                                </div>
+                            }
+                        </div>
+
+                        @if (_restError != null)
+                        {
+                            <div class="error-box">
+                                <Icon Name="alert-circle" Size="16" />
+                                <span>@_restError</span>
+                            </div>
+                        }
+
+                        <pre class="response-output">@(_restResponse ?? "Response will appear here...")</pre>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (_activeTab == "websocket")
+        {
+            <!-- WebSocket Explorer -->
+            <div class="explorer-layout">
+                <!-- Left Panel: Controls -->
+                <div class="request-panel">
+                    <!-- Connection Status -->
+                    <div class="card" style="margin-bottom: var(--space-4);">
+                        <h3 style="margin-bottom: var(--space-3);">Connection</h3>
+                        <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3);">
+                            <span class="connection-indicator @(_wsConnected ? "connected" : "disconnected")"></span>
+                            <span>@(_wsConnected ? "Connected" : "Disconnected")</span>
+                        </div>
+                        <div style="display: flex; gap: var(--space-2);">
+                            @if (!_wsConnected)
+                            {
+                                <button class="btn btn-primary" @onclick="ConnectWebSocket" disabled="@(_wsConnecting || _accounts.Count == 0)">
+                                    @if (_wsConnecting)
+                                    {
+                                        <span>Connecting...</span>
+                                    }
+                                    else
+                                    {
+                                        <Icon Name="wifi" Size="16" />
+                                        <span>Connect</span>
+                                    }
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-secondary" @onclick="DisconnectWebSocket">
+                                    <Icon Name="wifi-off" Size="16" />
+                                    <span>Disconnect</span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Subscription -->
+                    <div class="card" style="margin-bottom: var(--space-4);">
+                        <h3 style="margin-bottom: var(--space-3);">Subscribe to Vehicle</h3>
+                        @if (string.IsNullOrEmpty(_selectedVehicleId))
+                        {
+                            <p style="color: var(--color-text-muted);">Select a vehicle above to subscribe.</p>
+                        }
+                        else
+                        {
+                            <div style="margin-bottom: var(--space-3);">
+                                <label style="color: var(--color-text-muted); font-size: 0.875rem; display: block; margin-bottom: var(--space-2);">Properties to subscribe:</label>
+                                <textarea class="code-input small" @bind="_wsProperties" placeholder="batteryLevel, powerState, gnssLocation..." spellcheck="false"></textarea>
+                            </div>
+                            <button class="btn btn-primary" @onclick="SubscribeToVehicle" disabled="@(!_wsConnected || _wsSubscribed)">
+                                <Icon Name="bell" Size="16" />
+                                <span>@(_wsSubscribed ? "Subscribed" : "Subscribe")</span>
+                            </button>
+                            @if (_wsSubscribed)
+                            {
+                                <button class="btn btn-secondary" style="margin-left: var(--space-2);" @onclick="UnsubscribeFromVehicle">
+                                    <Icon Name="bell-off" Size="16" />
+                                    <span>Unsubscribe</span>
+                                </button>
+                            }
+                        }
+                    </div>
+
+                    <!-- Preset Property Sets -->
+                    <div class="card">
+                        <h3 style="margin-bottom: var(--space-3);">Property Presets</h3>
+                        <div class="preset-buttons">
+                            <button class="btn btn-secondary btn-sm" @onclick="() => LoadWsPreset(WsPreset.Basic)">Basic</button>
+                            <button class="btn btn-secondary btn-sm" @onclick="() => LoadWsPreset(WsPreset.Battery)">Battery</button>
+                            <button class="btn btn-secondary btn-sm" @onclick="() => LoadWsPreset(WsPreset.Location)">Location</button>
+                            <button class="btn btn-secondary btn-sm" @onclick="() => LoadWsPreset(WsPreset.Closures)">Closures</button>
+                            <button class="btn btn-secondary btn-sm" @onclick="() => LoadWsPreset(WsPreset.Climate)">Climate</button>
+                            <button class="btn btn-secondary btn-sm" @onclick="() => LoadWsPreset(WsPreset.All)">All Properties</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Messages -->
+                <div class="response-panel">
+                    <div class="card response-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3);">
+                            <h3>Messages (@_wsMessages.Count)</h3>
+                            <button class="btn btn-secondary btn-sm" @onclick="ClearWsMessages">Clear</button>
+                        </div>
+                        <div class="ws-messages">
+                            @if (_wsMessages.Count == 0)
+                            {
+                                <p style="color: var(--color-text-muted);">WebSocket messages will appear here...</p>
+                            }
+                            else
+                            {
+                                @foreach (var msg in _wsMessages.Take(50))
+                                {
+                                    <div class="ws-message @msg.Type">
+                                        <div class="ws-message-header">
+                                            <span class="ws-message-type">@msg.Type</span>
+                                            <span class="ws-message-time">@msg.Timestamp.ToString("HH:mm:ss.fff")</span>
+                                        </div>
+                                        <pre class="ws-message-content">@msg.Content</pre>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .api-explorer {
+        max-width: 1600px;
+        margin: 0 auto;
+    }
+
+    .tabs {
+        display: flex;
+        gap: var(--space-2);
+        border-bottom: 1px solid var(--color-border);
+        padding-bottom: var(--space-2);
+    }
+
+    .tab {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-4);
+        background: transparent;
+        border: none;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        border-radius: var(--radius-md) var(--radius-md) 0 0;
+        transition: color 0.2s, background 0.2s;
+    }
+
+    .tab:hover {
+        color: var(--color-text-primary);
+        background: var(--color-surface);
+    }
+
+    .tab.active {
+        color: var(--color-accent);
+        background: var(--color-surface);
+        border-bottom: 2px solid var(--color-accent);
+    }
+
+    .explorer-layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--space-6);
+    }
+
+    @@media (max-width: 1200px) {
+        .explorer-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .preset-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+    }
+
+    .code-input {
+        width: 100%;
+        min-height: 200px;
+        padding: var(--space-3);
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.875rem;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        color: var(--color-text-primary);
+        resize: vertical;
+    }
+
+    .code-input.small {
+        min-height: 80px;
+    }
+
+    .code-input:focus {
+        outline: none;
+        border-color: var(--color-accent);
+    }
+
+    .response-card {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .response-output {
+        flex: 1;
+        padding: var(--space-4);
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.8rem;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        color: var(--color-text-primary);
+        overflow: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        max-height: 600px;
+        min-height: 400px;
+        margin: 0;
+    }
+
+    .status-badge {
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-sm);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .status-badge.success {
+        background: rgba(34, 197, 94, 0.2);
+        color: #22c55e;
+    }
+
+    .status-badge.error {
+        background: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+    }
+
+    .error-box {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-3);
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: var(--radius-md);
+        color: #ef4444;
+        margin-bottom: var(--space-3);
+    }
+
+    .form-input {
+        width: 100%;
+        padding: var(--space-2) var(--space-3);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        color: var(--color-text-primary);
+        font-size: 0.875rem;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: var(--color-accent);
+    }
+
+    .connection-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+    }
+
+    .connection-indicator.connected {
+        background: #22c55e;
+        box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+    }
+
+    .connection-indicator.disconnected {
+        background: #6b7280;
+    }
+
+    .ws-messages {
+        flex: 1;
+        overflow-y: auto;
+        max-height: 500px;
+        min-height: 400px;
+        padding: var(--space-2);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+    }
+
+    .ws-message {
+        margin-bottom: var(--space-3);
+        padding: var(--space-2);
+        border-radius: var(--radius-sm);
+        border-left: 3px solid var(--color-border);
+    }
+
+    .ws-message.received {
+        border-left-color: #22c55e;
+        background: rgba(34, 197, 94, 0.05);
+    }
+
+    .ws-message.sent {
+        border-left-color: #3b82f6;
+        background: rgba(59, 130, 246, 0.05);
+    }
+
+    .ws-message.error {
+        border-left-color: #ef4444;
+        background: rgba(239, 68, 68, 0.05);
+    }
+
+    .ws-message.system {
+        border-left-color: #f59e0b;
+        background: rgba(245, 158, 11, 0.05);
+    }
+
+    .ws-message-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: var(--space-1);
+    }
+
+    .ws-message-type {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .ws-message-time {
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+    }
+
+    .ws-message-content {
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.75rem;
+        margin: 0;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+</style>
+
+@code {
+    private List<RivianAccount> _accounts = new();
+    private List<Vehicle> _vehicles = new();
+    private int _selectedAccountId;
+    private string _selectedVehicleId = "";
+    private string _activeTab = "graphql";
+    private bool _isAdmin;
+    private Guid _userId;
+
+    // GraphQL state
+    private string _graphqlQuery = "";
+    private string _graphqlVariables = "{}";
+    private string _graphqlOperationName = "";
+    private string? _graphqlResponse;
+    private string? _graphqlError;
+    private int _graphqlStatusCode;
+    private long _graphqlResponseTime;
+    private bool _graphqlLoading;
+
+    // WebSocket state
+    private RivianWebSocketClient? _wsClient;
+    private bool _wsConnected;
+    private bool _wsConnecting;
+    private bool _wsSubscribed;
+    private string _wsProperties = "batteryLevel, powerState, chargerState";
+    private List<WsMessage> _wsMessages = new();
+
+    // REST state
+    private string _restMethod = "POST";
+    private string _restUrl = "";
+    private string _restHeaders = "{}";
+    private string _restBody = "{}";
+    private string? _restResponse;
+    private string? _restError;
+    private int _restStatusCode;
+    private long _restResponseTime;
+    private bool _restLoading;
+
+    private static readonly List<GraphQlPreset> _graphqlPresets = new()
+    {
+        new("User Info", "getUserInfo", @"query getUserInfo {
+    currentUser {
+        __typename
+        id
+        firstName
+        lastName
+        email
+        vehicles {
+            __typename
+            id
+            name
+            vin
+            state
+            vehicle {
+                modelYear
+                make
+                model
+                mobileConfiguration {
+                    trimOption { optionId optionName }
+                    driveSystemOption { optionId optionName }
+                    exteriorColorOption { optionId optionName }
+                    interiorColorOption { optionId optionName }
+                    batteryOption { optionId optionName }
+                }
+            }
+        }
+    }
+}", "{}"),
+
+        new("Vehicle State", "GetVehicleState", @"query GetVehicleState($vehicleID: String!) {
+    vehicleState(id: $vehicleID) {
+        __typename
+        batteryLevel { timeStamp value }
+        batteryCapacity { timeStamp value }
+        batteryLimit { timeStamp value }
+        distanceToEmpty { timeStamp value }
+        chargerState { timeStamp value }
+        powerState { timeStamp value }
+        gearStatus { timeStamp value }
+        gnssLocation { latitude longitude timeStamp }
+        vehicleMileage { timeStamp value }
+        otaCurrentVersion { timeStamp value }
+    }
+}", @"{""vehicleID"": ""VEHICLE_ID""}"),
+
+        new("Full State", "GetFullState", @"query GetFullState($vehicleID: String!) {
+    vehicleState(id: $vehicleID) {
+        __typename
+        activeDriverName { timeStamp value }
+        batteryCapacity { timeStamp value }
+        batteryCellType { timeStamp value }
+        batteryLevel { timeStamp value }
+        batteryLimit { timeStamp value }
+        cabinClimateInteriorTemperature { timeStamp value }
+        cabinPreconditioningStatus { timeStamp value }
+        chargerState { timeStamp value }
+        chargerStatus { timeStamp value }
+        distanceToEmpty { timeStamp value }
+        doorFrontLeftClosed { timeStamp value }
+        doorFrontLeftLocked { timeStamp value }
+        doorFrontRightClosed { timeStamp value }
+        doorFrontRightLocked { timeStamp value }
+        doorRearLeftClosed { timeStamp value }
+        doorRearLeftLocked { timeStamp value }
+        doorRearRightClosed { timeStamp value }
+        doorRearRightLocked { timeStamp value }
+        gearStatus { timeStamp value }
+        gnssLocation { latitude longitude timeStamp }
+        gnssSpeed { timeStamp value }
+        otaCurrentVersion { timeStamp value }
+        otaAvailableVersion { timeStamp value }
+        powerState { timeStamp value }
+        tirePressureFrontLeft { timeStamp value }
+        tirePressureFrontRight { timeStamp value }
+        tirePressureRearLeft { timeStamp value }
+        tirePressureRearRight { timeStamp value }
+        vehicleMileage { timeStamp value }
+        windowFrontLeftClosed { timeStamp value }
+        windowFrontRightClosed { timeStamp value }
+    }
+}", @"{""vehicleID"": ""VEHICLE_ID""}"),
+
+        new("Charging Sites", "getChargingSites", @"query getChargingSites($latitude: Float!, $longitude: Float!, $radius: Float!) {
+    chargingNetworksSites(
+        filter: {
+            location: { latitude: $latitude, longitude: $longitude }
+            radius: $radius
+        }
+    ) {
+        sites {
+            id
+            name
+            address { street city state postalCode }
+            location { latitude longitude }
+            maxPower
+            network
+            plugTypes
+            numAvailableChargers
+            numChargers
+        }
+    }
+}", @"{""latitude"": 37.7749, ""longitude"": -122.4194, ""radius"": 50}"),
+
+        new("Introspection", "__schema", @"query IntrospectionQuery {
+    __schema {
+        types {
+            name
+            kind
+            description
+            fields {
+                name
+                description
+                type { name kind }
+            }
+        }
+    }
+}", "{}"),
+
+        new("Refresh Token", "RefreshAccessToken", @"mutation RefreshAccessToken {
+    refreshAccessToken {
+        __typename
+        accessToken
+        refreshToken
+    }
+}", "{}"),
+
+        new("Generate Handoff Token", "GenerateHandoffToken", @"mutation GenerateHandoffToken {
+    generateHandoffToken {
+        __typename
+        accessToken
+    }
+}", "{}"),
+
+        new("Auth Mutations List", "__type", @"query AuthMutations {
+    __type(name: ""Mutation"") {
+        fields {
+            name
+            description
+            args { name type { name } }
+            type { name kind }
+        }
+    }
+}", "{}")
+    };
+
+    // Rivian client credentials (from community research)
+    private const string RivianClientId = "rivian.mobile.sc12bjxe8lmhkul";
+    private const string RivianClientSecret = "rlL058p5kipkZr0C85KrdA4AZ0QBNVh75zXWwEWf";
+
+    private static readonly List<RestPreset> _restPresets = new()
+    {
+        // auth.rivianservices.com endpoints (older OAuth API)
+        new("Auth: Token Refresh", "POST", "https://auth.rivianservices.com/auth/api/v1/token/refresh",
+            @"{""Content-Type"": ""application/json""}",
+            @"{""grant_type"": ""refresh_token"", ""refresh_token"": ""REFRESH_TOKEN"", ""client_id"": ""rivian.mobile.sc12bjxe8lmhkul"", ""client_secret"": ""rlL058p5kipkZr0C85KrdA4AZ0QBNVh75zXWwEWf""}"),
+
+        new("Auth: Token (grant=refresh)", "POST", "https://auth.rivianservices.com/auth/api/v1/token/auth",
+            @"{""Content-Type"": ""application/json""}",
+            @"{""grant_type"": ""refresh_token"", ""refresh_token"": ""REFRESH_TOKEN"", ""client_id"": ""rivian.mobile.sc12bjxe8lmhkul"", ""client_secret"": ""rlL058p5kipkZr0C85KrdA4AZ0QBNVh75zXWwEWf""}"),
+
+        new("Auth: OAuth Token", "POST", "https://auth.rivianservices.com/oauth/token",
+            @"{""Content-Type"": ""application/json""}",
+            @"{""grant_type"": ""refresh_token"", ""refresh_token"": ""REFRESH_TOKEN"", ""client_id"": ""rivian.mobile.sc12bjxe8lmhkul"", ""client_secret"": ""rlL058p5kipkZr0C85KrdA4AZ0QBNVh75zXWwEWf""}"),
+
+        // rivian.com GraphQL gateway endpoints
+        new("Gateway: Session Refresh", "POST", "https://rivian.com/api/gql/gateway/session/refresh",
+            @"{""Content-Type"": ""application/json""}",
+            @"{}"),
+
+        new("Gateway: Token Refresh", "POST", "https://rivian.com/api/gql/gateway/token/refresh",
+            @"{""Content-Type"": ""application/json""}",
+            @"{""refreshToken"": ""REFRESH_TOKEN""}"),
+
+        // Orders/T2D GraphQL endpoints
+        new("Orders GraphQL", "POST", "https://rivian.com/api/gql/orders/graphql/",
+            @"{""Content-Type"": ""application/json""}",
+            @"{""query"": ""{ __typename }""}"),
+
+        new("T2D GraphQL", "POST", "https://rivian.com/api/gql/t2d/graphql/",
+            @"{""Content-Type"": ""application/json""}",
+            @"{""query"": ""{ __typename }""}"),
+
+        new("Custom Endpoint", "POST", "https://rivian.com/api/",
+            @"{""Content-Type"": ""application/json""}",
+            @"{}")
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var userEmail = authState.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
+            ?? authState.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
+
+        if (!Guid.TryParse(userIdClaim, out _userId))
+            return;
+
+        var adminEmails = Configuration.GetSection("RivianMate:AdminEmails").Get<string[]>() ?? Array.Empty<string>();
+        _isAdmin = adminEmails.Contains(userEmail, StringComparer.OrdinalIgnoreCase);
+
+        if (!_isAdmin)
+            return;
+
+        _accounts = await RivianAccountService.GetAccountsForUserAsync(_userId);
+        if (_accounts.Count > 0)
+        {
+            _selectedAccountId = _accounts[0].Id;
+            await LoadVehiclesForAccount();
+        }
+
+        if (_graphqlPresets.Count > 0)
+            LoadGraphQlPreset(_graphqlPresets[0]);
+    }
+
+    private async Task OnAccountChanged()
+    {
+        await LoadVehiclesForAccount();
+    }
+
+    private async Task LoadVehiclesForAccount()
+    {
+        var account = _accounts.FirstOrDefault(a => a.Id == _selectedAccountId);
+        if (account != null)
+        {
+            _vehicles = await VehicleService.GetVehiclesForAccountAsync(account.Id);
+            if (_vehicles.Count > 0)
+                _selectedVehicleId = _vehicles[0].RivianVehicleId;
+            else
+                _selectedVehicleId = "";
+        }
+    }
+
+    private void LoadGraphQlPreset(GraphQlPreset preset)
+    {
+        _graphqlOperationName = preset.OperationName;
+        _graphqlQuery = preset.Query;
+        _graphqlVariables = preset.Variables.Replace("VEHICLE_ID", _selectedVehicleId);
+    }
+
+    private async Task SendGraphQlRequest()
+    {
+        if (_selectedAccountId == 0 || string.IsNullOrWhiteSpace(_graphqlQuery))
+            return;
+
+        _graphqlLoading = true;
+        _graphqlError = null;
+        _graphqlResponse = null;
+        StateHasChanged();
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        try
+        {
+            var account = _accounts.FirstOrDefault(a => a.Id == _selectedAccountId);
+            if (account == null)
+            {
+                _graphqlError = "Selected account not found";
+                return;
+            }
+
+            object? variables;
+            try
+            {
+                variables = JsonSerializer.Deserialize<object>(_graphqlVariables);
+            }
+            catch
+            {
+                _graphqlError = "Invalid JSON in variables";
+                return;
+            }
+
+            using var client = RivianAccountService.CreateApiClient(account);
+
+            var (response, statusCode) = await client.ExecuteRawQueryAsync(
+                _graphqlQuery,
+                variables,
+                string.IsNullOrWhiteSpace(_graphqlOperationName) ? null : _graphqlOperationName);
+
+            stopwatch.Stop();
+            _graphqlResponseTime = stopwatch.ElapsedMilliseconds;
+            _graphqlStatusCode = statusCode;
+
+            try
+            {
+                var jsonDoc = JsonDocument.Parse(response);
+                _graphqlResponse = JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions { WriteIndented = true });
+            }
+            catch
+            {
+                _graphqlResponse = response;
+            }
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _graphqlResponseTime = stopwatch.ElapsedMilliseconds;
+            _graphqlStatusCode = 500;
+            _graphqlError = ex.Message;
+            Logger.LogError(ex, "Error executing API request");
+        }
+        finally
+        {
+            _graphqlLoading = false;
+        }
+    }
+
+    // REST methods
+    private void LoadRestPreset(RestPreset preset)
+    {
+        _restMethod = preset.Method;
+        _restUrl = preset.Url;
+        _restHeaders = preset.Headers;
+
+        // Replace REFRESH_TOKEN placeholder with actual refresh token
+        var account = _accounts.FirstOrDefault(a => a.Id == _selectedAccountId);
+        if (account != null)
+        {
+            var (_, _, _, _, refreshToken) = RivianAccountService.GetAllDecryptedTokens(account);
+            _restBody = preset.Body.Replace("REFRESH_TOKEN", refreshToken ?? "");
+        }
+        else
+        {
+            _restBody = preset.Body;
+        }
+    }
+
+    private async Task SendRestRequest()
+    {
+        if (_selectedAccountId == 0 || string.IsNullOrWhiteSpace(_restUrl))
+            return;
+
+        _restLoading = true;
+        _restError = null;
+        _restResponse = null;
+        StateHasChanged();
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        try
+        {
+            var account = _accounts.FirstOrDefault(a => a.Id == _selectedAccountId);
+            if (account == null)
+            {
+                _restError = "Selected account not found";
+                return;
+            }
+
+            var (csrfToken, appSessionToken, _, accessToken, _) = RivianAccountService.GetAllDecryptedTokens(account);
+
+            using var httpClient = HttpClientFactory.CreateClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(30);
+
+            using var request = new HttpRequestMessage(new HttpMethod(_restMethod), _restUrl);
+
+            // Add auth headers
+            if (!string.IsNullOrEmpty(csrfToken))
+                request.Headers.TryAddWithoutValidation("csrf-token", csrfToken);
+            if (!string.IsNullOrEmpty(appSessionToken))
+                request.Headers.TryAddWithoutValidation("a-sess", appSessionToken);
+            if (!string.IsNullOrEmpty(accessToken))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+
+            request.Headers.TryAddWithoutValidation("User-Agent", "RivianMate/1.0");
+
+            // Parse and add custom headers
+            if (!string.IsNullOrWhiteSpace(_restHeaders) && _restHeaders != "{}")
+            {
+                try
+                {
+                    var customHeaders = JsonSerializer.Deserialize<Dictionary<string, string>>(_restHeaders);
+                    if (customHeaders != null)
+                    {
+                        foreach (var (key, value) in customHeaders)
+                        {
+                            request.Headers.TryAddWithoutValidation(key, value);
+                        }
+                    }
+                }
+                catch
+                {
+                    _restError = "Invalid JSON in headers";
+                    return;
+                }
+            }
+
+            // Add body for POST/PUT
+            if (_restMethod is "POST" or "PUT" && !string.IsNullOrWhiteSpace(_restBody))
+            {
+                var contentType = "application/json";
+                try
+                {
+                    var headers = JsonSerializer.Deserialize<Dictionary<string, string>>(_restHeaders);
+                    if (headers?.TryGetValue("Content-Type", out var ct) == true)
+                        contentType = ct;
+                }
+                catch { }
+
+                request.Content = new StringContent(_restBody, System.Text.Encoding.UTF8, contentType);
+            }
+
+            var response = await httpClient.SendAsync(request);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            stopwatch.Stop();
+            _restResponseTime = stopwatch.ElapsedMilliseconds;
+            _restStatusCode = (int)response.StatusCode;
+
+            // Try to format as JSON
+            try
+            {
+                var jsonDoc = JsonDocument.Parse(responseBody);
+                _restResponse = JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions { WriteIndented = true });
+            }
+            catch
+            {
+                _restResponse = responseBody;
+            }
+
+            // Add response headers to output
+            var headersInfo = $"// Response Headers:\n";
+            foreach (var header in response.Headers)
+            {
+                headersInfo += $"// {header.Key}: {string.Join(", ", header.Value)}\n";
+            }
+            _restResponse = headersInfo + "\n" + _restResponse;
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _restResponseTime = stopwatch.ElapsedMilliseconds;
+            _restStatusCode = 0;
+            _restError = ex.Message;
+            Logger.LogError(ex, "Error executing REST request");
+        }
+        finally
+        {
+            _restLoading = false;
+        }
+    }
+
+    // WebSocket methods
+    private async Task ConnectWebSocket()
+    {
+        if (_selectedAccountId == 0)
+            return;
+
+        _wsConnecting = true;
+        StateHasChanged();
+
+        try
+        {
+            var account = _accounts.FirstOrDefault(a => a.Id == _selectedAccountId);
+            if (account == null)
+            {
+                AddWsMessage("error", "Account not found");
+                return;
+            }
+
+            var (userSessionToken, accessToken) = RivianAccountService.GetDecryptedTokens(account);
+            if (string.IsNullOrEmpty(userSessionToken))
+            {
+                AddWsMessage("error", "No user session token available");
+                return;
+            }
+
+            _wsClient = new RivianWebSocketClient(LoggerFactory.CreateLogger<RivianWebSocketClient>());
+            _wsClient.SetTokens(userSessionToken, accessToken ?? "");
+
+            _wsClient.OnConnected += () =>
+            {
+                _wsConnected = true;
+                AddWsMessage("system", "Connected to Rivian WebSocket");
+                InvokeAsync(StateHasChanged);
+                return Task.CompletedTask;
+            };
+
+            _wsClient.OnDisconnected += () =>
+            {
+                _wsConnected = false;
+                _wsSubscribed = false;
+                AddWsMessage("system", "Disconnected from WebSocket");
+                InvokeAsync(StateHasChanged);
+                return Task.CompletedTask;
+            };
+
+            _wsClient.OnError += (ex) =>
+            {
+                AddWsMessage("error", $"Error: {ex.Message}");
+                InvokeAsync(StateHasChanged);
+                return Task.CompletedTask;
+            };
+
+            _wsClient.OnVehicleStateUpdate += (vehicleId, state, rawJson) =>
+            {
+                try
+                {
+                    var jsonDoc = JsonDocument.Parse(rawJson);
+                    var formatted = JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions { WriteIndented = true });
+                    AddWsMessage("received", formatted);
+                }
+                catch
+                {
+                    AddWsMessage("received", rawJson);
+                }
+                InvokeAsync(StateHasChanged);
+                return Task.CompletedTask;
+            };
+
+            AddWsMessage("system", "Connecting...");
+            await _wsClient.ConnectAsync();
+        }
+        catch (Exception ex)
+        {
+            AddWsMessage("error", $"Connection failed: {ex.Message}");
+            Logger.LogError(ex, "WebSocket connection failed");
+        }
+        finally
+        {
+            _wsConnecting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DisconnectWebSocket()
+    {
+        if (_wsClient != null)
+        {
+            await _wsClient.DisconnectAsync();
+            await _wsClient.DisposeAsync();
+            _wsClient = null;
+        }
+        _wsConnected = false;
+        _wsSubscribed = false;
+    }
+
+    private async Task SubscribeToVehicle()
+    {
+        if (_wsClient == null || !_wsConnected || string.IsNullOrEmpty(_selectedVehicleId))
+            return;
+
+        try
+        {
+            var properties = _wsProperties
+                .Split(new[] { ',', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .Where(p => !string.IsNullOrEmpty(p))
+                .ToList();
+
+            AddWsMessage("sent", $"Subscribing to {_selectedVehicleId} with {properties.Count} properties...");
+            await _wsClient.SubscribeToVehicleAsync(_selectedVehicleId, properties);
+            _wsSubscribed = true;
+            AddWsMessage("system", "Subscribed successfully");
+        }
+        catch (Exception ex)
+        {
+            AddWsMessage("error", $"Subscribe failed: {ex.Message}");
+        }
+    }
+
+    private async Task UnsubscribeFromVehicle()
+    {
+        if (_wsClient == null || string.IsNullOrEmpty(_selectedVehicleId))
+            return;
+
+        try
+        {
+            await _wsClient.UnsubscribeFromVehicleAsync(_selectedVehicleId);
+            _wsSubscribed = false;
+            AddWsMessage("system", "Unsubscribed");
+        }
+        catch (Exception ex)
+        {
+            AddWsMessage("error", $"Unsubscribe failed: {ex.Message}");
+        }
+    }
+
+    private void AddWsMessage(string type, string content)
+    {
+        _wsMessages.Insert(0, new WsMessage { Type = type, Content = content, Timestamp = DateTime.Now });
+        if (_wsMessages.Count > 100)
+            _wsMessages.RemoveAt(_wsMessages.Count - 1);
+    }
+
+    private void ClearWsMessages() => _wsMessages.Clear();
+
+    private void LoadWsPreset(WsPreset preset)
+    {
+        _wsProperties = preset switch
+        {
+            WsPreset.Basic => "batteryLevel, powerState, chargerState, gearStatus",
+            WsPreset.Battery => "batteryLevel, batteryLimit, batteryCapacity, distanceToEmpty, chargerState, timeToEndOfCharge",
+            WsPreset.Location => "gnssLocation, gnssSpeed, gnssAltitude, gnssBearing",
+            WsPreset.Closures => "doorFrontLeftClosed, doorFrontRightClosed, doorRearLeftClosed, doorRearRightClosed, closureFrunkClosed, closureLiftgateClosed, windowFrontLeftClosed, windowFrontRightClosed",
+            WsPreset.Climate => "cabinClimateInteriorTemperature, cabinClimateDriverTemperature, cabinPreconditioningStatus, petModeStatus, defrostDefogStatus",
+            WsPreset.All => @"activeDriverName, alarmSoundStatus, batteryCapacity, batteryCellType, batteryLevel, batteryLimit, cabinClimateDriverTemperature, cabinClimateInteriorTemperature, cabinPreconditioningStatus, chargerState, chargerStatus, chargePortState, closureFrunkClosed, closureLiftgateClosed, closureTailgateClosed, defrostDefogStatus, distanceToEmpty, doorFrontLeftClosed, doorFrontLeftLocked, doorFrontRightClosed, doorFrontRightLocked, doorRearLeftClosed, doorRearLeftLocked, doorRearRightClosed, doorRearRightLocked, driveMode, gearStatus, gnssAltitude, gnssBearing, gnssLocation, gnssSpeed, otaCurrentVersion, petModeStatus, powerState, timeToEndOfCharge, tirePressureFrontLeft, tirePressureFrontRight, tirePressureRearLeft, tirePressureRearRight, vehicleMileage, windowFrontLeftClosed, windowFrontRightClosed",
+            _ => _wsProperties
+        };
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_wsClient != null)
+        {
+            await _wsClient.DisposeAsync();
+        }
+    }
+
+    private record GraphQlPreset(string Name, string OperationName, string Query, string Variables);
+    private record RestPreset(string Name, string Method, string Url, string Headers, string Body);
+    private enum WsPreset { Basic, Battery, Location, Closures, Climate, All }
+    private class WsMessage
+    {
+        public string Type { get; set; } = "";
+        public string Content { get; set; } = "";
+        public DateTime Timestamp { get; set; }
+    }
+}

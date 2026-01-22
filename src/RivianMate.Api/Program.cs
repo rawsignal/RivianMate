@@ -205,8 +205,13 @@ builder.Services.AddScoped<DevDataSeeder>();
 builder.Services.Configure<PollingConfiguration>(
     builder.Configuration.GetSection("RivianMate:Polling"));
 
+// === Data Retention Configuration ===
+builder.Services.Configure<DataRetentionConfiguration>(
+    builder.Configuration.GetSection("RivianMate:DataRetention"));
+
 // === Polling Job Services ===
 builder.Services.AddScoped<AccountPollingJob>();
+builder.Services.AddScoped<DataRetentionJob>();
 builder.Services.AddScoped<PollingJobManager>();
 builder.Services.AddHostedService<PollingJobSynchronizer>();
 
@@ -402,6 +407,19 @@ app.MapHangfireDashboard("/hangfire", new DashboardOptions
     },
     DashboardTitle = "RivianMate Jobs"
 });
+
+// Schedule data retention cleanup job
+var retentionConfig = builder.Configuration
+    .GetSection("RivianMate:DataRetention")
+    .Get<DataRetentionConfiguration>() ?? new DataRetentionConfiguration();
+
+if (retentionConfig.Enabled && retentionConfig.Tables.Count > 0)
+{
+    RecurringJob.AddOrUpdate<DataRetentionJob>(
+        "data-retention-cleanup",
+        job => job.ExecuteAsync(CancellationToken.None),
+        retentionConfig.Schedule);
+}
 
 app.UseAntiforgery();
 

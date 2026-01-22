@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
 @using RivianMate.Api.Components.Shared
 @using RivianMate.Core.Entities
 @attribute [Authorize]
@@ -10,6 +11,7 @@
 @inject BatteryCareService BatteryCareService
 @inject VehicleService VehicleService
 @inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JSRuntime
 @inject ILogger<BatteryHealth> Logger
 
 <PageTitle>Battery Health - RivianMate</PageTitle>
@@ -37,6 +39,15 @@ else if (_notFound)
     <NotFound Title="Vehicle Not Found"
               Message="The requested vehicle was not found or you don't have access to it."
               Icon="battery" />
+}
+else if (_noVehicles)
+{
+    <div class="card" style="text-align: center; padding: var(--space-12);">
+        <Icon Name="car" Size="64" Style="color: var(--color-text-muted); opacity: 0.3; margin-bottom: var(--space-4);" />
+        <h3 style="margin-bottom: var(--space-4);">No Vehicles Found</h3>
+        <p style="margin-bottom: var(--space-4);">Link a Rivian account to start tracking your battery health.</p>
+        <a href="/settings" class="btn btn-primary">Go to Settings</a>
+    </div>
 }
 else if (_summary == null)
 {
@@ -365,7 +376,11 @@ else
     private BatteryCareAnalysis? _careAnalysis;
     private bool _loading = true;
     private bool _notFound;
+    private bool _noVehicles;
     private Guid _userId;
+
+    // LocalStorage key (shared with Home.razor)
+    private const string SelectedVehicleKey = "rivianmate_selectedVehicleId";
 
     protected override async Task OnInitializedAsync()
     {
@@ -386,13 +401,16 @@ else
                 return;
             }
 
-            if (!VehicleId.HasValue)
+            // Get all vehicles first
+            var vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
+
+            if (vehicles.Count == 0)
             {
-                // No vehicle specified - get user's first vehicle
-                var vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
-                _vehicle = vehicles.FirstOrDefault();
+                _noVehicles = true;
+                return;
             }
-            else
+
+            if (VehicleId.HasValue)
             {
                 // Verify the vehicle belongs to this user via PublicId
                 _vehicle = await VehicleService.GetVehicleByPublicIdAsync(VehicleId.Value, _userId);
@@ -402,6 +420,12 @@ else
                     _notFound = true;
                     return;
                 }
+            }
+            else
+            {
+                // Try to get last selected vehicle from localStorage
+                _vehicle = await GetLastSelectedVehicleAsync(vehicles);
+                _vehicle ??= vehicles.FirstOrDefault();
             }
 
             if (_vehicle != null)
@@ -447,4 +471,21 @@ else
         TipPriority.Medium => "tip-medium",
         _ => "tip-low"
     };
+
+    private async Task<Vehicle?> GetLastSelectedVehicleAsync(List<Vehicle> vehicles)
+    {
+        try
+        {
+            var savedIdStr = await JSRuntime.InvokeAsync<string?>("rivianMate.storage.get", SelectedVehicleKey);
+            if (int.TryParse(savedIdStr, out var savedId))
+            {
+                return vehicles.FirstOrDefault(v => v.Id == savedId);
+            }
+        }
+        catch
+        {
+            // JS interop can fail during prerendering
+        }
+        return null;
+    }
 }

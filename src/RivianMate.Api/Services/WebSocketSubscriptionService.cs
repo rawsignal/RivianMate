@@ -341,6 +341,7 @@ public class WebSocketSubscriptionService : BackgroundService
             using var scope = _serviceProvider.CreateScope();
             var vehicleService = scope.ServiceProvider.GetRequiredService<VehicleService>();
             var driveTrackingService = scope.ServiceProvider.GetRequiredService<DriveTrackingService>();
+            var chargingTrackingService = scope.ServiceProvider.GetRequiredService<ChargingTrackingService>();
             var batteryHealthService = scope.ServiceProvider.GetRequiredService<BatteryHealthService>();
             var db = scope.ServiceProvider.GetRequiredService<RivianMateDbContext>();
 
@@ -357,6 +358,10 @@ public class WebSocketSubscriptionService : BackgroundService
 
                 // Track drives
                 await driveTrackingService.ProcessStateForDriveTrackingAsync(
+                    vehicleId, vehicleState, CancellationToken.None);
+
+                // Track charging sessions
+                await chargingTrackingService.ProcessStateForChargingTrackingAsync(
                     vehicleId, vehicleState, CancellationToken.None);
 
                 // Record battery health snapshot if needed
@@ -533,19 +538,6 @@ public class WebSocketSubscriptionService : BackgroundService
                     dbVehicle.ImageContentType = contentType ?? "image/png";
                     dbVehicle.ImageUrl = imageUrl;
                     dbVehicle.ImageVersion = workingVersion;
-
-                    // Try to extract paint color and wheel config from the image URL
-                    var (paintColor, wheelConfig) = RivianMate.Core.VehicleImageUrlParser.ParseVehicleConfig(imageUrl);
-                    if (!string.IsNullOrEmpty(paintColor) && string.IsNullOrEmpty(dbVehicle.ExteriorColor))
-                    {
-                        dbVehicle.ExteriorColor = paintColor;
-                        _logger.LogInformation("Extracted paint color from image URL: {Color}", paintColor);
-                    }
-                    if (!string.IsNullOrEmpty(wheelConfig) && string.IsNullOrEmpty(dbVehicle.WheelConfig))
-                    {
-                        dbVehicle.WheelConfig = wheelConfig;
-                        _logger.LogInformation("Extracted wheel config from image URL: {Wheels}", wheelConfig);
-                    }
 
                     await db.SaveChangesAsync(cancellationToken);
 

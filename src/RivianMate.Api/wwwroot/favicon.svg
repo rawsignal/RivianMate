@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Background (optional, for contrast on light backgrounds) -->
+  <rect width="32" height="32" rx="6" fill="#0D1A14"/>
+
+  <!-- Outer diamond (border only) -->
+  <rect x="6" y="6" width="20" height="20" rx="2"
+        fill="none"
+        stroke="#DEB526"
+        stroke-width="2"
+        transform="rotate(45 16 16)"/>
+
+  <!-- Inner diamond (filled) -->
+  <rect x="10" y="10" width="12" height="12" rx="1"
+        fill="#DEB526"
+        transform="rotate(45 16 16)"/>
+</svg>

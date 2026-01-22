@@ -32,7 +32,7 @@ public class LoginResponse
 {
     [JsonPropertyName("data")]
     public LoginData? Data { get; set; }
-    
+
     [JsonPropertyName("errors")]
     public List<GraphQlError>? Errors { get; set; }
 }

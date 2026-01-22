@@ -1,5 +1,6 @@
 @page "/rivian/add"
 @page "/rivian/connect"
+@page "/rivian/refresh/{AccountId:int}"
 @rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Authorization
@@ -15,14 +16,22 @@
 @inject NavigationManager NavigationManager
 @inject ILogger<AddRivianAccount> Logger
 
-<PageTitle>Connect Rivian Account - RivianMate</PageTitle>
+<PageTitle>@(_isRefreshMode ? "Refresh" : "Connect") Rivian Account - RivianMate</PageTitle>
 
 <div class="auth-container">
     <div class="auth-card" style="max-width: 480px;">
         <div class="auth-header">
             <div class="logo-icon"></div>
-            <h1>Connect Rivian Account</h1>
-            <p>Link your Rivian account to start tracking your vehicle</p>
+            @if (_isRefreshMode)
+            {
+                <h1>Refresh Account Link</h1>
+                <p>Re-authenticate to refresh your Rivian connection</p>
+            }
+            else
+            {
+                <h1>Connect Rivian Account</h1>
+                <p>Link your Rivian account to start tracking your vehicle</p>
+            }
         </div>
 
         @if (!string.IsNullOrEmpty(_errorMessage))
@@ -39,8 +48,14 @@
 
                 <div class="form-group">
                     <label for="email">Rivian Account Email</label>
-                    <InputText @bind-Value="_credentialsModel.Email" id="email" type="email" placeholder="your-rivian-email@example.com" disabled="@_isLoading" />
+                    <InputText @bind-Value="_credentialsModel.Email" id="email" type="email" placeholder="your-rivian-email@example.com" disabled="@(_isLoading || _isRefreshMode)" />
                     <ValidationMessage For="() => _credentialsModel.Email" class="validation-message" />
+                    @if (_isRefreshMode)
+                    {
+                        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: var(--space-1);">
+                            Email cannot be changed when refreshing an existing account.
+                        </p>
+                    }
                 </div>
 
                 <div class="form-group">
@@ -57,11 +72,11 @@
                 <button type="submit" class="btn btn-primary btn-full" disabled="@_isLoading">
                     @if (_isLoading)
                     {
-                        <span>Connecting...</span>
+                        <span>@(_isRefreshMode ? "Refreshing..." : "Connecting...")</span>
                     }
                     else
                     {
-                        <span>Connect Account</span>
+                        <span>@(_isRefreshMode ? "Refresh Account" : "Connect Account")</span>
                     }
                 </button>
             </EditForm>
@@ -111,26 +126,49 @@
                 <div style="width: 64px; height: 64px; margin: 0 auto var(--space-4); background-color: rgba(34, 197, 94, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
                     <Icon Name="check" Size="32" Style="color: var(--color-success);" />
                 </div>
-                <h2 style="margin-bottom: var(--space-2);">Account Connected!</h2>
-                <p style="color: var(--color-text-muted); margin-bottom: var(--space-6);">
-                    Found @_syncedVehicleCount vehicle@(_syncedVehicleCount != 1 ? "s" : "") in your Rivian account.
-                </p>
-                <button type="button" class="btn btn-primary btn-full" @onclick="GoToDashboard">
-                    Go to Dashboard
-                </button>
+                @if (_isRefreshMode)
+                {
+                    <h2 style="margin-bottom: var(--space-2);">Account Refreshed!</h2>
+                    <p style="color: var(--color-text-muted); margin-bottom: var(--space-6);">
+                        Your Rivian account connection has been refreshed. Vehicle data will now sync again.
+                    </p>
+                    <button type="button" class="btn btn-primary btn-full" @onclick="GoToSettings">
+                        Back to Settings
+                    </button>
+                }
+                else
+                {
+                    <h2 style="margin-bottom: var(--space-2);">Account Connected!</h2>
+                    <p style="color: var(--color-text-muted); margin-bottom: var(--space-6);">
+                        Found @_syncedVehicleCount vehicle@(_syncedVehicleCount != 1 ? "s" : "") in your Rivian account.
+                    </p>
+                    <button type="button" class="btn btn-primary btn-full" @onclick="GoToDashboard">
+                        Go to Dashboard
+                    </button>
+                }
             </div>
         }
 
         @if (_step == LoginStep.Credentials || _step == LoginStep.Mfa)
         {
             <div class="auth-footer">
-                <p><a href="/">Cancel and return to Dashboard</a></p>
+                @if (_isRefreshMode)
+                {
+                    <p><a href="/settings">Cancel and return to Settings</a></p>
+                }
+                else
+                {
+                    <p><a href="/">Cancel and return to Dashboard</a></p>
+                }
             </div>
         }
     </div>
 </div>
 
 @code {
+    [Parameter]
+    public int? AccountId { get; set; }
+
     private enum LoginStep { Credentials, Mfa, Syncing, Success }
     private LoginStep _step = LoginStep.Credentials;
 
@@ -141,6 +179,9 @@
     private bool _isLoading;
     private int _syncedVehicleCount;
     private Guid _userId;
+    private RivianAccount? _existingAccount;
+
+    private bool _isRefreshMode => AccountId.HasValue;
 
     protected override async Task OnInitializedAsync()
     {
@@ -149,6 +190,21 @@
         if (Guid.TryParse(userIdClaim, out var userId))
         {
             _userId = userId;
+        }
+
+        // If refreshing an existing account, load it and pre-fill the email
+        if (AccountId.HasValue)
+        {
+            _existingAccount = await RivianAccountService.GetAccountByIdAsync(AccountId.Value, _userId);
+            if (_existingAccount != null)
+            {
+                _credentialsModel.Email = _existingAccount.RivianEmail ?? "";
+            }
+            else
+            {
+                // Account not found or doesn't belong to user
+                NavigationManager.NavigateTo("/settings");
+            }
         }
     }
 
@@ -254,6 +310,11 @@
     private void GoToDashboard()
     {
         NavigationManager.NavigateTo("/", forceLoad: true);
+    }
+
+    private void GoToSettings()
+    {
+        NavigationManager.NavigateTo("/settings", forceLoad: true);
     }
 
     private string GetFriendlyErrorMessage(string message)

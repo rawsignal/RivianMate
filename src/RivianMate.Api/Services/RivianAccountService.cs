@@ -65,6 +65,15 @@ public class RivianAccountService
     }
 
     /// <summary>
+    /// Get a specific Rivian account by ID, verifying ownership.
+    /// </summary>
+    public async Task<RivianAccount?> GetAccountByIdAsync(int accountId, Guid userId, CancellationToken cancellationToken = default)
+    {
+        return await _db.RivianAccounts
+            .FirstOrDefaultAsync(ra => ra.Id == accountId && ra.UserId == userId, cancellationToken);
+    }
+
+    /// <summary>
     /// Get a specific Rivian account, verifying ownership.
     /// </summary>
     public async Task<RivianAccount?> GetAccountAsync(int accountId, Guid userId, CancellationToken cancellationToken = default)
@@ -258,6 +267,22 @@ public class RivianAccountService
     }
 
     /// <summary>
+    /// Get all decrypted tokens for a Rivian account.
+    /// Returns (csrfToken, appSessionToken, userSessionToken, accessToken, refreshToken).
+    /// </summary>
+    public (string? CsrfToken, string? AppSessionToken, string? UserSessionToken, string? AccessToken, string? RefreshToken)
+        GetAllDecryptedTokens(RivianAccount account)
+    {
+        return (
+            Decrypt(account.EncryptedCsrfToken),
+            Decrypt(account.EncryptedAppSessionToken),
+            Decrypt(account.EncryptedUserSessionToken),
+            Decrypt(account.EncryptedAccessToken),
+            Decrypt(account.EncryptedRefreshToken)
+        );
+    }
+
+    /// <summary>
     /// Sync vehicles from a Rivian account.
     /// </summary>
     public async Task<List<Vehicle>> SyncVehiclesAsync(
@@ -291,11 +316,15 @@ public class RivianAccountService
         // Debug logging to understand API response structure
         foreach (var rv in userInfo.Vehicles)
         {
+            var config = rv.Vehicle?.MobileConfiguration;
             _logger.LogInformation(
-                "Rivian API vehicle data: Id={Id}, Name={Name}, VIN={Vin}, " +
-                "VehicleDetails=[ModelYear={ModelYear}, Make={Make}, Model={Model}]",
+                "Rivian API vehicle: Id={Id}, Name={Name}, VIN={Vin}, Year={Year}, Model={Model}, " +
+                "Trim={Trim}, Drive={Drive}, Exterior={Exterior}, Interior={Interior}, Wheels={Wheels}",
                 rv.Id, rv.Name, rv.Vin,
-                rv.Vehicle?.ModelYear, rv.Vehicle?.Make, rv.Vehicle?.Model);
+                rv.Vehicle?.ModelYear, rv.Vehicle?.Model,
+                config?.TrimOption?.OptionName, config?.DriveSystemOption?.OptionName,
+                config?.ExteriorColorOption?.OptionName, config?.InteriorColorOption?.OptionName,
+                config?.WheelOption?.OptionName);
         }
 
         foreach (var rivianVehicle in userInfo.Vehicles)
@@ -362,6 +391,15 @@ public class RivianAccountService
                         var d when d.Contains("DUAL") => RivianMate.Core.Enums.DriveType.DualMotor,
                         var d when d.Contains("QUAD") => RivianMate.Core.Enums.DriveType.QuadMotor,
                         _ => vehicle.DriveType
+                    };
+
+                    var trimOption = config.TrimOption?.OptionName?.ToUpperInvariant() ?? "";
+                    vehicle.Trim = trimOption switch
+                    {
+                        var t when t.Contains("LAUNCH") => RivianMate.Core.Enums.VehicleTrim.LaunchEdition,
+                        var t when t.Contains("ADVENTURE") => RivianMate.Core.Enums.VehicleTrim.Adventure,
+                        var t when t.Contains("EXPLORE") => RivianMate.Core.Enums.VehicleTrim.Explore,
+                        _ => vehicle.Trim
                     };
                 }
             }

@@ -236,7 +236,6 @@ public class RivianApiClient : IDisposable
 
         _logger.LogDebug("Getting user info...");
 
-        // Simplified query - mobileConfiguration fields no longer available in Rivian API
         var request = new GraphQlRequest
         {
             OperationName = "getUserInfo",
@@ -260,6 +259,13 @@ public class RivianApiClient : IDisposable
                             modelYear
                             make
                             model
+                            mobileConfiguration {
+                                trimOption { optionId optionName }
+                                driveSystemOption { optionId optionName }
+                                exteriorColorOption { optionId optionName }
+                                interiorColorOption { optionId optionName }
+                                wheelOption { optionId optionName }
+                            }
                         }
                     }
                 }
@@ -611,6 +617,32 @@ public class RivianApiClient : IDisposable
             _logger.LogError(ex, "Error downloading image from {Url}", imageUrl);
             return (null, null);
         }
+    }
+
+    /// <summary>
+    /// Execute a raw GraphQL query and return the raw JSON response.
+    /// Used for API exploration and debugging.
+    /// </summary>
+    public async Task<(string Response, int StatusCode)> ExecuteRawQueryAsync(
+        string query,
+        object? variables = null,
+        string? operationName = null,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureAuthenticated();
+
+        var request = new GraphQlRequest
+        {
+            OperationName = operationName,
+            Variables = variables ?? new { },
+            Query = query
+        };
+
+        using var httpRequest = CreateAuthenticatedRequest(request);
+        var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        return (responseBody, (int)response.StatusCode);
     }
 
     private async Task<T?> SendAuthenticatedRequestAsync<T>(GraphQlRequest request,

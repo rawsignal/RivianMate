@@ -18,6 +18,7 @@ public class AccountPollingJob
     private readonly VehicleService _vehicleService;
     private readonly BatteryHealthService _batteryHealthService;
     private readonly DriveTrackingService _driveTrackingService;
+    private readonly ChargingTrackingService _chargingTrackingService;
     private readonly PollingJobManager _jobManager;
     private readonly ILogger<AccountPollingJob> _logger;
 
@@ -27,6 +28,7 @@ public class AccountPollingJob
         VehicleService vehicleService,
         BatteryHealthService batteryHealthService,
         DriveTrackingService driveTrackingService,
+        ChargingTrackingService chargingTrackingService,
         PollingJobManager jobManager,
         ILogger<AccountPollingJob> logger)
     {
@@ -35,6 +37,7 @@ public class AccountPollingJob
         _vehicleService = vehicleService;
         _batteryHealthService = batteryHealthService;
         _driveTrackingService = driveTrackingService;
+        _chargingTrackingService = chargingTrackingService;
         _jobManager = jobManager;
         _logger = logger;
     }
@@ -248,6 +251,10 @@ public class AccountPollingJob
         await _driveTrackingService.ProcessStateForDriveTrackingAsync(
             vehicle.Id, vehicleState, cancellationToken);
 
+        // Track charging sessions (detect start/end, record energy)
+        await _chargingTrackingService.ProcessStateForChargingTrackingAsync(
+            vehicle.Id, vehicleState, cancellationToken);
+
         // Record battery health snapshot if needed
         await MaybeRecordBatteryHealthAsync(vehicle.Id, vehicleState, cancellationToken);
 
@@ -289,19 +296,6 @@ public class AccountPollingJob
                 vehicle.ImageContentType = contentType ?? "image/png";
                 vehicle.ImageUrl = imageUrl;
                 vehicle.ImageVersion = workingVersion;
-
-                // Try to extract paint color and wheel config from the image URL
-                var (paintColor, wheelConfig) = RivianMate.Core.VehicleImageUrlParser.ParseVehicleConfig(imageUrl);
-                if (!string.IsNullOrEmpty(paintColor) && string.IsNullOrEmpty(vehicle.ExteriorColor))
-                {
-                    vehicle.ExteriorColor = paintColor;
-                    _logger.LogInformation("Extracted paint color from image URL: {Color}", paintColor);
-                }
-                if (!string.IsNullOrEmpty(wheelConfig) && string.IsNullOrEmpty(vehicle.WheelConfig))
-                {
-                    vehicle.WheelConfig = wheelConfig;
-                    _logger.LogInformation("Extracted wheel config from image URL: {Wheels}", wheelConfig);
-                }
 
                 await _db.SaveChangesAsync(cancellationToken);
 
