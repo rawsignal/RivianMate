@@ -732,6 +732,31 @@ a.btn-primary:hover {
     border-top: 1px solid var(--color-border);
 }
 
+/* Battery Health Card - Small phones */
+@media (max-width: 420px) {
+    .battery-health-content {
+        flex-direction: column;
+        align-items: center;
+        gap: var(--space-4);
+        width: 100%;
+    }
+
+    /* Keep ring size but center it */
+    .health-ring-small {
+        flex-shrink: 0;
+        margin: 0 auto;
+    }
+
+    .projections-grid {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .projection-item {
+        padding: var(--space-2);
+    }
+}
+
 /* ===== Charging Sessions List ===== */
 .charging-sessions-list {
     display: flex;
@@ -1809,6 +1834,114 @@ select option:checked,
 
     .footer {
         margin-bottom: 70px;
+    }
+}
+
+/* Small phones (390px width like iPhone 13 mini) */
+@media (max-width: 420px) {
+    /* Keep padding but cards will have their own margin */
+    .content-wrapper {
+        padding: var(--space-2) var(--space-3);
+    }
+
+    /* Grid gaps for breathing room */
+    .grid-3,
+    .grid-4,
+    .bottom-stats {
+        gap: var(--space-3);
+    }
+
+    /* Ensure cards don't overflow */
+    .card,
+    .stat-card,
+    .bottom-stat-card {
+        max-width: 100%;
+        overflow: hidden;
+        box-sizing: border-box;
+    }
+
+    /* Allow flex children to shrink */
+    .card *,
+    .stat-card *,
+    .bottom-stat-card * {
+        min-width: 0;
+    }
+
+    /* Reduce card padding for more content space */
+    .card {
+        padding: var(--space-4);
+    }
+
+    /* Stat cards - slightly tighter */
+    .stat-card {
+        padding: var(--space-3) var(--space-4);
+    }
+
+    /* Card headers - stack title and link */
+    .card-header {
+        flex-wrap: wrap;
+        gap: var(--space-2);
+    }
+
+    .card-title {
+        font-size: 1rem;
+    }
+
+    .card-link {
+        font-size: 0.75rem;
+    }
+
+    /* Smaller page titles */
+    .page-header h1 {
+        font-size: 1.5rem;
+    }
+
+    /* Tighter spacing for stat cards */
+    .stat-value {
+        font-size: 1.75rem;
+    }
+
+    /* Session/drive headers - allow wrapping */
+    .session-header,
+    .drive-header {
+        flex-wrap: wrap;
+    }
+
+    .session-location,
+    .drive-distance {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .session-time,
+    .drive-time {
+        font-size: 0.65rem;
+    }
+
+    /* Smaller session/drive stats */
+    .session-stats,
+    .drive-stats {
+        font-size: 0.65rem;
+        flex-wrap: wrap;
+    }
+
+    /* Drive route addresses */
+    .drive-route-addr {
+        font-size: 0.7rem;
+    }
+
+    /* Projection items */
+    .projection-item {
+        gap: var(--space-2);
+    }
+
+    .projection-label {
+        font-size: 0.7rem;
+    }
+
+    .projection-value {
+        font-size: 0.8rem;
     }
 }
 
