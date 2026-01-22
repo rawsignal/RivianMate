@@ -98,6 +98,29 @@
             </div>
         </footer>
     </main>
+
+    <AuthorizeView>
+        <Authorized>
+            <nav class="mobile-bottom-nav">
+                <NavLink href="" Match="NavLinkMatch.All" class="mobile-nav-item">
+                    <Icon Name="home" Size="22" />
+                    <span>Home</span>
+                </NavLink>
+                <NavLink href="settings" class="mobile-nav-item">
+                    <Icon Name="settings" Size="22" />
+                    <span>Settings</span>
+                </NavLink>
+                <NavLink href="profile" class="mobile-nav-item">
+                    <Icon Name="user" Size="22" />
+                    <span>Profile</span>
+                </NavLink>
+                <a href="logout" class="mobile-nav-item">
+                    <Icon Name="log-out" Size="22" />
+                    <span>Sign Out</span>
+                </a>
+            </nav>
+        </Authorized>
+    </AuthorizeView>
 </div>
 
 @code {
