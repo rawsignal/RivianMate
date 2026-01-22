@@ -152,6 +152,9 @@
             }
 
             _timeZoneInitialized = true;
+
+            // Trigger re-render so child components use the correct timezone
+            StateHasChanged();
         }
     }
 

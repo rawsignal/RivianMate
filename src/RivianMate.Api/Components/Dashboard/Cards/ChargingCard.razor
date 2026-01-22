@@ -87,11 +87,9 @@
 
     private string FormatSessionTime(DateTime utcTime)
     {
-        if (TimeZoneService == null)
-            return utcTime.ToString("MMM d, h:mm tt");
-
-        var localTime = TimeZoneService.ToLocalTime(utcTime);
-        var today = TimeZoneService.ToLocalTime(DateTime.UtcNow).Date;
+        // TimeZoneService is always provided by Home.razor, use its timezone conversion
+        var localTime = TimeZoneService?.ToLocalTime(utcTime) ?? utcTime;
+        var today = (TimeZoneService?.ToLocalTime(DateTime.UtcNow) ?? DateTime.UtcNow).Date;
         if (localTime.Date == today) return $"Today, {localTime:h:mm tt}";
         if (localTime.Date == today.AddDays(-1)) return $"Yesterday, {localTime:h:mm tt}";
         return localTime.ToString("MMM d, h:mm tt");
