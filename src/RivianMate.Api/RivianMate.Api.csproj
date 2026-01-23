@@ -35,4 +35,11 @@
     <ProjectReference Include="..\RivianMate.Shared\RivianMate.Shared.csproj" />
   </ItemGroup>
 
+  <!-- Include email templates in build output -->
+  <ItemGroup>
+    <Content Include="Email\Templates\**\*.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

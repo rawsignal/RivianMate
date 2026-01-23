@@ -52,6 +52,8 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
     public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
     public DbSet<UserLocation> UserLocations => Set<UserLocation>();
     public DbSet<GeocodingCache> GeocodingCache => Set<GeocodingCache>();
+    public DbSet<EmailLog> EmailLogs => Set<EmailLog>();
+    public DbSet<BroadcastEmail> BroadcastEmails => Set<BroadcastEmail>();
 
     // For ASP.NET Data Protection key storage
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -278,6 +280,37 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
             entity.Property(e => e.City).HasMaxLength(100);
             entity.Property(e => e.State).HasMaxLength(100);
             entity.Property(e => e.Country).HasMaxLength(100);
+        });
+
+        // === EmailLog ===
+        modelBuilder.Entity<EmailLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.Trigger);
+
+            entity.Property(e => e.ToAddress).HasMaxLength(256);
+            entity.Property(e => e.Trigger).HasMaxLength(50);
+            entity.Property(e => e.Subject).HasMaxLength(500);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(1000);
+            entity.Property(e => e.ProviderMessageId).HasMaxLength(100);
+        });
+
+        // === BroadcastEmail ===
+        modelBuilder.Entity<BroadcastEmail>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.Status);
+
+            entity.Property(e => e.Subject).HasMaxLength(500);
+            entity.Property(e => e.Message).HasMaxLength(10000);
+
+            entity.HasOne(e => e.AdminUser)
+                .WithMany()
+                .HasForeignKey(e => e.AdminUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

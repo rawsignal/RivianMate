@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>{{Subject}} - RivianMate</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+    /* Reset */
+    body, table, td, p, a, li { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+    body { margin: 0 !important; padding: 0 !important; width: 100% !important; font-family: 'Plus Jakarta Sans', Helvetica, Arial, sans-serif; }
+
+    /* Mobile */
+    @media only screen and (max-width: 600px) {
+      .email-container { width: 100% !important; padding: 16px !important; }
+      .content-card { padding: 24px !important; }
+      .button { padding: 14px 24px !important; }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0D1A14; font-family: 'Plus Jakarta Sans', Helvetica, Arial, sans-serif;">
+
+  <!-- Topographic background pattern -->
+  <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; opacity: 0.06; pointer-events: none; background-image: url(&quot;data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 50 Q25 30 50 50 T100 50' fill='none' stroke='%234A6B5D' stroke-width='0.5'/%3E%3Cpath d='M0 60 Q25 40 50 60 T100 60' fill='none' stroke='%234A6B5D' stroke-width='0.5'/%3E%3Cpath d='M0 70 Q25 50 50 70 T100 70' fill='none' stroke='%234A6B5D' stroke-width='0.5'/%3E%3C/svg%3E&quot;); background-size: 200px 200px;"></div>
+
+  <!-- Email Body -->
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #0D1A14; position: relative;">
+    <tr>
+      <td align="center" style="padding: 40px 16px;">
+
+        <!-- Email Container -->
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width: 560px;" class="email-container">
+
+          <!-- Header with Logo -->
+          <tr>
+            <td align="center" style="padding-bottom: 32px;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="vertical-align: middle; padding-right: 12px;">
+                    <!-- Diamond logo SVG -->
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="36" height="36">
+                      <rect width="32" height="32" rx="6" fill="#0D1A14"/>
+                      <rect x="6" y="6" width="20" height="20" rx="2" fill="none" stroke="#DEB526" stroke-width="2" transform="rotate(45 16 16)"/>
+                      <rect x="10" y="10" width="12" height="12" rx="1" fill="#DEB526" transform="rotate(45 16 16)"/>
+                    </svg>
+                  </td>
+                  <td style="vertical-align: middle;">
+                    <span style="color: #F0F4F2; font-size: 22px; font-weight: 600; letter-spacing: -0.5px; font-family: 'Plus Jakarta Sans', Helvetica, Arial, sans-serif;">RivianMate</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Content Card -->
+          <tr>
+            <td>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #142420; border: 1px solid #2D4A3E; border-radius: 12px;" class="content-card">
+                <tr>
+                  <td style="padding: 32px; color: #F0F4F2;">
+
+                    {{Content}}
+
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding-top: 32px;">
+              <p style="margin: 0 0 8px 0; color: #8FA696; font-size: 13px; line-height: 1.5; font-family: 'Plus Jakarta Sans', Helvetica, Arial, sans-serif;">
+                &copy; {{CurrentYear}} Rossignol Software Solutions LLC
+                {{#if ShowPreferences}}
+                &middot; <a href="{{PreferencesUrl}}" style="color: #8FA696; text-decoration: underline;">Email Preferences</a>
+                {{/if}}
+                {{#if ShowUnsubscribe}}
+                &middot; <a href="{{UnsubscribeUrl}}" style="color: #8FA696; text-decoration: underline;">Unsubscribe</a>
+                {{/if}}
+              </p>
+              <p style="margin: 0; color: #4A6B5D; font-size: 12px; font-family: 'Plus Jakarta Sans', Helvetica, Arial, sans-serif;">
+                RivianMate is not affiliated with Rivian Automotive, Inc.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

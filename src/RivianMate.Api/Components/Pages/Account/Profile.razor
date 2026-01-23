@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Identity
 @using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services.Email
 @using RivianMate.Core.Entities
 @attribute [Authorize]
 
@@ -13,6 +14,7 @@
 @inject AccountService AccountService
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthStateProvider
+@inject IEmailTrigger EmailTrigger
 @inject ILogger<Profile> Logger
 
 <PageTitle>Profile - RivianMate</PageTitle>
@@ -245,6 +247,12 @@
             _passwordSuccess = true;
             PasswordInput = new PasswordModel();
             Logger.LogInformation("User {UserId} changed their password.", _user.Id);
+
+            // Send password changed confirmation email
+            if (!string.IsNullOrEmpty(_user.Email))
+            {
+                EmailTrigger.FirePasswordChanged(_user.Email, _user.Id, _user.DisplayName);
+            }
 
             // Refresh sign-in to update security stamp
             await SignInManager.RefreshSignInAsync(_user);

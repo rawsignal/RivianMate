@@ -1,0 +1,397 @@
+@page "/admin/broadcast"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.Options
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Components.Authorization
+@using Hangfire
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Configuration
+@using RivianMate.Api.Services.Email
+@using RivianMate.Core.Entities
+@using RivianMate.Infrastructure.Data
+@attribute [Authorize]
+@inject RivianMateDbContext Db
+@inject UserManager<ApplicationUser> UserManager
+@inject IBackgroundJobClient JobClient
+@inject IOptions<EmailConfiguration> EmailConfig
+@inject IConfiguration Configuration
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ILogger<BroadcastEmail> Logger
+
+<PageTitle>Broadcast Email - RivianMate</PageTitle>
+
+@if (!_isAdmin)
+{
+    <NotFound Title="Access Denied" Message="This page is only accessible to administrators." Icon="shield-off" />
+}
+else if (!EmailConfig.Value.Enabled)
+{
+    <div class="container" style="max-width: 800px; margin: 0 auto; padding: var(--space-6);">
+        <div class="card">
+            <div style="text-align: center; padding: var(--space-8);">
+                <Icon Name="mail-x" Size="48" Style="color: var(--color-text-muted); margin-bottom: var(--space-4);" />
+                <h2>Email Not Configured</h2>
+                <p style="color: var(--color-text-muted);">The email system is not enabled. Configure email settings to send broadcast emails.</p>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="container" style="max-width: 800px; margin: 0 auto; padding: var(--space-6);">
+        <!-- Header -->
+        <div style="margin-bottom: var(--space-6);">
+            <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+                <Icon Name="send" Size="28" Style="color: var(--color-accent);" />
+                Send Email
+            </h1>
+            <p style="color: var(--color-text-muted);">
+                Send an email to a specific user or all users on the platform
+            </p>
+        </div>
+
+        @if (_sent)
+        {
+            <div class="alert alert-success" style="margin-bottom: var(--space-4);">
+                @if (!string.IsNullOrEmpty(_sentTo))
+                {
+                    <strong>Email queued!</strong> @_sentTo
+                }
+                else
+                {
+                    <text><strong>Broadcast queued!</strong> Your email is being sent to @_userCount users. You can monitor progress in the Hangfire dashboard.</text>
+                }
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-error" style="margin-bottom: var(--space-4);">
+                @_error
+            </div>
+        }
+
+        <!-- Compose Form -->
+        <div class="card" style="margin-bottom: var(--space-4);">
+            <h3 style="margin-bottom: var(--space-4);">Compose Message</h3>
+
+            <EditForm Model="_model" OnValidSubmit="OnSubmit" FormName="broadcast-form">
+                <DataAnnotationsValidator />
+
+                <div class="form-group" style="margin-bottom: var(--space-4);">
+                    <label for="subject">Subject</label>
+                    <InputText @bind-Value="_model.Subject" id="subject" class="form-input" placeholder="e.g., Scheduled Maintenance Notice" />
+                    <ValidationMessage For="() => _model.Subject" class="validation-message" />
+                </div>
+
+                <div class="form-group" style="margin-bottom: var(--space-4);">
+                    <label for="message">Message</label>
+                    <InputTextArea @bind-Value="_model.Message" id="message" class="form-textarea" rows="10"
+                        placeholder="Enter your message here. Line breaks will be preserved." />
+                    <ValidationMessage For="() => _model.Message" class="validation-message" />
+                    <p style="color: var(--color-text-muted); font-size: 12px; margin-top: var(--space-2);">
+                        Plain text only. Line breaks will be preserved in the email.
+                    </p>
+                </div>
+
+                <div class="form-group" style="margin-bottom: var(--space-4);">
+                    <label for="recipient">Recipient (optional)</label>
+                    <InputText @bind-Value="_model.SpecificRecipient" id="recipient" class="form-input" type="email" placeholder="Leave blank to send to all users" />
+                    <p style="color: var(--color-text-muted); font-size: 12px; margin-top: var(--space-2);">
+                        Enter an email address to send to a specific user, or leave blank to broadcast to everyone.
+                    </p>
+                </div>
+
+                <div class="form-group" style="margin-bottom: var(--space-4); padding: var(--space-4); background: var(--color-surface-elevated); border-radius: var(--radius); border: 1px solid var(--color-border);">
+                    <div style="display: flex; align-items: center; gap: var(--space-3);">
+                        @if (string.IsNullOrWhiteSpace(_model.SpecificRecipient))
+                        {
+                            <Icon Name="users" Size="20" Style="color: var(--color-text-muted);" />
+                            <span>Recipients: <strong>@_userCount users</strong></span>
+                        }
+                        else
+                        {
+                            <Icon Name="user" Size="20" Style="color: var(--color-text-muted);" />
+                            <span>Recipient: <strong>@_model.SpecificRecipient</strong></span>
+                        }
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: var(--space-4);">
+                    <label style="display: flex; align-items: center; gap: var(--space-2); cursor: pointer;">
+                        <InputCheckbox @bind-Value="_model.SendTestFirst" />
+                        <span>Send test email to myself first</span>
+                    </label>
+                </div>
+
+                @if (!_model.SendTestFirst && string.IsNullOrWhiteSpace(_model.SpecificRecipient))
+                {
+                    <div class="form-group" style="margin-bottom: var(--space-4); padding: var(--space-4); background: rgba(239, 68, 68, 0.1); border-radius: var(--radius); border: 1px solid rgba(239, 68, 68, 0.3);">
+                        <label for="confirm" style="color: #EF4444; font-weight: 500;">
+                            Type SEND to confirm sending to all @_userCount users
+                        </label>
+                        <InputText @bind-Value="_model.Confirmation" id="confirm" class="form-input" style="margin-top: var(--space-2);" placeholder="Type SEND to confirm" />
+                    </div>
+                }
+
+                <div style="display: flex; gap: var(--space-3);">
+                    @if (_model.SendTestFirst)
+                    {
+                        <button type="submit" class="btn btn-primary" disabled="@_sending">
+                            @if (_sending)
+                            {
+                                <span>Sending...</span>
+                            }
+                            else
+                            {
+                                <Icon Name="mail" Size="16" />
+                                <span>Send Test Email</span>
+                            }
+                        </button>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_model.SpecificRecipient))
+                    {
+                        <button type="submit" class="btn btn-primary" disabled="@_sending">
+                            @if (_sending)
+                            {
+                                <span>Sending...</span>
+                            }
+                            else
+                            {
+                                <Icon Name="send" Size="16" />
+                                <span>Send Email</span>
+                            }
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="submit" class="btn btn-danger" disabled="@(_sending || _model.Confirmation != "SEND")">
+                            @if (_sending)
+                            {
+                                <span>Sending...</span>
+                            }
+                            else
+                            {
+                                <Icon Name="send" Size="16" />
+                                <span>Send to All Users</span>
+                            }
+                        </button>
+                    }
+                </div>
+            </EditForm>
+        </div>
+
+        <!-- Recent Broadcasts -->
+        <div class="card">
+            <h3 style="margin-bottom: var(--space-4);">Recent Broadcasts</h3>
+
+            @if (_recentBroadcasts.Count == 0)
+            {
+                <p style="color: var(--color-text-muted);">No broadcasts sent yet.</p>
+            }
+            else
+            {
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Subject</th>
+                                <th>Recipients</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var broadcast in _recentBroadcasts)
+                            {
+                                <tr>
+                                    <td>@broadcast.CreatedAt.ToString("MMM d, yyyy h:mm tt")</td>
+                                    <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@broadcast.Subject</td>
+                                    <td>@broadcast.TotalRecipients</td>
+                                    <td>
+                                        @switch (broadcast.Status)
+                                        {
+                                            case BroadcastStatus.Pending:
+                                                <span class="badge badge-warning">Pending</span>
+                                                break;
+                                            case BroadcastStatus.InProgress:
+                                                <span class="badge badge-info">In Progress</span>
+                                                break;
+                                            case BroadcastStatus.Completed:
+                                                <span class="badge badge-success">Completed</span>
+                                                break;
+                                            case BroadcastStatus.Failed:
+                                                <span class="badge badge-error">Failed</span>
+                                                break;
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool _isAdmin;
+    private bool _sending;
+    private bool _sent;
+    private string? _error;
+    private string? _sentTo;
+    private int _userCount;
+    private string? _currentUserEmail;
+    private Guid _currentUserId;
+    private List<Core.Entities.BroadcastEmail> _recentBroadcasts = new();
+
+    [SupplyParameterFromForm]
+    private BroadcastModel _model { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var email = user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
+            var adminEmails = Configuration.GetSection("RivianMate:AdminEmails").Get<string[]>() ?? [];
+            _isAdmin = adminEmails.Contains(email, StringComparer.OrdinalIgnoreCase);
+            _currentUserEmail = email;
+
+            if (_isAdmin)
+            {
+                var appUser = await UserManager.FindByEmailAsync(email!);
+                if (appUser != null)
+                {
+                    _currentUserId = appUser.Id;
+                }
+
+                await LoadDataAsync();
+            }
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _userCount = await Db.Users.CountAsync(u => u.Email != null);
+        _recentBroadcasts = await Db.BroadcastEmails
+            .OrderByDescending(b => b.CreatedAt)
+            .Take(10)
+            .ToListAsync();
+    }
+
+    private async Task OnSubmit()
+    {
+        _error = null;
+        _sent = false;
+        _sentTo = null;
+        _sending = true;
+
+        try
+        {
+            if (_model.SendTestFirst)
+            {
+                // Send test email to current user only
+                SendEmailTo(_currentUserEmail!, "[TEST] " + _model.Subject);
+                _sentTo = $"Test email sent to {_currentUserEmail}";
+                _sent = true;
+            }
+            else if (!string.IsNullOrWhiteSpace(_model.SpecificRecipient))
+            {
+                // Send to specific recipient
+                SendEmailTo(_model.SpecificRecipient.Trim(), _model.Subject);
+                _sentTo = $"Email sent to {_model.SpecificRecipient.Trim()}";
+                Logger.LogInformation("Admin email sent to {Recipient}, Subject={Subject}, AdminUser={AdminEmail}",
+                    _model.SpecificRecipient, _model.Subject, _currentUserEmail);
+                _sent = true;
+                _model = new BroadcastModel();
+            }
+            else
+            {
+                // Broadcast to all users - validate confirmation
+                if (_model.Confirmation != "SEND")
+                {
+                    _error = "Please type SEND to confirm.";
+                    return;
+                }
+
+                // Create broadcast record
+                var broadcast = new Core.Entities.BroadcastEmail
+                {
+                    AdminUserId = _currentUserId,
+                    Subject = _model.Subject,
+                    Message = _model.Message,
+                    Status = BroadcastStatus.Pending,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                Db.BroadcastEmails.Add(broadcast);
+                await Db.SaveChangesAsync();
+
+                // Enqueue the broadcast job
+                JobClient.Enqueue<BroadcastEmailJob>(job => job.ExecuteAsync(broadcast.Id));
+
+                Logger.LogInformation("Broadcast email queued: BroadcastId={BroadcastId}, Subject={Subject}, AdminUser={AdminEmail}",
+                    broadcast.Id, _model.Subject, _currentUserEmail);
+
+                _sent = true;
+                _model = new BroadcastModel(); // Reset form
+
+                // Reload data to show the new broadcast
+                await LoadDataAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to send email");
+            _error = "Failed to send email. Please try again.";
+        }
+        finally
+        {
+            _sending = false;
+        }
+    }
+
+    private void SendEmailTo(string recipientEmail, string subject)
+    {
+        var request = new EmailJobRequest
+        {
+            To = recipientEmail,
+            Trigger = EmailTriggers.AdminBroadcast,
+            Template = "AdminBroadcast",
+            SubjectTemplate = subject,
+            Tokens = new Dictionary<string, string>
+            {
+                ["Subject"] = subject,
+                ["Message"] = _model.Message
+            },
+            UserId = _currentUserId
+        };
+
+        JobClient.Enqueue<SendEmailJob>(job => job.ExecuteAsync(request));
+    }
+
+    private class BroadcastModel
+    {
+        [Required(ErrorMessage = "Subject is required")]
+        [StringLength(500, ErrorMessage = "Subject cannot exceed 500 characters")]
+        public string Subject { get; set; } = "";
+
+        [Required(ErrorMessage = "Message is required")]
+        [StringLength(10000, ErrorMessage = "Message cannot exceed 10,000 characters")]
+        public string Message { get; set; } = "";
+
+        [EmailAddress(ErrorMessage = "Please enter a valid email address")]
+        public string? SpecificRecipient { get; set; }
+
+        public bool SendTestFirst { get; set; } = true;
+
+        public string Confirmation { get; set; } = "";
+    }
+}

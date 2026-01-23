@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RivianMate.Infrastructure.Data;
@@ -11,9 +12,11 @@ using RivianMate.Infrastructure.Data;
 namespace RivianMate.Infrastructure.Migrations
 {
     [DbContext(typeof(RivianMateDbContext))]
-    partial class RivianMateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260122232751_AddEmailLog")]
+    partial class AddEmailLog
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -345,56 +348,6 @@ namespace RivianMate.Infrastructure.Migrations
                     b.HasIndex("VehicleId", "Timestamp");
 
                     b.ToTable("BatteryHealthSnapshots");
-                });
-
-            modelBuilder.Entity("RivianMate.Core.Entities.BroadcastEmail", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<Guid>("AdminUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("FailedCount")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Message")
-                        .IsRequired()
-                        .HasMaxLength(10000)
-                        .HasColumnType("character varying(10000)");
-
-                    b.Property<int>("SentCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Subject")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<int>("TotalRecipients")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AdminUserId");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.HasIndex("Status");
-
-                    b.ToTable("BroadcastEmails");
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.ChargingSession", b =>
@@ -1343,17 +1296,6 @@ namespace RivianMate.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Vehicle");
-                });
-
-            modelBuilder.Entity("RivianMate.Core.Entities.BroadcastEmail", b =>
-                {
-                    b.HasOne("RivianMate.Core.Entities.ApplicationUser", "AdminUser")
-                        .WithMany()
-                        .HasForeignKey("AdminUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("AdminUser");
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.ChargingSession", b =>

@@ -646,6 +646,74 @@ The Self-Hosted edition (default) cannot be "upgraded" to Pro at runtime - they 
 | `RivianMate__Polling__IntervalAwakeSeconds` | Polling interval when vehicle awake | `30` |
 | `RivianMate__Polling__IntervalAsleepSeconds` | Polling interval when vehicle asleep | `300` |
 
+### Email Configuration (Resend)
+
+The Pro edition uses [Resend](https://resend.com) for transactional emails (password resets, security alerts, admin broadcasts).
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `RivianMate__Email__Enabled` | Enable email system | `true` |
+| `RivianMate__Email__Provider` | Email provider | `Resend` |
+| `RivianMate__Email__FromAddress` | Verified sender address | `noreply@yourdomain.com` |
+| `RivianMate__Email__FromName` | Sender display name | `RivianMate` |
+| `RivianMate__Email__BaseUrl` | Your app URL (for email links) | `https://app.rivianmate.com` |
+| `RivianMate__Email__Resend__ApiKey` | Resend API key | `re_xxxxxxxx` |
+
+#### Azure Container Apps
+
+```bash
+# Set email configuration
+az containerapp update \
+  --name rivianmate \
+  --resource-group rivianmate-rg \
+  --set-env-vars \
+    RivianMate__Email__Enabled="true" \
+    RivianMate__Email__Provider="Resend" \
+    RivianMate__Email__FromAddress="noreply@yourdomain.com" \
+    RivianMate__Email__FromName="RivianMate" \
+    RivianMate__Email__BaseUrl="https://app.rivianmate.com"
+
+# Set API key as a secret (recommended for sensitive values)
+az containerapp secret set \
+  --name rivianmate \
+  --resource-group rivianmate-rg \
+  --secrets resend-api-key="re_your_api_key_here"
+
+az containerapp update \
+  --name rivianmate \
+  --resource-group rivianmate-rg \
+  --set-env-vars RivianMate__Email__Resend__ApiKey=secretref:resend-api-key
+```
+
+#### AWS ECS/App Runner
+
+Add to your task definition or App Runner configuration:
+
+```json
+{
+  "environment": [
+    { "name": "RivianMate__Email__Enabled", "value": "true" },
+    { "name": "RivianMate__Email__Provider", "value": "Resend" },
+    { "name": "RivianMate__Email__FromAddress", "value": "noreply@yourdomain.com" },
+    { "name": "RivianMate__Email__FromName", "value": "RivianMate" },
+    { "name": "RivianMate__Email__BaseUrl", "value": "https://app.rivianmate.com" }
+  ],
+  "secrets": [
+    {
+      "name": "RivianMate__Email__Resend__ApiKey",
+      "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:resend-api-key"
+    }
+  ]
+}
+```
+
+#### Resend Setup
+
+1. Create an account at [resend.com](https://resend.com)
+2. Verify your sending domain (add DNS records)
+3. Generate an API key
+4. Configure the environment variables above
+
 ### Database Connection Options
 
 You can provide the database connection in multiple ways:

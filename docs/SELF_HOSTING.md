@@ -212,6 +212,56 @@ Configure via the Settings page in the UI, or set defaults in appsettings:
 }
 ```
 
+### Email Configuration
+
+RivianMate supports sending emails for password resets, security alerts, and admin broadcasts. For self-hosted installations, you can use SMTP with any email provider (Gmail, Mailgun, SendGrid, your own mail server, etc.).
+
+#### Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `RivianMate__Email__Enabled` | Enable/disable email system | `true` |
+| `RivianMate__Email__Provider` | Email provider (`SMTP` or `Resend`) | `SMTP` |
+| `RivianMate__Email__FromAddress` | Sender email address | `noreply@yourdomain.com` |
+| `RivianMate__Email__FromName` | Sender display name | `RivianMate` |
+| `RivianMate__Email__BaseUrl` | Your RivianMate URL (for email links) | `https://rivianmate.yourdomain.com` |
+| `RivianMate__Email__SMTP__Host` | SMTP server hostname | `smtp.gmail.com` |
+| `RivianMate__Email__SMTP__Port` | SMTP server port | `587` |
+| `RivianMate__Email__SMTP__Username` | SMTP username | `your@gmail.com` |
+| `RivianMate__Email__SMTP__Password` | SMTP password or app password | `your-app-password` |
+| `RivianMate__Email__SMTP__UseSsl` | Use TLS/SSL | `true` |
+
+#### Docker Compose Example
+
+```yaml
+services:
+  rivianmate:
+    environment:
+      - RivianMate__Email__Enabled=true
+      - RivianMate__Email__Provider=SMTP
+      - RivianMate__Email__FromAddress=noreply@yourdomain.com
+      - RivianMate__Email__FromName=RivianMate
+      - RivianMate__Email__BaseUrl=https://rivianmate.yourdomain.com
+      - RivianMate__Email__SMTP__Host=smtp.gmail.com
+      - RivianMate__Email__SMTP__Port=587
+      - RivianMate__Email__SMTP__Username=${SMTP_USERNAME}
+      - RivianMate__Email__SMTP__Password=${SMTP_PASSWORD}
+      - RivianMate__Email__SMTP__UseSsl=true
+```
+
+#### Gmail Setup
+
+To use Gmail as your SMTP provider:
+
+1. Enable 2-factor authentication on your Google account
+2. Generate an App Password: Google Account → Security → App passwords
+3. Use your Gmail address as `SMTP__Username`
+4. Use the generated app password as `SMTP__Password`
+
+#### Disabling Email
+
+If you don't need email functionality, simply leave `RivianMate__Email__Enabled` unset or set to `false`. Password reset will not work, but users can still change passwords when logged in.
+
 ---
 
 ## Reverse Proxy Setup

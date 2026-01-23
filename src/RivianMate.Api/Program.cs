@@ -15,6 +15,7 @@ using RivianMate.Core.Interfaces;
 using RivianMate.Infrastructure.Data;
 using RivianMate.Infrastructure.Nhtsa;
 using RivianMate.Infrastructure.Rivian;
+using RivianMate.Api.Services.Email;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -203,6 +204,9 @@ builder.Services.AddScoped<UnitConversionService>();
 builder.Services.AddHttpClient<GeocodingService>();
 builder.Services.AddScoped<GeocodeAddressJob>();
 builder.Services.AddScoped<DevDataSeeder>();
+
+// === Email Services ===
+builder.Services.AddEmailServices(builder.Configuration);
 
 // === Polling/WebSocket Configuration ===
 builder.Services.Configure<PollingConfiguration>(
