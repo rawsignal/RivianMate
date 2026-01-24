@@ -27,24 +27,27 @@ public class EmailTriggerService : IEmailTrigger
     /// <inheritdoc />
     public void Fire(string trigger, string toEmail, object context, Guid? userId = null)
     {
+        _logger.LogInformation("Email trigger fired: {Trigger} to {ToEmail}", trigger, toEmail);
+
         // Check if email system is enabled
         if (!_config.Enabled)
         {
-            _logger.LogDebug("Email system disabled, skipping trigger: {Trigger}", trigger);
+            _logger.LogWarning("Email system disabled, skipping trigger: {Trigger}", trigger);
             return;
         }
 
         // Get trigger configuration
         if (!_config.Triggers.TryGetValue(trigger, out var triggerConfig))
         {
-            _logger.LogWarning("Unknown email trigger: {Trigger}", trigger);
+            _logger.LogWarning("Unknown email trigger: {Trigger}. Available triggers: {Triggers}",
+                trigger, string.Join(", ", _config.Triggers.Keys));
             return;
         }
 
         // Check if trigger is enabled
         if (!triggerConfig.Enabled)
         {
-            _logger.LogDebug("Email trigger disabled: {Trigger}", trigger);
+            _logger.LogWarning("Email trigger disabled: {Trigger}", trigger);
             return;
         }
 
@@ -79,13 +82,34 @@ public class EmailTriggerService : IEmailTrigger
     }
 
     /// <inheritdoc />
-    public void FireEmailVerification(string toEmail, string verificationLink, string? userName = null)
+    public void FireEmailVerification(string toEmail, string verificationLink, string? userName = null, int daysRemaining = 7)
     {
         Fire(EmailTriggers.EmailVerification, toEmail, new
         {
             UserName = userName ?? "there",
-            VerificationLink = verificationLink
+            VerificationLink = verificationLink,
+            DaysRemaining = daysRemaining
         });
+    }
+
+    /// <inheritdoc />
+    public void FireEmailVerificationReminder(string toEmail, Guid userId, string verificationLink, string? userName = null)
+    {
+        Fire(EmailTriggers.EmailVerificationReminder, toEmail, new
+        {
+            UserName = userName ?? "there",
+            VerificationLink = verificationLink
+        }, userId);
+    }
+
+    /// <inheritdoc />
+    public void FireAccountDeactivated(string toEmail, Guid userId, string verificationLink, string? userName = null)
+    {
+        Fire(EmailTriggers.AccountDeactivated, toEmail, new
+        {
+            UserName = userName ?? "there",
+            VerificationLink = verificationLink
+        }, userId);
     }
 
     /// <inheritdoc />
@@ -95,6 +119,16 @@ public class EmailTriggerService : IEmailTrigger
         {
             UserName = userName ?? "there",
             ChangedAt = DateTime.UtcNow.ToString("MMMM d, yyyy 'at' h:mm tt 'UTC'")
+        }, userId);
+    }
+
+    /// <inheritdoc />
+    public void FireTwoFactorEnabled(string toEmail, Guid userId, string? userName = null)
+    {
+        Fire(EmailTriggers.TwoFactorEnabled, toEmail, new
+        {
+            UserName = userName ?? "there",
+            EnabledAt = DateTime.UtcNow.ToString("MMMM d, yyyy 'at' h:mm tt 'UTC'")
         }, userId);
     }
 
@@ -161,12 +195,27 @@ public interface IEmailTrigger
     /// <summary>
     /// Fire an email verification email.
     /// </summary>
-    void FireEmailVerification(string toEmail, string verificationLink, string? userName = null);
+    void FireEmailVerification(string toEmail, string verificationLink, string? userName = null, int daysRemaining = 7);
+
+    /// <summary>
+    /// Fire an email verification reminder (24 hours before deadline).
+    /// </summary>
+    void FireEmailVerificationReminder(string toEmail, Guid userId, string verificationLink, string? userName = null);
+
+    /// <summary>
+    /// Fire an account deactivated email.
+    /// </summary>
+    void FireAccountDeactivated(string toEmail, Guid userId, string verificationLink, string? userName = null);
 
     /// <summary>
     /// Fire a password changed confirmation email.
     /// </summary>
     void FirePasswordChanged(string toEmail, Guid userId, string? userName = null);
+
+    /// <summary>
+    /// Fire a two-factor authentication enabled confirmation email.
+    /// </summary>
+    void FireTwoFactorEnabled(string toEmail, Guid userId, string? userName = null);
 
     /// <summary>
     /// Fire a security alert email.
@@ -181,8 +230,11 @@ public static class EmailTriggers
 {
     public const string PasswordReset = "PasswordReset";
     public const string EmailVerification = "EmailVerification";
+    public const string EmailVerificationReminder = "EmailVerificationReminder";
+    public const string AccountDeactivated = "AccountDeactivated";
     public const string SecurityAlert = "SecurityAlert";
     public const string PasswordChanged = "PasswordChanged";
+    public const string TwoFactorEnabled = "TwoFactorEnabled";
     public const string ChargingComplete = "ChargingComplete";
     public const string LowBattery = "LowBattery";
     public const string ChargingInterrupted = "ChargingInterrupted";

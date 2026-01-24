@@ -54,6 +54,8 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
     public DbSet<GeocodingCache> GeocodingCache => Set<GeocodingCache>();
     public DbSet<EmailLog> EmailLogs => Set<EmailLog>();
     public DbSet<BroadcastEmail> BroadcastEmails => Set<BroadcastEmail>();
+    public DbSet<UserRecoveryCode> UserRecoveryCodes => Set<UserRecoveryCode>();
+    public DbSet<SecurityEvent> SecurityEvents => Set<SecurityEvent>();
 
     // For ASP.NET Data Protection key storage
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -311,6 +313,39 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
                 .WithMany()
                 .HasForeignKey(e => e.AdminUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // === UserRecoveryCode ===
+        modelBuilder.Entity<UserRecoveryCode>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => new { e.UserId, e.IsUsed });
+
+            entity.Property(e => e.CodeHash).HasMaxLength(64); // SHA256 hex string
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // === SecurityEvent ===
+        modelBuilder.Entity<SecurityEvent>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.Timestamp);
+
+            entity.Property(e => e.EventType).HasMaxLength(50);
+            entity.Property(e => e.IpAddress).HasMaxLength(45); // IPv6 max length
+            entity.Property(e => e.UserAgent).HasMaxLength(500);
+            entity.Property(e => e.Details).HasMaxLength(1000);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

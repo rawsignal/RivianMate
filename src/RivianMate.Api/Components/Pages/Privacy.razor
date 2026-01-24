@@ -1,0 +1,138 @@
+@page "/privacy"
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+
+<PageTitle>Privacy Policy - RivianMate</PageTitle>
+
+<HeadContent>
+    <meta name="description" content="RivianMate Privacy Policy - Learn how we protect your data and respect your privacy." />
+    <link rel="canonical" href="https://rivianmate.com/privacy" />
+</HeadContent>
+
+<div class="legal-page">
+    <div class="legal-container">
+        <h1>Privacy Policy</h1>
+        <p class="legal-updated">Last updated: January 23, 2025</p>
+
+        <section class="legal-section">
+            <h2>The Short Version</h2>
+            <div class="legal-highlight">
+                <ul>
+                    <li><strong>We do not sell your data.</strong> Ever. To anyone.</li>
+                    <li><strong>We collect only what's necessary</strong> to provide the service.</li>
+                    <li><strong>Your vehicle data is yours.</strong> You can export or delete it anytime.</li>
+                    <li><strong>We use industry-standard security</strong> to protect your information.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="legal-section">
+            <h2>Information We Collect</h2>
+
+            <h3>Account Information</h3>
+            <p>When you create an account, we collect:</p>
+            <ul>
+                <li>Email address (for login and communications)</li>
+                <li>Display name (shown in the app)</li>
+                <li>Password (stored securely using industry-standard hashing)</li>
+            </ul>
+
+            <h3>Vehicle Data</h3>
+            <p>When you connect your Rivian account, we collect vehicle data including:</p>
+            <ul>
+                <li>Battery state of charge and health metrics</li>
+                <li>Charging session information</li>
+                <li>Drive history and efficiency data</li>
+                <li>Vehicle status (doors, windows, climate, etc.)</li>
+                <li>Location data (if enabled)</li>
+                <li>Odometer readings</li>
+            </ul>
+            <p>This data is collected via Rivian's API using credentials you provide. We store this data to provide historical tracking and analysis features.</p>
+
+            <h3>Rivian Account Credentials</h3>
+            <p>To connect to your Rivian account, we temporarily process your Rivian login credentials. Access tokens are encrypted at rest using AES-256 encryption. We never store your Rivian password.</p>
+        </section>
+
+        <section class="legal-section">
+            <h2>How We Use Your Information</h2>
+            <p>We use your information solely to:</p>
+            <ul>
+                <li>Provide the RivianMate service and its features</li>
+                <li>Display your vehicle data and analytics</li>
+                <li>Send important account notifications (password resets, security alerts)</li>
+                <li>Improve the service based on aggregate, anonymized usage patterns</li>
+            </ul>
+            <p><strong>We do not:</strong></p>
+            <ul>
+                <li>Sell your personal information or vehicle data</li>
+                <li>Share your data with third parties for marketing</li>
+                <li>Use your data for advertising purposes</li>
+                <li>Access your vehicle's controls or send commands</li>
+            </ul>
+        </section>
+
+        <section class="legal-section">
+            <h2>Data Security</h2>
+            <p>We take security seriously and implement multiple layers of protection:</p>
+            <ul>
+                <li><strong>Encryption in transit:</strong> All data is transmitted over HTTPS/TLS</li>
+                <li><strong>Encryption at rest:</strong> Sensitive data (tokens, credentials) is encrypted using AES-256</li>
+                <li><strong>Secure password storage:</strong> Passwords are hashed using industry-standard algorithms</li>
+                <li><strong>Access controls:</strong> Database access is restricted and monitored</li>
+            </ul>
+            <p>While we strive to protect your data, no system is 100% secure. You use the service with the understanding that data transmission over the internet carries inherent risks.</p>
+        </section>
+
+        <section class="legal-section">
+            <h2>Data Retention</h2>
+            <p>We retain your data as follows:</p>
+            <ul>
+                <li><strong>Account data:</strong> Retained while your account is active</li>
+                <li><strong>Vehicle data:</strong> Retained for historical analysis; some data may be automatically pruned after extended periods</li>
+                <li><strong>Activity logs:</strong> Retained for 90 days</li>
+            </ul>
+            <p>You can request deletion of your account and all associated data at any time through the Settings page.</p>
+        </section>
+
+        <section class="legal-section">
+            <h2>Your Rights</h2>
+            <p>You have the right to:</p>
+            <ul>
+                <li><strong>Access your data:</strong> View all data we have about you in the app</li>
+                <li><strong>Export your data:</strong> Download your vehicle data in standard formats</li>
+                <li><strong>Delete your data:</strong> Request complete deletion of your account and data</li>
+                <li><strong>Disconnect:</strong> Unlink your Rivian account at any time</li>
+            </ul>
+        </section>
+
+        <section class="legal-section">
+            <h2>Third-Party Services</h2>
+            <p>RivianMate interacts with:</p>
+            <ul>
+                <li><strong>Rivian's API:</strong> To retrieve your vehicle data. Your use of RivianMate is also subject to Rivian's terms and privacy policy.</li>
+                <li><strong>Email service providers:</strong> To send transactional emails (password resets, notifications)</li>
+            </ul>
+            <p>We do not use third-party analytics or advertising services that track your behavior.</p>
+        </section>
+
+        <section class="legal-section">
+            <h2>Children's Privacy</h2>
+            <p>RivianMate is not intended for users under 18 years of age. We do not knowingly collect information from children.</p>
+        </section>
+
+        <section class="legal-section">
+            <h2>Changes to This Policy</h2>
+            <p>We may update this privacy policy from time to time. We will notify you of significant changes by email or through the app. Continued use of the service after changes constitutes acceptance of the updated policy.</p>
+        </section>
+
+        <section class="legal-section">
+            <h2>Contact</h2>
+            <p>If you have questions about this privacy policy or your data, please contact us at:</p>
+            <p><a href="mailto:privacy@rivianmate.com">privacy@rivianmate.com</a></p>
+        </section>
+
+        <div class="legal-footer">
+            <p><a href="/terms">Terms of Service</a> | <a href="/features">Back to Features</a></p>
+        </div>
+    </div>
+</div>

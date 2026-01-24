@@ -120,13 +120,29 @@ public class ChargingSession : IVehicleOwnedEntity
     /// </summary>
     public double? TemperatureAtStart { get; set; }
     
+    // === Live Tracking (during active session) ===
+    /// <summary>
+    /// Current battery level during active charging (for progress tracking)
+    /// </summary>
+    public double? CurrentBatteryLevel { get; set; }
+
+    /// <summary>
+    /// Current estimated range during active charging
+    /// </summary>
+    public double? CurrentRangeEstimate { get; set; }
+
+    /// <summary>
+    /// Last time this session was updated with new data
+    /// </summary>
+    public DateTime? LastUpdatedAt { get; set; }
+
     // === Calculated Fields (for battery health) ===
     /// <summary>
     /// Calculated total battery capacity based on this charge session.
     /// Formula: EnergyAddedKwh / ((EndBatteryLevel - StartBatteryLevel) / 100)
     /// </summary>
     public double? CalculatedCapacityKwh { get; set; }
-    
+
     /// <summary>
     /// Confidence score for the capacity calculation (0-1).
     /// Higher for longer charges with larger SoC deltas.

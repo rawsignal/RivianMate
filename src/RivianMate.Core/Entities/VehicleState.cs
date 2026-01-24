@@ -90,7 +90,7 @@ public class VehicleState : IVehicleOwnedEntity
     /// Service mode status ("on" or "off"). When on, vehicle is at service center
     /// and most data is unavailable.
     /// </summary>
-    public bool IsInServiceMode { get; set; }
+    public bool? IsInServiceMode { get; set; }
     
     // === Charging ===
     public ChargerState ChargerState { get; set; } = ChargerState.Unknown;

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <!-- Topographic pattern -->
+    <pattern id="topo" patternUnits="userSpaceOnUse" width="200" height="200">
+      <path d="M0 50 Q25 30 50 50 T100 50 T150 50 T200 50" fill="none" stroke="#4A6B5D" stroke-width="0.5" opacity="0.3"/>
+      <path d="M0 100 Q25 80 50 100 T100 100 T150 100 T200 100" fill="none" stroke="#4A6B5D" stroke-width="0.5" opacity="0.3"/>
+      <path d="M0 150 Q25 130 50 150 T100 150 T150 150 T200 150" fill="none" stroke="#4A6B5D" stroke-width="0.5" opacity="0.3"/>
+    </pattern>
+
+    <!-- Gradient for glow effect -->
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#DEB526" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#DEB526" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="#0D1A14"/>
+
+  <!-- Topographic pattern overlay -->
+  <rect width="1200" height="630" fill="url(#topo)"/>
+
+  <!-- Subtle glow behind logo -->
+  <ellipse cx="600" cy="315" rx="400" ry="300" fill="url(#glow)"/>
+
+  <!-- Logo Icon (centered, large) -->
+  <g transform="translate(480, 195)">
+    <!-- Logo background -->
+    <rect width="240" height="240" rx="36" fill="#142420"/>
+
+    <!-- Outer diamond (border only) -->
+    <rect x="36" y="36" width="168" height="168" rx="12"
+          fill="none"
+          stroke="#DEB526"
+          stroke-width="12"
+          transform="rotate(45 120 120)"/>
+
+    <!-- Inner diamond (filled) -->
+    <rect x="72" y="72" width="96" height="96" rx="6"
+          fill="#DEB526"
+          transform="rotate(45 120 120)"/>
+  </g>
+
+  <!-- Subtle border -->
+  <rect x="0" y="0" width="1200" height="630" fill="none" stroke="#2D4A3E" stroke-width="2"/>
+</svg>

@@ -1,0 +1,109 @@
+@using Microsoft.Extensions.Options
+@using RivianMate.Api.Configuration
+@using RivianMate.Api.Services
+@using RivianMate.Core.Entities
+
+@inject TwoFactorService TwoFactorService
+@inject IOptions<TwoFactorConfiguration> TwoFactorConfig
+
+<div class="card mb-6">
+    <div class="card-header">
+        <h2 class="card-title">
+            <Icon Name="shield" Size="20" Style="color: var(--color-accent);" />
+            Two-Factor Authentication
+        </h2>
+    </div>
+
+    @if (User == null)
+    {
+        <div class="loading">Loading...</div>
+    }
+    else if (User.TwoFactorEnabled)
+    {
+        <div class="two-factor-status two-factor-enabled">
+            <div class="status-badge status-enabled">
+                <Icon Name="shield-check" Size="16" />
+                Enabled
+            </div>
+
+            <p style="color: var(--color-text-muted); margin-top: var(--space-4);">
+                Your account is protected with two-factor authentication.
+            </p>
+
+            @if (_remainingCodes.HasValue)
+            {
+                <div class="recovery-code-info" style="margin-top: var(--space-4);">
+                    <span class="recovery-label">Recovery codes remaining:</span>
+                    <span class="recovery-count @(_remainingCodes <= 2 ? "recovery-low" : "")">
+                        @_remainingCodes
+                    </span>
+                </div>
+            }
+
+            <div class="two-factor-actions" style="margin-top: var(--space-6); display: flex; gap: var(--space-3); flex-wrap: wrap;">
+                <a href="/profile/2fa/recovery-codes" class="btn btn-secondary">
+                    <Icon Name="key" Size="16" />
+                    View Recovery Codes
+                </a>
+                <a href="/profile/2fa/disable" class="btn btn-danger-outline">
+                    <Icon Name="shield-off" Size="16" />
+                    Disable 2FA
+                </a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="two-factor-status two-factor-disabled">
+            <div class="status-badge status-disabled">
+                <Icon Name="shield-x" Size="16" />
+                Not Enabled
+            </div>
+
+            <p style="color: var(--color-text-muted); margin-top: var(--space-4);">
+                Add an extra layer of security to your account by enabling two-factor authentication.
+            </p>
+
+            <div class="two-factor-actions" style="margin-top: var(--space-6);">
+                @if (_isFeatureEnabled)
+                {
+                    <a href="/profile/2fa/enable" class="btn btn-primary">
+                        <Icon Name="shield" Size="16" />
+                        Enable Two-Factor Authentication
+                    </a>
+                }
+                else
+                {
+                    <button class="btn btn-primary" disabled title="Two-factor authentication is coming soon">
+                        <Icon Name="shield" Size="16" />
+                        Enable Two-Factor Authentication
+                    </button>
+                    <p style="color: var(--color-text-muted); font-size: 0.875rem; margin-top: var(--space-2);">
+                        Coming soon
+                    </p>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public ApplicationUser? User { get; set; }
+
+    private int? _remainingCodes;
+    private bool _isFeatureEnabled;
+
+    protected override void OnInitialized()
+    {
+        _isFeatureEnabled = TwoFactorConfig.Value.Enabled;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (User != null && User.TwoFactorEnabled)
+        {
+            _remainingCodes = await TwoFactorService.GetRemainingRecoveryCodeCountAsync(User.Id);
+        }
+    }
+}

@@ -49,8 +49,15 @@ public class AccountService
     /// <summary>
     /// Update user's last login time.
     /// </summary>
-    public async Task UpdateLastLoginAsync(ApplicationUser user)
+    public async Task UpdateLastLoginAsync(Guid userId)
     {
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null)
+        {
+            _logger.LogWarning("User {UserId} not found when updating last login", userId);
+            return;
+        }
+
         user.LastLoginAt = DateTime.UtcNow;
         await _userManager.UpdateAsync(user);
     }
@@ -58,8 +65,15 @@ public class AccountService
     /// <summary>
     /// Update user's display name.
     /// </summary>
-    public async Task<IdentityResult> UpdateDisplayNameAsync(ApplicationUser user, string displayName)
+    public async Task<IdentityResult> UpdateDisplayNameAsync(Guid userId, string displayName)
     {
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null)
+        {
+            _logger.LogWarning("User {UserId} not found when updating display name", userId);
+            return IdentityResult.Failed(new IdentityError { Description = "User not found." });
+        }
+
         user.DisplayName = displayName;
         return await _userManager.UpdateAsync(user);
     }
@@ -69,9 +83,16 @@ public class AccountService
     /// This removes: Rivian accounts, vehicles, vehicle states, charging sessions,
     /// drives, positions, battery health snapshots, and dashboard configs.
     /// </summary>
-    public async Task<IdentityResult> DeleteAccountAsync(ApplicationUser user)
+    public async Task<IdentityResult> DeleteAccountAsync(Guid userId)
     {
-        _logger.LogInformation("Beginning full account deletion for user {UserId}", user.Id);
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null)
+        {
+            _logger.LogWarning("User {UserId} not found when deleting account", userId);
+            return IdentityResult.Failed(new IdentityError { Description = "User not found." });
+        }
+
+        _logger.LogInformation("Beginning full account deletion for user {UserId}", userId);
 
         // 1. Get all Rivian accounts for this user
         var rivianAccounts = await _db.RivianAccounts

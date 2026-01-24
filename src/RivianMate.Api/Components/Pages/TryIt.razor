@@ -1,0 +1,423 @@
+@page "/tryit"
+@page "/features"
+@using Microsoft.AspNetCore.Authorization
+@using RivianMate.Api.Components.Shared
+@attribute [AllowAnonymous]
+
+<PageTitle>RivianMate - Battery Health & Vehicle Monitoring for Rivian Owners</PageTitle>
+
+<HeadContent>
+    @* Primary Meta Tags *@
+    <meta name="description" content="Track your Rivian's battery health, monitor charging sessions, analyze drive efficiency, and get real-time vehicle data. The ultimate companion app for Rivian R1T and R1S owners." />
+    <meta name="keywords" content="Rivian, R1T, R1S, battery health, EV monitoring, electric vehicle, charging tracker, battery degradation, Rivian app, vehicle monitoring" />
+    <meta name="author" content="RivianMate" />
+
+    @* Open Graph / Facebook *@
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://rivianmate.com/features" />
+    <meta property="og:title" content="RivianMate - Know Your Rivian Like Never Before" />
+    <meta property="og:description" content="Track battery health, monitor charging sessions, analyze drive efficiency, and get real-time insights for your Rivian R1T or R1S." />
+    <meta property="og:image" content="https://rivianmate.com/images/og-image.png" />
+    <meta property="og:site_name" content="RivianMate" />
+
+    @* Twitter *@
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://rivianmate.com/features" />
+    <meta name="twitter:title" content="RivianMate - Know Your Rivian Like Never Before" />
+    <meta name="twitter:description" content="Track battery health, monitor charging sessions, analyze drive efficiency, and get real-time insights for your Rivian R1T or R1S." />
+    <meta name="twitter:image" content="https://rivianmate.com/images/og-image.png" />
+
+    @* Canonical URL *@
+    <link rel="canonical" href="https://rivianmate.com/features" />
+
+    @* JSON-LD Structured Data *@
+    <script type="application/ld+json">
+    {
+        "@@context": "https://schema.org",
+        "@@type": "SoftwareApplication",
+        "name": "RivianMate",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Web",
+        "description": "Track your Rivian's battery health, monitor charging sessions, analyze drive efficiency, and get real-time vehicle data.",
+        "offers": {
+            "@@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        },
+        "aggregateRating": {
+            "@@type": "AggregateRating",
+            "ratingValue": "5",
+            "ratingCount": "1"
+        },
+        "featureList": [
+            "Battery Health Tracking",
+            "Charging Session Monitoring",
+            "Drive History & Efficiency",
+            "Real-time Vehicle Status",
+            "Climate Monitoring",
+            "Tire Pressure Monitoring"
+        ]
+    }
+    </script>
+</HeadContent>
+
+<div class="marketing-page">
+    <!-- Hero Section -->
+    <section class="hero-section">
+        <div class="hero-content">
+            <div class="hero-badge">
+                <Icon Name="zap" Size="14" />
+                <span>Real-time vehicle data</span>
+            </div>
+            <h1>Know Your Rivian<br />Like Never Before</h1>
+            <p class="hero-subtitle">
+                Track battery health, monitor charging sessions, analyze drive efficiency,
+                and get insights that help you get the most out of your electric adventure vehicle.
+            </p>
+            <div class="hero-actions">
+                <a href="/register" class="btn btn-primary btn-lg">
+                    <Icon Name="user-plus" Size="20" />
+                    Create an Account
+                </a>
+                <a href="/login" class="btn btn-outline btn-lg">
+                    <Icon Name="log-in" Size="20" />
+                    Sign In
+                </a>
+            </div>
+            <p class="hero-note">
+                <Icon Name="shield-check" Size="16" />
+                Your data stays private. We never share or sell your information.
+            </p>
+        </div>
+        <div class="hero-visual">
+            <div class="dashboard-preview">
+                <div class="preview-card">
+                    <div class="preview-card-header">
+                        <Icon Name="battery-full" Size="20" />
+                        <span>Battery Health</span>
+                    </div>
+                    <div class="preview-metric">
+                        <span class="preview-value">96.2%</span>
+                        <span class="preview-label">Current Health</span>
+                    </div>
+                    <div class="preview-bar">
+                        <div class="preview-bar-fill" style="width: 96.2%"></div>
+                    </div>
+                </div>
+                <div class="preview-card">
+                    <div class="preview-card-header">
+                        <Icon Name="battery-charging" Size="20" />
+                        <span>State of Charge</span>
+                    </div>
+                    <div class="preview-metric">
+                        <span class="preview-value">78%</span>
+                        <span class="preview-label">~245 mi range</span>
+                    </div>
+                </div>
+                <div class="preview-card">
+                    <div class="preview-card-header">
+                        <Icon Name="gauge" Size="20" />
+                        <span>Efficiency</span>
+                    </div>
+                    <div class="preview-metric">
+                        <span class="preview-value">2.8</span>
+                        <span class="preview-label">mi/kWh avg</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Problem/Solution Section -->
+    <section class="problem-section">
+        <div class="problem-content">
+            <h2>Stop Guessing About Your Battery</h2>
+            <p>
+                The Rivian app shows you charge level, but what about long-term battery health?
+                Is your degradation normal? How does your efficiency compare across seasons?
+                RivianMate answers these questions with data you can trust.
+            </p>
+        </div>
+    </section>
+
+    <!-- Features Grid -->
+    <section class="features-section">
+        <div class="section-header">
+            <h2>Everything You Need to Track</h2>
+            <p>Comprehensive vehicle monitoring that goes beyond the basics</p>
+        </div>
+
+        <div class="features-grid">
+            <!-- Battery Health -->
+            <div class="feature-card feature-highlight">
+                <div class="feature-icon">
+                    <Icon Name="battery-full" Size="32" />
+                </div>
+                <h3>Battery Health Tracking</h3>
+                <p>
+                    Monitor your battery's true capacity over time. Track degradation rates,
+                    compare against warranty thresholds, and get projected health at 100k miles.
+                </p>
+                <ul class="feature-list">
+                    <li><Icon Name="check" Size="16" /> Health percentage tracking</li>
+                    <li><Icon Name="check" Size="16" /> Degradation rate analysis</li>
+                    <li><Icon Name="check" Size="16" /> Warranty status monitoring</li>
+                    <li><Icon Name="check" Size="16" /> Historical trend charts</li>
+                </ul>
+            </div>
+
+            <!-- Charging Sessions -->
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <Icon Name="zap" Size="32" />
+                </div>
+                <h3>Charging Sessions</h3>
+                <p>
+                    Log every charge automatically. See energy added, charging speeds,
+                    and track home vs. public charging patterns.
+                </p>
+                <ul class="feature-list">
+                    <li><Icon Name="check" Size="16" /> Automatic session logging</li>
+                    <li><Icon Name="check" Size="16" /> Energy consumption tracking</li>
+                    <li><Icon Name="check" Size="16" /> Cost estimates</li>
+                </ul>
+            </div>
+
+            <!-- Drive History -->
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <Icon Name="map" Size="32" />
+                </div>
+                <h3>Drive History</h3>
+                <p>
+                    Every trip logged with distance, duration, and efficiency.
+                    See how your driving patterns affect range and battery usage.
+                </p>
+                <ul class="feature-list">
+                    <li><Icon Name="check" Size="16" /> Trip logging</li>
+                    <li><Icon Name="check" Size="16" /> Efficiency per drive</li>
+                    <li><Icon Name="check" Size="16" /> Monthly statistics</li>
+                </ul>
+            </div>
+
+            <!-- Efficiency Analysis -->
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <Icon Name="gauge" Size="32" />
+                </div>
+                <h3>Efficiency Analysis</h3>
+                <p>
+                    Understand what affects your range. Track mi/kWh across different
+                    conditions and optimize your driving for maximum efficiency.
+                </p>
+                <ul class="feature-list">
+                    <li><Icon Name="check" Size="16" /> Real-time efficiency</li>
+                    <li><Icon Name="check" Size="16" /> Trend analysis</li>
+                    <li><Icon Name="check" Size="16" /> Seasonal comparisons</li>
+                </ul>
+            </div>
+
+            <!-- Vehicle Status -->
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <Icon Name="car" Size="32" />
+                </div>
+                <h3>Vehicle Status</h3>
+                <p>
+                    Know the state of your vehicle at a glance. Doors, windows,
+                    locks, Gear Guard, and more - all in one place.
+                </p>
+                <ul class="feature-list">
+                    <li><Icon Name="check" Size="16" /> Lock status</li>
+                    <li><Icon Name="check" Size="16" /> Door/window monitoring</li>
+                    <li><Icon Name="check" Size="16" /> Gear Guard status</li>
+                </ul>
+            </div>
+
+            <!-- Climate -->
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <Icon Name="thermometer" Size="32" />
+                </div>
+                <h3>Climate Monitoring</h3>
+                <p>
+                    Track cabin and exterior temperatures. See when preconditioning
+                    is active and monitor climate system usage.
+                </p>
+                <ul class="feature-list">
+                    <li><Icon Name="check" Size="16" /> Cabin temperature</li>
+                    <li><Icon Name="check" Size="16" /> Preconditioning status</li>
+                    <li><Icon Name="check" Size="16" /> HVAC monitoring</li>
+                </ul>
+            </div>
+
+            <!-- Tire Pressure -->
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <Icon Name="circle" Size="32" />
+                </div>
+                <h3>Tire Pressure</h3>
+                <p>
+                    TPMS readings for all four tires at a glance. Get alerts
+                    when pressure drops outside the optimal range.
+                </p>
+                <ul class="feature-list">
+                    <li><Icon Name="check" Size="16" /> Individual tire readings</li>
+                    <li><Icon Name="check" Size="16" /> Pressure status</li>
+                    <li><Icon Name="check" Size="16" /> Historical data</li>
+                </ul>
+            </div>
+
+            <!-- Activity Feed -->
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <Icon Name="activity" Size="32" />
+                </div>
+                <h3>Activity Feed</h3>
+                <p>
+                    A timeline of everything your vehicle does. Drives, charges,
+                    software updates, and status changes - all logged automatically.
+                </p>
+                <ul class="feature-list">
+                    <li><Icon Name="check" Size="16" /> Automatic event logging</li>
+                    <li><Icon Name="check" Size="16" /> Searchable history</li>
+                    <li><Icon Name="check" Size="16" /> Export capabilities</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Real-time Data Section -->
+    <section class="realtime-section">
+        <div class="realtime-content">
+            <div class="realtime-text">
+                <h2>Real-Time Updates</h2>
+                <p>
+                    RivianMate collects data as quickly as Rivian can send it. Your dashboard updates
+                    in real-time as your vehicle reports its state.
+                </p>
+                <ul class="realtime-features">
+                    <li>
+                        <Icon Name="wifi" Size="20" />
+                        <div>
+                            <strong>Live Data Streaming</strong>
+                            <span>Updates as fast as your vehicle reports</span>
+                        </div>
+                    </li>
+                    <li>
+                        <Icon Name="database" Size="20" />
+                        <div>
+                            <strong>Historical Storage</strong>
+                            <span>Many data points saved for trend analysis</span>
+                        </div>
+                    </li>
+                    <li>
+                        <Icon Name="lock" Size="20" />
+                        <div>
+                            <strong>Secure Connection</strong>
+                            <span>Encrypted tokens, never stored in plain text</span>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+            <div class="realtime-visual">
+                <div class="pulse-indicator">
+                    <div class="pulse-dot"></div>
+                    <div class="pulse-ring"></div>
+                    <div class="pulse-ring pulse-ring-2"></div>
+                </div>
+                <span>Live Connection</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Customizable Dashboard -->
+    <section class="dashboard-section">
+        <div class="section-header">
+            <h2>Your Dashboard, Your Way</h2>
+            <p>Customize which metrics you see and how they're displayed</p>
+        </div>
+        <div class="dashboard-features">
+            <div class="dashboard-feature">
+                <Icon Name="layout" Size="24" />
+                <h4>Drag & Drop Layout</h4>
+                <p>Arrange cards in the order that makes sense to you</p>
+            </div>
+            <div class="dashboard-feature">
+                <Icon Name="sliders" Size="24" />
+                <h4>Choose Your Metrics</h4>
+                <p>Select which data points appear on each card</p>
+            </div>
+            <div class="dashboard-feature">
+                <Icon Name="smartphone" Size="24" />
+                <h4>Mobile Friendly</h4>
+                <p>Responsive design works on any device</p>
+            </div>
+            <div class="dashboard-feature">
+                <Icon Name="moon" Size="24" />
+                <h4>Dark Theme</h4>
+                <p>Easy on the eyes, day or night</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Privacy Section -->
+    <section class="privacy-section">
+        <div class="privacy-content">
+            <Icon Name="shield" Size="48" />
+            <h2>Your Data, Your Control</h2>
+            <p>
+                We take privacy seriously. Your vehicle data is stored securely and
+                never shared with third parties. You can export or delete your data at any time.
+            </p>
+            <div class="privacy-points">
+                <div class="privacy-point">
+                    <Icon Name="eye-off" Size="20" />
+                    <span>No data selling, ever</span>
+                </div>
+                <div class="privacy-point">
+                    <Icon Name="download" Size="20" />
+                    <span>Full data export</span>
+                </div>
+                <div class="privacy-point">
+                    <Icon Name="trash-2" Size="20" />
+                    <span>Delete anytime</span>
+                </div>
+                <div class="privacy-point">
+                    <Icon Name="lock" Size="20" />
+                    <span>Encrypted storage</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <div class="cta-content">
+            <h2>Ready to Know Your Rivian Better?</h2>
+            <p>Start tracking your vehicle's data today. It only takes a minute to get started.</p>
+            <div class="cta-actions">
+                <a href="/register" class="btn btn-primary btn-lg">
+                    <Icon Name="user-plus" Size="20" />
+                    Create an Account
+                </a>
+            </div>
+            <p class="cta-note">
+                Already have an account? <a href="/login">Sign in here</a>
+            </p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="marketing-footer">
+        <div class="footer-content">
+            <div class="footer-brand">
+                <div class="logo">
+                    <div class="logo-icon"></div>
+                    <span class="logo-text">RivianMate</span>
+                </div>
+                <p>Your Rivian's data companion</p>
+            </div>
+        </div>
+    </footer>
+</div>

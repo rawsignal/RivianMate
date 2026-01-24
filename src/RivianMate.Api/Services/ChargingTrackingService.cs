@@ -116,18 +116,47 @@ public class ChargingTrackingService
         VehicleState state,
         CancellationToken cancellationToken)
     {
-        // Track peak power
-        // Note: We'd need actual charging power in VehicleState to track this properly
-        // For now, we'll estimate based on battery gain rate if we have history
+        bool hasChanges = false;
 
         // Update charge type if we can determine it more accurately
         var newChargeType = DetermineChargeType(state, session.ChargeType);
         if (newChargeType != ChargeType.Unknown && session.ChargeType == ChargeType.Unknown)
         {
             session.ChargeType = newChargeType;
+            hasChanges = true;
         }
 
-        await _db.SaveChangesAsync(cancellationToken);
+        // Track current battery level for live progress display
+        if (state.BatteryLevel != null && state.BatteryLevel != session.CurrentBatteryLevel)
+        {
+            session.CurrentBatteryLevel = state.BatteryLevel;
+            hasChanges = true;
+        }
+
+        // Track current range estimate
+        if (state.RangeEstimate != null && state.RangeEstimate != session.CurrentRangeEstimate)
+        {
+            session.CurrentRangeEstimate = state.RangeEstimate;
+            hasChanges = true;
+        }
+
+        // Update charge limit if it changed
+        if (state.BatteryLimit != null && state.BatteryLimit != session.ChargeLimit)
+        {
+            session.ChargeLimit = state.BatteryLimit;
+            hasChanges = true;
+        }
+
+        // Always update the last updated timestamp when we have changes
+        if (hasChanges)
+        {
+            session.LastUpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+
+            _logger.LogDebug(
+                "Updated charging session {SessionId}: Battery={Battery}%, Range={Range}mi, ChargeLimit={Limit}%",
+                session.Id, session.CurrentBatteryLevel, session.CurrentRangeEstimate, session.ChargeLimit);
+        }
     }
 
     private async Task EndChargingSessionAsync(

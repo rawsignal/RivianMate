@@ -201,6 +201,7 @@ builder.Services.AddScoped<ChargingTrackingService>();
 builder.Services.AddScoped<UserPreferencesService>();
 builder.Services.AddScoped<UserLocationService>();
 builder.Services.AddScoped<UnitConversionService>();
+builder.Services.AddScoped<TwoFactorService>();
 builder.Services.AddHttpClient<GeocodingService>();
 builder.Services.AddScoped<GeocodeAddressJob>();
 builder.Services.AddScoped<DevDataSeeder>();
@@ -215,6 +216,10 @@ builder.Services.Configure<PollingConfiguration>(
 // === Data Retention Configuration ===
 builder.Services.Configure<DataRetentionConfiguration>(
     builder.Configuration.GetSection("RivianMate:DataRetention"));
+
+// === Two-Factor Authentication Configuration ===
+builder.Services.Configure<TwoFactorConfiguration>(
+    builder.Configuration.GetSection("RivianMate:TwoFactor"));
 
 // === Background Job Services ===
 builder.Services.AddScoped<DataRetentionJob>();
@@ -488,6 +493,18 @@ RecurringJob.AddOrUpdate<GeocodeAddressJob>(
     "geocode-drive-addresses",
     job => job.BackfillAddressesAsync(100, CancellationToken.None),
     "0 3 * * *"); // Daily at 3:00 AM
+
+// Email verification enforcement - runs daily at 2 AM to deactivate unverified accounts past deadline
+RecurringJob.AddOrUpdate<EmailVerificationEnforcementJob>(
+    "email-verification-enforcement",
+    job => job.ExecuteAsync(),
+    "0 2 * * *"); // Daily at 2:00 AM
+
+// Email verification reminder - runs hourly to send 24-hour reminders
+RecurringJob.AddOrUpdate<EmailVerificationReminderJob>(
+    "email-verification-reminder",
+    job => job.ExecuteAsync(),
+    "0 * * * *"); // Every hour at minute 0
 
 app.UseAntiforgery();
 

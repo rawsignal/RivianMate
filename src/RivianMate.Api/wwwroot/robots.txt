@@ -1,0 +1,30 @@
+# RivianMate robots.txt
+User-agent: *
+Allow: /
+
+# Allow marketing/public pages
+Allow: /features
+Allow: /login
+Allow: /register
+Allow: /privacy
+Allow: /terms
+
+# Disallow authenticated/private areas
+Disallow: /account/
+Disallow: /settings
+Disallow: /battery-health
+Disallow: /charging
+Disallow: /drives
+Disallow: /vehicle
+Disallow: /efficiency
+Disallow: /activity
+Disallow: /admin/
+
+# Disallow API endpoints
+Disallow: /api/
+
+# Disallow Hangfire dashboard
+Disallow: /hangfire
+
+# Sitemap location
+Sitemap: https://rivianmate.com/sitemap.xml

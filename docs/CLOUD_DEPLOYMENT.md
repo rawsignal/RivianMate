@@ -918,3 +918,8 @@ jobs:
 | **Total** | | **~$60/month** |
 
 *Costs vary by region and usage. Use AWS/Azure pricing calculators for accurate estimates.*
+
+Commands:
+az acr build --registry rivianmateprod --image rivianmate:v39 --build-arg EDITION=Pro -f Dockerfile . 
+
+az containerapp update --name rivianmate-pro --resource-group rivianmate-prod --image rivianmateprod.azurecr.io/rivianmate:v39

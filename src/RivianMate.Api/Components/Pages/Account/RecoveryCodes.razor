@@ -1,0 +1,210 @@
+@page "/profile/2fa/recovery-codes"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services
+@using RivianMate.Core.Entities
+@attribute [Authorize]
+
+@inject UserManager<ApplicationUser> UserManager
+@inject TwoFactorService TwoFactorService
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ILogger<RecoveryCodes> Logger
+
+<PageTitle>Recovery Codes - RivianMate</PageTitle>
+
+<div style="max-width: 600px;">
+    <div style="margin-bottom: var(--space-8);">
+        <a href="/profile" style="font-size: 0.875rem; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+            <Icon Name="chevron-left" Size="16" />
+            Back to Profile
+        </a>
+        <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+            <Icon Name="key" Size="28" Style="color: var(--color-accent);" />
+            Recovery Codes
+        </h1>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading">Loading...</div>
+    }
+    else if (_user == null)
+    {
+        <div class="alert alert-error">Unable to load user information.</div>
+    }
+    else if (!_user.TwoFactorEnabled)
+    {
+        <div class="card">
+            <div class="alert alert-warning" style="margin-bottom: var(--space-4);">
+                Two-factor authentication is not enabled on your account.
+            </div>
+            <a href="/profile/2fa/enable" class="btn btn-primary">Enable 2FA</a>
+        </div>
+    }
+    else if (_showNewCodes && _recoveryCodes != null)
+    {
+        <!-- Show newly generated codes -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="key" Size="20" Style="color: var(--color-success);" />
+                    New Recovery Codes Generated
+                </h2>
+            </div>
+
+            <div class="alert alert-success" style="margin-bottom: var(--space-4);">
+                Your old recovery codes have been replaced with these new ones.
+            </div>
+
+            <p style="color: var(--color-text-muted); margin-bottom: var(--space-4);">
+                Save these recovery codes in a secure location. Each code can only be used once to sign in if you lose access to your authenticator app.
+            </p>
+
+            <div class="recovery-codes-container">
+                @foreach (var recoveryCode in _recoveryCodes)
+                {
+                    <div class="recovery-code">@recoveryCode</div>
+                }
+            </div>
+
+            <div class="alert alert-warning" style="margin-top: var(--space-4);">
+                <strong>Important:</strong> These codes will not be shown again. Store them safely!
+            </div>
+
+            <div style="margin-top: var(--space-6);">
+                <button @onclick="NavigateToProfile" class="btn btn-primary">Done</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Show recovery code status -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="key" Size="20" Style="color: var(--color-accent);" />
+                    Recovery Code Status
+                </h2>
+            </div>
+
+            <div class="recovery-status">
+                <div class="recovery-status-count">
+                    <span class="count-number @(_remainingCodes <= 2 ? "count-low" : "")">@_remainingCodes</span>
+                    <span class="count-label">codes remaining</span>
+                </div>
+
+                @if (_remainingCodes <= 2)
+                {
+                    <div class="alert alert-warning" style="margin-top: var(--space-4);">
+                        You have few recovery codes left. Consider generating new codes.
+                    </div>
+                }
+                else
+                {
+                    <p style="color: var(--color-text-muted); margin-top: var(--space-4);">
+                        Recovery codes can be used to access your account if you lose access to your authenticator app.
+                    </p>
+                }
+            </div>
+
+            <div style="border-top: 1px solid var(--color-border); padding-top: var(--space-6); margin-top: var(--space-6);">
+                <h3 style="font-size: 1rem; margin-bottom: var(--space-4);">Generate New Codes</h3>
+
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <div class="alert alert-error" style="margin-bottom: var(--space-4);">
+                        @_errorMessage
+                    </div>
+                }
+
+                @if (_showConfirmRegenerate)
+                {
+                    <div class="alert alert-warning" style="margin-bottom: var(--space-4);">
+                        <strong>Warning:</strong> This will invalidate all your existing recovery codes. You will need to save the new codes.
+                    </div>
+                    <div style="display: flex; gap: var(--space-3);">
+                        <button @onclick="RegenerateCodesConfirmed" class="btn btn-danger" disabled="@_regenerating">
+                            @if (_regenerating)
+                            {
+                                <span>Generating...</span>
+                            }
+                            else
+                            {
+                                <span>Yes, Generate New Codes</span>
+                            }
+                        </button>
+                        <button @onclick="() => _showConfirmRegenerate = false" class="btn btn-secondary">Cancel</button>
+                    </div>
+                }
+                else
+                {
+                    <p style="color: var(--color-text-muted); margin-bottom: var(--space-4);">
+                        Generating new recovery codes will invalidate your existing codes.
+                    </p>
+                    <button @onclick="() => _showConfirmRegenerate = true" class="btn btn-secondary">
+                        Generate New Recovery Codes
+                    </button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private ApplicationUser? _user;
+    private bool _loading = true;
+    private bool _regenerating;
+    private bool _showConfirmRegenerate;
+    private bool _showNewCodes;
+    private int _remainingCodes;
+    private string? _errorMessage;
+    private IList<string>? _recoveryCodes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _user = await UserManager.GetUserAsync(authState.User);
+
+        if (_user != null && _user.TwoFactorEnabled)
+        {
+            _remainingCodes = await TwoFactorService.GetRemainingRecoveryCodeCountAsync(_user.Id);
+        }
+
+        _loading = false;
+    }
+
+    private async Task RegenerateCodesConfirmed()
+    {
+        if (_user == null) return;
+
+        _regenerating = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            _recoveryCodes = await TwoFactorService.GenerateRecoveryCodesAsync(_user.Id);
+            _showNewCodes = true;
+            _showConfirmRegenerate = false;
+            Logger.LogInformation("User {UserId} regenerated recovery codes", _user.Id);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error regenerating recovery codes for user {UserId}", _user.Id);
+            _errorMessage = "An error occurred. Please try again.";
+        }
+        finally
+        {
+            _regenerating = false;
+        }
+    }
+
+    private void NavigateToProfile()
+    {
+        NavigationManager.NavigateTo("/profile", forceLoad: true);
+    }
+}

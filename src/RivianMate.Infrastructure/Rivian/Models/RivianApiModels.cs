@@ -269,7 +269,7 @@ public class RivianVehicleState
     public TimestampedValue<string?>? BatteryCellType { get; set; }
 
     [JsonPropertyName("batteryNeedsLfpCalibration")]
-    public TimestampedValue<string?>? BatteryNeedsLfpCalibration { get; set; }
+    public TimestampedValue<object?>? BatteryNeedsLfpCalibration { get; set; }
 
     [JsonPropertyName("twelveVoltBatteryHealth")]
     public TimestampedValue<string?>? TwelveVoltBatteryHealth { get; set; }

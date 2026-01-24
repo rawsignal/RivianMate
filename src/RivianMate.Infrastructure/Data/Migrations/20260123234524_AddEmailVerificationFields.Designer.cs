@@ -2,18 +2,21 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RivianMate.Infrastructure.Data;
 
 #nullable disable
 
-namespace RivianMate.Infrastructure.Migrations
+namespace RivianMate.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(RivianMateDbContext))]
-    partial class RivianMateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260123234524_AddEmailVerificationFields")]
+    partial class AddEmailVerificationFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -272,14 +275,8 @@ namespace RivianMate.Infrastructure.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean");
 
-                    b.Property<DateTime?>("PrivacyAcceptedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
-
-                    b.Property<DateTime?>("TermsAcceptedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("boolean");
@@ -444,12 +441,6 @@ namespace RivianMate.Infrastructure.Migrations
                     b.Property<double?>("Cost")
                         .HasColumnType("double precision");
 
-                    b.Property<double?>("CurrentBatteryLevel")
-                        .HasColumnType("double precision");
-
-                    b.Property<double?>("CurrentRangeEstimate")
-                        .HasColumnType("double precision");
-
                     b.Property<string>("DriveMode")
                         .HasColumnType("text");
 
@@ -470,9 +461,6 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.Property<bool?>("IsHomeCharging")
                         .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("LastUpdatedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<double?>("Latitude")
                         .HasColumnType("double precision");
@@ -842,46 +830,6 @@ namespace RivianMate.Infrastructure.Migrations
                     b.ToTable("RivianAccounts");
                 });
 
-            modelBuilder.Entity("RivianMate.Core.Entities.SecurityEvent", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Details")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("EventType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("IpAddress")
-                        .HasMaxLength(45)
-                        .HasColumnType("character varying(45)");
-
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UserAgent")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Timestamp");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("SecurityEvents");
-                });
-
             modelBuilder.Entity("RivianMate.Core.Entities.Setting", b =>
                 {
                     b.Property<int>("Id")
@@ -1035,40 +983,6 @@ namespace RivianMate.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("UserPreferences");
-                });
-
-            modelBuilder.Entity("RivianMate.Core.Entities.UserRecoveryCode", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("CodeHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsUsed")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("UsedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("UserId", "IsUsed");
-
-                    b.ToTable("UserRecoveryCodes");
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.Vehicle", b =>
@@ -1504,17 +1418,6 @@ namespace RivianMate.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("RivianMate.Core.Entities.SecurityEvent", b =>
-                {
-                    b.HasOne("RivianMate.Core.Entities.ApplicationUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("RivianMate.Core.Entities.UserDashboardConfig", b =>
                 {
                     b.HasOne("RivianMate.Core.Entities.ApplicationUser", "User")
@@ -1538,17 +1441,6 @@ namespace RivianMate.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.UserPreferences", b =>
-                {
-                    b.HasOne("RivianMate.Core.Entities.ApplicationUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("RivianMate.Core.Entities.UserRecoveryCode", b =>
                 {
                     b.HasOne("RivianMate.Core.Entities.ApplicationUser", "User")
                         .WithMany()

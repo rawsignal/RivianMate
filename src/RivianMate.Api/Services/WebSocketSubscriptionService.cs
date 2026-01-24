@@ -345,6 +345,9 @@ public class WebSocketSubscriptionService : BackgroundService
             var batteryHealthService = scope.ServiceProvider.GetRequiredService<BatteryHealthService>();
             var db = scope.ServiceProvider.GetRequiredService<RivianMateDbContext>();
 
+            // Get the state buffer for access to current state even when throttled
+            var stateBuffer = scope.ServiceProvider.GetRequiredService<VehicleStateBuffer>();
+
             // Process the vehicle state update
             // Use isPartialUpdate: true because WebSocket sends different fields in separate messages
             var vehicleState = await vehicleService.ProcessVehicleStateAsync(
@@ -369,6 +372,24 @@ public class WebSocketSubscriptionService : BackgroundService
 
                 // Notify UI components about the state change
                 await _stateNotifier.NotifyStateChangedAsync(vehicleId);
+            }
+            else
+            {
+                // State was throttled, but we should still track charging sessions
+                // to capture live progress during slow charging
+                var bufferedState = stateBuffer.GetCurrentState(vehicleId);
+                if (bufferedState != null)
+                {
+                    // Check if there's an active charging session that needs updating
+                    var hasActiveSession = await db.ChargingSessions
+                        .AnyAsync(s => s.VehicleId == vehicleId && s.IsActive);
+
+                    if (hasActiveSession)
+                    {
+                        await chargingTrackingService.ProcessStateForChargingTrackingAsync(
+                            vehicleId, bufferedState, CancellationToken.None);
+                    }
+                }
             }
 
             // Update account last sync

@@ -120,6 +120,9 @@
             </EditForm>
         </div>
 
+        <!-- Two-Factor Authentication Card -->
+        <TwoFactorSection User="_user" />
+
         <!-- Account Stats Card -->
         <div class="card mb-6">
             <div class="card-header">
@@ -216,14 +219,24 @@
     {
         if (_user == null) return;
 
-        _user.DisplayName = ProfileInput.DisplayName;
-        var result = await UserManager.UpdateAsync(_user);
+        // Re-fetch user to ensure it's attached to the current DbContext
+        var user = await UserManager.FindByIdAsync(_user.Id.ToString());
+        if (user == null)
+        {
+            _profileMessage = "Unable to load user. Please try again.";
+            _profileSuccess = false;
+            return;
+        }
+
+        user.DisplayName = ProfileInput.DisplayName;
+        var result = await UserManager.UpdateAsync(user);
 
         if (result.Succeeded)
         {
+            _user = user; // Update local reference
             _profileMessage = "Profile updated successfully.";
             _profileSuccess = true;
-            Logger.LogInformation("User {UserId} updated their profile.", _user.Id);
+            Logger.LogInformation("User {UserId} updated their profile.", user.Id);
         }
         else
         {
@@ -236,26 +249,36 @@
     {
         if (_user == null) return;
 
+        // Re-fetch user to ensure it's attached to the current DbContext
+        var user = await UserManager.FindByIdAsync(_user.Id.ToString());
+        if (user == null)
+        {
+            _passwordMessage = "Unable to load user. Please try again.";
+            _passwordSuccess = false;
+            return;
+        }
+
         var result = await UserManager.ChangePasswordAsync(
-            _user,
+            user,
             PasswordInput.CurrentPassword,
             PasswordInput.NewPassword);
 
         if (result.Succeeded)
         {
+            _user = user; // Update local reference
             _passwordMessage = "Password changed successfully.";
             _passwordSuccess = true;
             PasswordInput = new PasswordModel();
-            Logger.LogInformation("User {UserId} changed their password.", _user.Id);
+            Logger.LogInformation("User {UserId} changed their password.", user.Id);
 
             // Send password changed confirmation email
-            if (!string.IsNullOrEmpty(_user.Email))
+            if (!string.IsNullOrEmpty(user.Email))
             {
-                EmailTrigger.FirePasswordChanged(_user.Email, _user.Id, _user.DisplayName);
+                EmailTrigger.FirePasswordChanged(user.Email, user.Id, user.DisplayName);
             }
 
             // Refresh sign-in to update security stamp
-            await SignInManager.RefreshSignInAsync(_user);
+            await SignInManager.RefreshSignInAsync(user);
         }
         else
         {
@@ -277,7 +300,7 @@
             // Store user ID for logging before deletion
             var userId = _user.Id;
 
-            var result = await AccountService.DeleteAccountAsync(_user);
+            var result = await AccountService.DeleteAccountAsync(_user.Id);
 
             if (result.Succeeded)
             {

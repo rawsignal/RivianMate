@@ -1,0 +1,175 @@
+@page "/profile/2fa/disable"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services
+@using RivianMate.Core.Entities
+@attribute [Authorize]
+
+@inject UserManager<ApplicationUser> UserManager
+@inject TwoFactorService TwoFactorService
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ILogger<DisableTwoFactor> Logger
+
+<PageTitle>Disable Two-Factor Authentication - RivianMate</PageTitle>
+
+<div style="max-width: 600px;">
+    <div style="margin-bottom: var(--space-8);">
+        <a href="/profile" style="font-size: 0.875rem; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+            <Icon Name="chevron-left" Size="16" />
+            Back to Profile
+        </a>
+        <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+            <Icon Name="shield-off" Size="28" Style="color: var(--color-error);" />
+            Disable Two-Factor Authentication
+        </h1>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading">Loading...</div>
+    }
+    else if (_user == null)
+    {
+        <div class="alert alert-error">Unable to load user information.</div>
+    }
+    else if (!_user.TwoFactorEnabled)
+    {
+        <div class="card">
+            <div class="alert alert-info" style="margin-bottom: var(--space-4);">
+                Two-factor authentication is not enabled on your account.
+            </div>
+            <a href="/profile" class="btn btn-primary">Back to Profile</a>
+        </div>
+    }
+    else if (_disabled)
+    {
+        <div class="card">
+            <div class="alert alert-success" style="margin-bottom: var(--space-4);">
+                Two-factor authentication has been disabled.
+            </div>
+            <p style="color: var(--color-text-muted); margin-bottom: var(--space-4);">
+                Your account is no longer protected by two-factor authentication. We recommend re-enabling it for better security.
+            </p>
+            <button @onclick="NavigateToProfile" class="btn btn-primary">Back to Profile</button>
+        </div>
+    }
+    else
+    {
+        <div class="card danger-card">
+            <div class="card-header">
+                <h2 class="card-title" style="color: var(--color-error);">
+                    <Icon Name="alert-triangle" Size="20" Style="color: var(--color-error);" />
+                    Confirm Disable
+                </h2>
+            </div>
+
+            <div class="alert alert-warning" style="margin-bottom: var(--space-4);">
+                <strong>Warning:</strong> Disabling two-factor authentication will make your account less secure. Anyone with your password will be able to sign in.
+            </div>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="alert alert-error" style="margin-bottom: var(--space-4);">
+                    @_errorMessage
+                </div>
+            }
+
+            <p style="color: var(--color-text-muted); margin-bottom: var(--space-4);">
+                Enter your password to confirm you want to disable two-factor authentication.
+            </p>
+
+            <EditForm Model="Input" OnValidSubmit="DisableTwoFactorAsync" FormName="disable2fa">
+                <DataAnnotationsValidator />
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <PasswordField @bind-Value="Input.Password" Name="Input.Password" Id="password"
+                                   Placeholder="Enter your password" Autocomplete="current-password" />
+                    <ValidationMessage For="() => Input.Password" class="validation-message" />
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0; display: flex; gap: var(--space-3);">
+                    <button type="submit" class="btn btn-danger" disabled="@_disabling">
+                        @if (_disabling)
+                        {
+                            <span>Disabling...</span>
+                        }
+                        else
+                        {
+                            <span>Disable Two-Factor Authentication</span>
+                        }
+                    </button>
+                    <a href="/profile" class="btn btn-secondary">Cancel</a>
+                </div>
+            </EditForm>
+        </div>
+    }
+</div>
+
+@code {
+    private ApplicationUser? _user;
+    private bool _loading = true;
+    private bool _disabling;
+    private bool _disabled;
+    private string? _errorMessage;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _user = await UserManager.GetUserAsync(authState.User);
+        _loading = false;
+    }
+
+    private async Task DisableTwoFactorAsync()
+    {
+        if (_user == null) return;
+
+        _disabling = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var (success, error) = await TwoFactorService.DisableTwoFactorAsync(_user.Id, Input.Password);
+
+            if (success)
+            {
+                _disabled = true;
+                Logger.LogInformation("User {UserId} disabled two-factor authentication", _user.Id);
+            }
+            else
+            {
+                _errorMessage = error ?? "Failed to disable two-factor authentication.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error disabling 2FA for user {UserId}", _user.Id);
+            _errorMessage = "An error occurred. Please try again.";
+        }
+        finally
+        {
+            _disabling = false;
+        }
+    }
+
+    private void NavigateToProfile()
+    {
+        NavigationManager.NavigateTo("/profile", forceLoad: true);
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Password is required")]
+        [DataType(DataType.Password)]
+        public string Password { get; set; } = "";
+    }
+}

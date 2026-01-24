@@ -47,6 +47,38 @@ public class EmailConfiguration
     /// Email trigger configurations.
     /// </summary>
     public Dictionary<string, EmailTriggerConfiguration> Triggers { get; set; } = new();
+
+    /// <summary>
+    /// Email verification settings.
+    /// </summary>
+    public EmailVerificationConfiguration Verification { get; set; } = new();
+}
+
+/// <summary>
+/// Configuration for email verification requirements.
+/// </summary>
+public class EmailVerificationConfiguration
+{
+    /// <summary>
+    /// Whether email verification is required.
+    /// Defaults to false for self-hosted edition. Set to true for Pro/cloud deployments.
+    /// </summary>
+    public bool Required { get; set; } = false;
+
+    /// <summary>
+    /// Number of days after registration before account is deactivated if email not verified.
+    /// </summary>
+    public int GracePeriodDays { get; set; } = 7;
+
+    /// <summary>
+    /// Hours before deadline to send reminder email.
+    /// </summary>
+    public int ReminderHoursBeforeDeadline { get; set; } = 24;
+
+    /// <summary>
+    /// Minimum minutes between resend requests.
+    /// </summary>
+    public int ResendCooldownMinutes { get; set; } = 5;
 }
 
 /// <summary>

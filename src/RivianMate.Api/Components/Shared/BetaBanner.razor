@@ -1,0 +1,63 @@
+@inject IJSRuntime JS
+
+@if (_showBanner && !_dismissed)
+{
+    <div class="beta-banner @(_dismissed ? "dismissed" : "")">
+        <Icon Name="sparkles" Size="20" />
+        <div class="beta-banner-content">
+            <span class="beta-banner-title">Thank you for joining RivianMate's open beta!</span>
+            <span class="beta-banner-description">
+                Some features may not be working or may not be implemented at this time; we are under active development.
+                RivianMate is free during the open beta. For bug reports, feature suggestions, see important service announcements, or to just say hi, visit our Discord server!
+            </span>
+        </div>
+        <div class="beta-banner-actions">
+            <a href="https://discord.gg/DXQ55GaT" target="_blank" rel="noopener noreferrer" class="beta-banner-cta">
+                <Icon Name="message-circle" Size="14" />
+                Join Discord
+            </a>
+            <button class="beta-banner-dismiss" @onclick="Dismiss" title="Dismiss">
+                <Icon Name="x" Size="16" />
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _showBanner = true;
+    private bool _dismissed;
+    private const string StorageKey = "rivianmate_beta_banner_dismissed";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var dismissed = await JS.InvokeAsync<string?>("localStorage.getItem", StorageKey);
+                if (dismissed == "true")
+                {
+                    _showBanner = false;
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                // localStorage might not be available
+            }
+        }
+    }
+
+    private async Task Dismiss()
+    {
+        _dismissed = true;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, "true");
+        }
+        catch
+        {
+            // localStorage might not be available
+        }
+    }
+}

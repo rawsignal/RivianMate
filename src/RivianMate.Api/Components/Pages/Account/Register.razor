@@ -1,14 +1,21 @@
 @page "/register"
 @using System.ComponentModel.DataAnnotations
+@using System.Text
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.Extensions.Options
 @using RivianMate.Core.Entities
 @using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Configuration
+@using RivianMate.Api.Services.Email
 
 @inject UserManager<ApplicationUser> UserManager
 @inject SignInManager<ApplicationUser> SignInManager
 @inject NavigationManager NavigationManager
 @inject ILogger<Register> Logger
 @inject RivianMate.Api.Services.FeatureService FeatureService
+@inject IEmailTrigger EmailTrigger
+@inject IOptions<EmailConfiguration> EmailConfig
 
 <PageTitle>Create Account - RivianMate</PageTitle>
 
@@ -62,6 +69,30 @@
                 <ValidationMessage For="() => Input.ConfirmPassword" class="validation-message" />
             </div>
 
+            <div class="form-group checkbox-group policy-checkbox">
+                <InputCheckbox @bind-Value="Input.AcceptTerms" id="acceptTerms" />
+                <label for="acceptTerms">
+                    I agree to the <a href="/terms" target="_blank">Terms of Service</a>
+                </label>
+                <ValidationMessage For="() => Input.AcceptTerms" class="validation-message" />
+            </div>
+
+            <div class="form-group checkbox-group policy-checkbox">
+                <InputCheckbox @bind-Value="Input.AcceptPrivacy" id="acceptPrivacy" />
+                <label for="acceptPrivacy">
+                    I agree to the <a href="/privacy" target="_blank">Privacy Policy</a>
+                </label>
+                <ValidationMessage For="() => Input.AcceptPrivacy" class="validation-message" />
+            </div>
+
+            <div class="form-group checkbox-group policy-checkbox">
+                <InputCheckbox @bind-Value="Input.AcceptBetaTerms" id="acceptBetaTerms" />
+                <label for="acceptBetaTerms">
+                    I understand that RivianMate is in open beta and that some features may change or be removed, or may not work. I also understand that RivianMate is free only during the open beta.
+                </label>
+                <ValidationMessage For="() => Input.AcceptBetaTerms" class="validation-message" />
+            </div>
+
             <button type="submit" class="btn btn-primary btn-full">Create Account</button>
         </EditForm>
 
@@ -107,12 +138,20 @@
             return;
         }
 
+        var verificationConfig = EmailConfig.Value.Verification;
+        var gracePeriodDays = verificationConfig.GracePeriodDays;
+
         var user = new ApplicationUser
         {
             UserName = Input.Email,
             Email = Input.Email,
             DisplayName = Input.DisplayName,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            // Only set verification deadline if verification is required
+            EmailVerificationDeadline = verificationConfig.Required ? DateTime.UtcNow.AddDays(gracePeriodDays) : null,
+            // Record policy acceptance timestamps
+            TermsAcceptedAt = DateTime.UtcNow,
+            PrivacyAcceptedAt = DateTime.UtcNow
         };
 
         var result = await UserManager.CreateAsync(user, Input.Password);
@@ -120,6 +159,12 @@
         if (result.Succeeded)
         {
             Logger.LogInformation("User {Email} created a new account.", Input.Email);
+
+            // Send verification email if email system is enabled
+            if (EmailConfig.Value.Enabled && verificationConfig.Required)
+            {
+                await SendVerificationEmailAsync(user, gracePeriodDays);
+            }
 
             // Sign in the new user
             await SignInManager.SignInAsync(user, isPersistent: false);
@@ -150,6 +195,34 @@
         }
     }
 
+    private async Task SendVerificationEmailAsync(ApplicationUser user, int daysRemaining)
+    {
+        try
+        {
+            // Generate email confirmation token
+            var token = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+
+            // Build verification link
+            var baseUrl = EmailConfig.Value.BaseUrl.TrimEnd('/');
+            var verificationLink = $"{baseUrl}/verify-email?userId={user.Id}&token={encodedToken}";
+
+            // Update sent timestamp
+            user.EmailVerificationSentAt = DateTime.UtcNow;
+            await UserManager.UpdateAsync(user);
+
+            // Send verification email
+            EmailTrigger.FireEmailVerification(user.Email!, verificationLink, user.DisplayName, daysRemaining);
+
+            Logger.LogInformation("Verification email sent to {Email}", user.Email);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to send verification email to {Email}", user.Email);
+            // Don't fail registration if email fails - user can resend later
+        }
+    }
+
     private sealed class InputModel
     {
         [Required(ErrorMessage = "Display name is required")]
@@ -169,5 +242,14 @@
         [DataType(DataType.Password)]
         [Compare(nameof(Password), ErrorMessage = "Passwords do not match")]
         public string ConfirmPassword { get; set; } = "";
+
+        [Range(typeof(bool), "true", "true", ErrorMessage = "You must accept the Terms of Service")]
+        public bool AcceptTerms { get; set; }
+
+        [Range(typeof(bool), "true", "true", ErrorMessage = "You must accept the Privacy Policy")]
+        public bool AcceptPrivacy { get; set; }
+
+        [Range(typeof(bool), "true", "true", ErrorMessage = "You must acknowledge the open beta terms")]
+        public bool AcceptBetaTerms { get; set; }
     }
 }

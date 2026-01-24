@@ -1,0 +1,188 @@
+@page "/verify-email"
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using System.Text
+@using RivianMate.Core.Entities
+@using RivianMate.Api.Components.Shared
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager NavigationManager
+@inject ILogger<VerifyEmail> Logger
+
+<PageTitle>Verify Email - RivianMate</PageTitle>
+
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <div class="logo-icon"></div>
+            @if (_success)
+            {
+                <h1>Email Verified!</h1>
+                <p>Your email has been verified successfully</p>
+            }
+            else if (_alreadyVerified)
+            {
+                <h1>Already Verified</h1>
+                <p>Your email address is already verified</p>
+            }
+            else
+            {
+                <h1>Verify Email</h1>
+                <p>Confirming your email address</p>
+            }
+        </div>
+
+        @if (_success)
+        {
+            <div class="alert alert-success">
+                <strong>Success!</strong> Your email address has been verified.
+                @if (_wasDeactivated)
+                {
+                    <br /><br />
+                    <span>Your account has been reactivated. You'll need to re-link your Rivian account to resume vehicle data collection.</span>
+                }
+            </div>
+            <div class="auth-footer">
+                <p><a href="/login">Sign In to Continue</a></p>
+            </div>
+        }
+        else if (_alreadyVerified)
+        {
+            <div class="alert alert-info">
+                Your email address was already verified. You can sign in to your account.
+            </div>
+            <div class="auth-footer">
+                <p><a href="/login">Sign In</a></p>
+            </div>
+        }
+        else if (_invalidLink)
+        {
+            <div class="alert alert-error">
+                <strong>Invalid or expired link</strong><br />
+                This verification link is invalid or has expired. Please request a new verification email.
+            </div>
+            <div class="auth-footer">
+                <p><a href="/login">Sign In</a> to request a new verification email</p>
+            </div>
+        }
+        else if (_loading)
+        {
+            <div class="loading">Verifying your email...</div>
+        }
+        else
+        {
+            <div class="alert alert-error">
+                @_errorMessage
+            </div>
+            <div class="auth-footer">
+                <p><a href="/login">Sign In</a></p>
+            </div>
+        }
+
+        <div class="auth-copyright">
+            <p>&copy; @DateTime.Now.Year Rossignol Software Services, LLC</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _loading = true;
+    private bool _success;
+    private bool _alreadyVerified;
+    private bool _invalidLink;
+    private bool _wasDeactivated;
+    private string? _errorMessage;
+
+    [SupplyParameterFromQuery]
+    private string? UserId { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? Token { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrEmpty(UserId) || string.IsNullOrEmpty(Token))
+        {
+            _invalidLink = true;
+            _loading = false;
+            return;
+        }
+
+        await VerifyEmailAsync();
+    }
+
+    private async Task VerifyEmailAsync()
+    {
+        try
+        {
+            // Find user
+            var user = await UserManager.FindByIdAsync(UserId!);
+            if (user == null)
+            {
+                _invalidLink = true;
+                _loading = false;
+                return;
+            }
+
+            // Check if already verified
+            if (user.EmailConfirmed)
+            {
+                _alreadyVerified = true;
+                _loading = false;
+                return;
+            }
+
+            // Decode the token (it was URL-encoded)
+            var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(Token!));
+
+            // Confirm email
+            var result = await UserManager.ConfirmEmailAsync(user, decodedToken);
+
+            if (result.Succeeded)
+            {
+                Logger.LogInformation("Email verified for user {UserId}", user.Id);
+
+                // Check if user was deactivated and reactivate
+                if (user.IsDeactivated && user.DeactivationReason == "EmailNotVerified")
+                {
+                    user.IsDeactivated = false;
+                    user.DeactivationReason = null;
+                    await UserManager.UpdateAsync(user);
+                    _wasDeactivated = true;
+                    Logger.LogInformation("Account reactivated for user {UserId} after email verification", user.Id);
+                }
+
+                // Clear verification deadline
+                user.EmailVerificationDeadline = null;
+                user.EmailVerificationReminderSent = false;
+                await UserManager.UpdateAsync(user);
+
+                _success = true;
+            }
+            else
+            {
+                var errors = result.Errors.Select(e => e.Description);
+                if (errors.Any(e => e.Contains("token", StringComparison.OrdinalIgnoreCase)))
+                {
+                    _invalidLink = true;
+                }
+                else
+                {
+                    _errorMessage = string.Join(" ", errors);
+                }
+
+                Logger.LogWarning("Email verification failed for user {UserId}: {Errors}", user.Id, string.Join(", ", errors));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error verifying email for user {UserId}", UserId);
+            _errorMessage = "An error occurred while verifying your email. Please try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

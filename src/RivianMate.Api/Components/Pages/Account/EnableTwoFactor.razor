@@ -1,0 +1,274 @@
+@page "/profile/2fa/enable"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Options
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Configuration
+@using RivianMate.Api.Services
+@using RivianMate.Core.Entities
+@attribute [Authorize]
+
+@inject UserManager<ApplicationUser> UserManager
+@inject TwoFactorService TwoFactorService
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IOptions<TwoFactorConfiguration> TwoFactorConfig
+@inject ILogger<EnableTwoFactor> Logger
+
+<PageTitle>Enable Two-Factor Authentication - RivianMate</PageTitle>
+
+<div style="max-width: 600px;">
+    <div style="margin-bottom: var(--space-8);">
+        <a href="/profile" style="font-size: 0.875rem; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+            <Icon Name="chevron-left" Size="16" />
+            Back to Profile
+        </a>
+        <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+            <Icon Name="shield" Size="28" Style="color: var(--color-accent);" />
+            Enable Two-Factor Authentication
+        </h1>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading">Loading...</div>
+    }
+    else if (!_isFeatureEnabled)
+    {
+        <div class="card">
+            <div class="alert alert-info" style="margin-bottom: var(--space-4);">
+                Two-factor authentication is not available at this time.
+            </div>
+            <a href="/profile" class="btn btn-primary">Back to Profile</a>
+        </div>
+    }
+    else if (_user == null)
+    {
+        <div class="alert alert-error">Unable to load user information.</div>
+    }
+    else if (_user.TwoFactorEnabled)
+    {
+        <div class="card">
+            <div class="alert alert-success" style="margin-bottom: var(--space-4);">
+                Two-factor authentication is already enabled on your account.
+            </div>
+            <a href="/profile" class="btn btn-primary">Back to Profile</a>
+        </div>
+    }
+    else if (_showRecoveryCodes)
+    {
+        <!-- Step 3: Show Recovery Codes -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="key" Size="20" Style="color: var(--color-success);" />
+                    Save Your Recovery Codes
+                </h2>
+            </div>
+
+            <div class="alert alert-success" style="margin-bottom: var(--space-4);">
+                Two-factor authentication has been enabled!
+            </div>
+
+            <p style="color: var(--color-text-muted); margin-bottom: var(--space-4);">
+                Save these recovery codes in a secure location. Each code can only be used once to sign in if you lose access to your authenticator app.
+            </p>
+
+            <div class="recovery-codes-container">
+                @if (_recoveryCodes != null)
+                {
+                    @foreach (var recoveryCode in _recoveryCodes)
+                    {
+                        <div class="recovery-code">@recoveryCode</div>
+                    }
+                }
+            </div>
+
+            <div class="alert alert-warning" style="margin-top: var(--space-4);">
+                <strong>Important:</strong> These codes will not be shown again. Store them safely!
+            </div>
+
+            <div style="margin-top: var(--space-6);">
+                <button @onclick="NavigateToProfile" class="btn btn-primary">Done</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Step 1 & 2: Setup Authenticator -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <Icon Name="smartphone" Size="20" Style="color: var(--color-accent);" />
+                    Set Up Authenticator App
+                </h2>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="alert alert-error" style="margin-bottom: var(--space-4);">
+                    @_errorMessage
+                </div>
+            }
+
+            <p style="color: var(--color-text-muted); margin-bottom: var(--space-4);">
+                Scan this QR code with your authenticator app (such as Google Authenticator, Microsoft Authenticator, or Authy).
+            </p>
+
+            @if (!string.IsNullOrEmpty(_qrCodeDataUrl))
+            {
+                <div class="qr-code-container">
+                    <img src="@_qrCodeDataUrl" alt="QR Code for authenticator setup" class="qr-code-image" />
+                </div>
+            }
+
+            <div class="manual-entry" style="margin-top: var(--space-4); margin-bottom: var(--space-6);">
+                <p style="font-size: 0.875rem; color: var(--color-text-muted); margin-bottom: var(--space-2);">
+                    Or enter this code manually:
+                </p>
+                <code class="shared-key">@_sharedKey</code>
+            </div>
+
+            <div style="border-top: 1px solid var(--color-border); padding-top: var(--space-6);">
+                <h3 style="font-size: 1rem; margin-bottom: var(--space-4);">Verify Setup</h3>
+                <p style="color: var(--color-text-muted); margin-bottom: var(--space-4);">
+                    Enter the 6-digit code from your authenticator app to verify the setup.
+                </p>
+
+                <EditForm Model="Input" OnValidSubmit="VerifyAndEnable" FormName="verify2fa">
+                    <DataAnnotationsValidator />
+
+                    <div class="form-group">
+                        <label for="verificationCode">Verification Code</label>
+                        <InputText @bind-Value="Input.VerificationCode" id="verificationCode" type="text"
+                                   placeholder="000000" maxlength="6" autocomplete="one-time-code"
+                                   inputmode="numeric" pattern="[0-9]*" />
+                        <ValidationMessage For="() => Input.VerificationCode" class="validation-message" />
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <button type="submit" class="btn btn-primary" disabled="@_verifying">
+                            @if (_verifying)
+                            {
+                                <span>Verifying...</span>
+                            }
+                            else
+                            {
+                                <span>Enable Two-Factor Authentication</span>
+                            }
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private ApplicationUser? _user;
+    private bool _loading = true;
+    private bool _verifying;
+    private bool _showRecoveryCodes;
+    private bool _isFeatureEnabled;
+    private string? _qrCodeDataUrl;
+    private string? _sharedKey;
+    private string? _errorMessage;
+    private IList<string>? _recoveryCodes;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isFeatureEnabled = TwoFactorConfig.Value.Enabled;
+
+        if (!_isFeatureEnabled)
+        {
+            _loading = false;
+            return;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _user = await UserManager.GetUserAsync(authState.User);
+
+        if (_user != null && !_user.TwoFactorEnabled)
+        {
+            await GenerateQrCode();
+        }
+
+        _loading = false;
+    }
+
+    private async Task GenerateQrCode()
+    {
+        if (_user == null) return;
+
+        try
+        {
+            var result = await TwoFactorService.GenerateQrCodeAsync(_user.Id);
+            if (result == null)
+            {
+                _errorMessage = "Failed to generate QR code. Please try again.";
+                return;
+            }
+            _sharedKey = result.Value.SharedKey;
+            _qrCodeDataUrl = result.Value.QrCodeDataUrl;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to generate QR code for user {UserId}", _user.Id);
+            _errorMessage = "Failed to generate QR code. Please try again.";
+        }
+    }
+
+    private async Task VerifyAndEnable()
+    {
+        if (_user == null) return;
+
+        _verifying = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var success = await TwoFactorService.VerifyAndEnableTwoFactorAsync(_user.Id, Input.VerificationCode);
+
+            if (success)
+            {
+                // Generate recovery codes
+                _recoveryCodes = await TwoFactorService.GenerateRecoveryCodesAsync(_user.Id);
+                _showRecoveryCodes = true;
+                Logger.LogInformation("User {UserId} enabled two-factor authentication", _user.Id);
+            }
+            else
+            {
+                _errorMessage = "Invalid verification code. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error enabling 2FA for user {UserId}", _user.Id);
+            _errorMessage = "An error occurred. Please try again.";
+        }
+        finally
+        {
+            _verifying = false;
+        }
+    }
+
+    private void NavigateToProfile()
+    {
+        NavigationManager.NavigateTo("/profile", forceLoad: true);
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Verification code is required")]
+        [StringLength(6, MinimumLength = 6, ErrorMessage = "Code must be 6 digits")]
+        [RegularExpression(@"^\d{6}$", ErrorMessage = "Code must be 6 digits")]
+        public string VerificationCode { get; set; } = "";
+    }
+}

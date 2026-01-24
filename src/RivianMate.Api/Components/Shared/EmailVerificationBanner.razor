@@ -1,0 +1,185 @@
+@using System.Text
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.Extensions.Options
+@using RivianMate.Core.Entities
+@using RivianMate.Api.Configuration
+@using RivianMate.Api.Services.Email
+
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IServiceScopeFactory ScopeFactory
+@inject IOptions<EmailConfiguration> EmailConfig
+@inject IEmailTrigger EmailTrigger
+@inject ILogger<EmailVerificationBanner> Logger
+
+@if (_showBanner && _user != null && !_user.EmailConfirmed && !_user.IsDeactivated)
+{
+    <div class="email-verification-banner @(_dismissed ? "dismissed" : "")">
+        <Icon Name="mail-warning" Size="20" />
+        <div class="email-verification-content">
+            <span class="email-verification-title">Please verify your email address</span>
+            <span class="email-verification-description">
+                @if (_daysRemaining > 1)
+                {
+                    <text>Your account will be deactivated in @_daysRemaining days if you don't verify your email.</text>
+                }
+                else if (_daysRemaining == 1)
+                {
+                    <text>Your account will be deactivated tomorrow if you don't verify your email.</text>
+                }
+                else
+                {
+                    <text>Your account will be deactivated soon if you don't verify your email.</text>
+                }
+            </span>
+        </div>
+        <div class="email-verification-actions">
+            @if (_resending)
+            {
+                <span class="email-verification-sending">Sending...</span>
+            }
+            else if (_resent)
+            {
+                <span class="email-verification-sent">
+                    <Icon Name="check" Size="14" />
+                    Email sent!
+                </span>
+            }
+            else if (_cooldownRemaining > 0)
+            {
+                <span class="email-verification-cooldown">Resend in @_cooldownRemaining min</span>
+            }
+            else
+            {
+                <button class="email-verification-resend" @onclick="ResendVerificationEmail">
+                    <Icon Name="mail" Size="14" />
+                    Resend Email
+                </button>
+            }
+            <button class="email-verification-dismiss" @onclick="Dismiss" title="Dismiss">
+                <Icon Name="x" Size="16" />
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private ApplicationUser? _user;
+    private bool _showBanner;
+    private bool _dismissed;
+    private bool _resending;
+    private bool _resent;
+    private int _daysRemaining;
+    private int _cooldownRemaining;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if email verification is required and email system is enabled
+        var emailConfig = EmailConfig.Value;
+        if (!emailConfig.Enabled || !emailConfig.Verification.Required)
+        {
+            return;
+        }
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            return;
+        }
+
+        // Create a new scope to avoid DbContext concurrency issues
+        // when this component renders alongside other components
+        await using var scope = ScopeFactory.CreateAsyncScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+        _user = await userManager.GetUserAsync(authState.User);
+        if (_user == null || _user.EmailConfirmed || _user.IsDeactivated)
+        {
+            return;
+        }
+
+        // Calculate days remaining
+        if (_user.EmailVerificationDeadline.HasValue)
+        {
+            var timeRemaining = _user.EmailVerificationDeadline.Value - DateTime.UtcNow;
+            _daysRemaining = Math.Max(0, (int)Math.Ceiling(timeRemaining.TotalDays));
+        }
+        else
+        {
+            _daysRemaining = emailConfig.Verification.GracePeriodDays;
+        }
+
+        // Calculate cooldown remaining
+        if (_user.EmailVerificationSentAt.HasValue)
+        {
+            var cooldownMinutes = emailConfig.Verification.ResendCooldownMinutes;
+            var timeSinceSent = DateTime.UtcNow - _user.EmailVerificationSentAt.Value;
+            var cooldownRemaining = cooldownMinutes - (int)timeSinceSent.TotalMinutes;
+            _cooldownRemaining = Math.Max(0, cooldownRemaining);
+        }
+
+        _showBanner = true;
+    }
+
+    private async Task ResendVerificationEmail()
+    {
+        if (_user == null || _resending)
+            return;
+
+        _resending = true;
+        StateHasChanged();
+
+        try
+        {
+            // Create a new scope to avoid DbContext concurrency issues
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+            // Reload user in this scope
+            var user = await userManager.FindByIdAsync(_user.Id.ToString());
+            if (user == null)
+            {
+                Logger.LogWarning("User not found when resending verification email");
+                return;
+            }
+
+            // Generate new token
+            var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
+            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+
+            // Build verification link
+            var baseUrl = EmailConfig.Value.BaseUrl.TrimEnd('/');
+            var verificationLink = $"{baseUrl}/verify-email?userId={user.Id}&token={encodedToken}";
+
+            // Update sent timestamp
+            user.EmailVerificationSentAt = DateTime.UtcNow;
+            await userManager.UpdateAsync(user);
+
+            // Update local reference
+            _user.EmailVerificationSentAt = user.EmailVerificationSentAt;
+
+            // Send email
+            EmailTrigger.FireEmailVerification(user.Email!, verificationLink, user.DisplayName, _daysRemaining);
+
+            Logger.LogInformation("Verification email resent to {Email}", user.Email);
+
+            _resent = true;
+            _cooldownRemaining = EmailConfig.Value.Verification.ResendCooldownMinutes;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to resend verification email to {Email}", _user.Email);
+        }
+        finally
+        {
+            _resending = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Dismiss()
+    {
+        _dismissed = true;
+    }
+}

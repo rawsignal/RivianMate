@@ -187,7 +187,8 @@ public class ActivityFeedService
         bool? currentClosed,
         bool invertLogic = false)
     {
-        if (previousClosed == currentClosed || !currentClosed.HasValue)
+        // Skip if: no change, current value is null, or previous value was null (first observation)
+        if (previousClosed == currentClosed || !currentClosed.HasValue || !previousClosed.HasValue)
             return;
 
         // For most closures: true = closed, false = open

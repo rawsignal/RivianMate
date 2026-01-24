@@ -1,13 +1,20 @@
 @page "/login"
 @using System.ComponentModel.DataAnnotations
+@using System.Text
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.Extensions.Options
 @using RivianMate.Core.Entities
 @using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Configuration
+@using RivianMate.Api.Services.Email
 
 @inject SignInManager<ApplicationUser> SignInManager
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager NavigationManager
+@inject IEmailTrigger EmailTrigger
+@inject IOptions<EmailConfiguration> EmailConfig
 @inject ILogger<Login> Logger
 
 <PageTitle>Sign In - RivianMate</PageTitle>
@@ -27,14 +34,47 @@
             </div>
         }
 
-        @if (!string.IsNullOrEmpty(errorMessage))
+        @if (_isDeactivated)
         {
-            <div class="alert alert-error">
-                @errorMessage
+            <div class="alert alert-error" style="margin-bottom: var(--space-4);">
+                <strong>Account Deactivated</strong><br />
+                Your account has been deactivated because your email was not verified. Please verify your email to reactivate your account.
+            </div>
+
+            @if (_verificationSent)
+            {
+                <div class="alert alert-success" style="margin-bottom: var(--space-4);">
+                    Verification email sent! Please check your inbox and click the verification link.
+                </div>
+            }
+
+            <div style="margin-bottom: var(--space-4);">
+                <button type="button" class="btn btn-primary btn-full" @onclick="ResendVerificationEmail" disabled="@_sendingVerification">
+                    @if (_sendingVerification)
+                    {
+                        <span>Sending...</span>
+                    }
+                    else
+                    {
+                        <span>Resend Verification Email</span>
+                    }
+                </button>
+            </div>
+
+            <div class="auth-footer">
+                <p><a href="/login" @onclick="ResetDeactivatedState" @onclick:preventDefault>Try different account</a></p>
             </div>
         }
+        else
+        {
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-error">
+                    @errorMessage
+                </div>
+            }
 
-        <EditForm Model="Input" method="post" OnValidSubmit="LoginUser" FormName="login">
+            <EditForm Model="Input" method="post" OnValidSubmit="LoginUser" FormName="login">
             <DataAnnotationsValidator />
 
             <div class="form-group">
@@ -61,9 +101,10 @@
             </div>
         </EditForm>
 
-        <div class="auth-footer">
-            <p>Don't have an account? <a href="/register">Create one</a></p>
-        </div>
+            <div class="auth-footer">
+                <p>Don't have an account? <a href="/register">Create one</a></p>
+            </div>
+        }
 
         <div class="auth-copyright">
             <p>&copy; @DateTime.Now.Year Rossignol Software Services, LLC</p>
@@ -73,6 +114,10 @@
 
 @code {
     private string? errorMessage;
+    private bool _isDeactivated;
+    private bool _sendingVerification;
+    private bool _verificationSent;
+    private ApplicationUser? _deactivatedUser;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
@@ -104,11 +149,41 @@
             return;
         }
 
+        // Check if account is deactivated
+        if (user.IsDeactivated)
+        {
+            // Verify password first before showing deactivation message
+            var passwordValid = await UserManager.CheckPasswordAsync(user, Input.Password);
+            if (passwordValid)
+            {
+                _isDeactivated = true;
+                _deactivatedUser = user;
+                Logger.LogInformation("Deactivated user {Email} attempted login.", Input.Email);
+                return;
+            }
+            else
+            {
+                // Don't reveal that account is deactivated if password is wrong
+                errorMessage = "Invalid email or password.";
+                return;
+            }
+        }
+
+        Logger.LogInformation(
+            "Attempting login for user {Email}. TwoFactorEnabled={TwoFactorEnabled}, HasAuthenticator={HasAuthenticator}",
+            Input.Email,
+            user.TwoFactorEnabled,
+            !string.IsNullOrEmpty(await UserManager.GetAuthenticatorKeyAsync(user)));
+
         var result = await SignInManager.PasswordSignInAsync(
             user,
             Input.Password,
             Input.RememberMe,
             lockoutOnFailure: true);
+
+        Logger.LogInformation(
+            "Login result for {Email}: Succeeded={Succeeded}, RequiresTwoFactor={RequiresTwoFactor}, IsLockedOut={IsLockedOut}",
+            Input.Email, result.Succeeded, result.RequiresTwoFactor, result.IsLockedOut);
 
         if (result.Succeeded)
         {
@@ -126,13 +201,63 @@
         }
         else if (result.RequiresTwoFactor)
         {
-            // Future: redirect to 2FA page
-            errorMessage = "Two-factor authentication is required.";
+            var returnUrlEncoded = Uri.EscapeDataString(ReturnUrl ?? "/");
+            NavigationManager.NavigateTo(
+                $"/login-2fa?returnUrl={returnUrlEncoded}&rememberMe={Input.RememberMe}",
+                forceLoad: true);
         }
         else
         {
             errorMessage = "Invalid email or password.";
         }
+    }
+
+    private async Task ResendVerificationEmail()
+    {
+        if (_deactivatedUser == null || _sendingVerification)
+            return;
+
+        _sendingVerification = true;
+        StateHasChanged();
+
+        try
+        {
+            // Generate new token
+            var token = await UserManager.GenerateEmailConfirmationTokenAsync(_deactivatedUser);
+            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+
+            // Build verification link
+            var baseUrl = EmailConfig.Value.BaseUrl.TrimEnd('/');
+            var verificationLink = $"{baseUrl}/verify-email?userId={_deactivatedUser.Id}&token={encodedToken}";
+
+            // Update sent timestamp
+            _deactivatedUser.EmailVerificationSentAt = DateTime.UtcNow;
+            await UserManager.UpdateAsync(_deactivatedUser);
+
+            // Send email
+            EmailTrigger.FireEmailVerification(_deactivatedUser.Email!, verificationLink, _deactivatedUser.DisplayName, 0);
+
+            _verificationSent = true;
+            Logger.LogInformation("Verification email sent to deactivated user {Email}", _deactivatedUser.Email);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to send verification email to {Email}", _deactivatedUser.Email);
+            errorMessage = "Failed to send verification email. Please try again.";
+        }
+        finally
+        {
+            _sendingVerification = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ResetDeactivatedState()
+    {
+        _isDeactivated = false;
+        _deactivatedUser = null;
+        _verificationSent = false;
+        Input = new InputModel();
     }
 
     private sealed class InputModel

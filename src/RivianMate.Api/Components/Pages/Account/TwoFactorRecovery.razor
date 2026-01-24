@@ -1,0 +1,113 @@
+@page "/login-2fa-recovery"
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services
+@using RivianMate.Core.Entities
+
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject TwoFactorService TwoFactorService
+@inject NavigationManager NavigationManager
+@inject ILogger<TwoFactorRecovery> Logger
+
+<PageTitle>Recovery Code - RivianMate</PageTitle>
+
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <div class="logo-icon"></div>
+            <h1>Recovery Code</h1>
+            <p>Enter one of your recovery codes</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="alert alert-error">
+                @_errorMessage
+            </div>
+        }
+
+        <EditForm Model="Input" method="post" OnValidSubmit="OnValidSubmitAsync" FormName="login-recovery">
+            <DataAnnotationsValidator />
+
+            <div class="form-group">
+                <label for="recoveryCode">Recovery Code</label>
+                <InputText @bind-Value="Input.RecoveryCode" id="recoveryCode" type="text"
+                           placeholder="XXXXX-XXXXX" maxlength="11" autocomplete="off"
+                           style="text-transform: uppercase; letter-spacing: 1px;" />
+                <ValidationMessage For="() => Input.RecoveryCode" class="validation-message" />
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-full">Verify</button>
+        </EditForm>
+
+        <div class="auth-footer" style="margin-top: var(--space-6);">
+            <p>
+                <a href="/login-2fa?returnUrl=@Uri.EscapeDataString(ReturnUrl ?? "/")&rememberMe=@RememberMe">
+                    Use authenticator code instead
+                </a>
+            </p>
+        </div>
+
+        <div class="auth-copyright">
+            <p>&copy; @DateTime.Now.Year Rossignol Software Services, LLC</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string? _errorMessage;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery]
+    private bool RememberMe { get; set; }
+
+    private async Task OnValidSubmitAsync()
+    {
+        var user = await SignInManager.GetTwoFactorAuthenticationUserAsync();
+        if (user == null)
+        {
+            Logger.LogWarning("Unable to find 2FA user for recovery code login.");
+            _errorMessage = "Unable to verify identity. Please try logging in again.";
+            return;
+        }
+
+        // Validate the recovery code using our custom service
+        var isValid = await TwoFactorService.ValidateRecoveryCodeAsync(user.Id, Input.RecoveryCode);
+
+        if (isValid)
+        {
+            // Sign the user in
+            await SignInManager.SignInAsync(user, RememberMe);
+
+            // Update last login time
+            user.LastLoginAt = DateTime.UtcNow;
+            await UserManager.UpdateAsync(user);
+
+            Logger.LogInformation("User {UserId} logged in with a recovery code.", user.Id);
+
+            NavigationManager.NavigateTo(ReturnUrl ?? "/", forceLoad: true);
+        }
+        else
+        {
+            Logger.LogWarning("Invalid recovery code entered for user {UserId}.", user.Id);
+            _errorMessage = "Invalid recovery code.";
+        }
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Recovery code is required")]
+        [RegularExpression(@"^[A-Za-z0-9]{5}-?[A-Za-z0-9]{5}$", ErrorMessage = "Invalid recovery code format")]
+        public string RecoveryCode { get; set; } = "";
+    }
+}

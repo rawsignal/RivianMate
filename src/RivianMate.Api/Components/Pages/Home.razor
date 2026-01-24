@@ -21,6 +21,7 @@
 @inject VehicleStateNotifier StateNotifier
 @inject UserPreferencesService UserPreferencesService
 @inject UnitConversionService UnitConversionService
+@inject IServiceScopeFactory ScopeFactory
 
 <PageTitle>Dashboard - RivianMate</PageTitle>
 
@@ -97,6 +98,12 @@
     <span class="status-dot @(_isOnline ? "" : "offline")"></span>
     <span>@(_isOnline ? "Online" : "Offline") · Last updated @GetLastUpdatedText()</span>
 </div>
+
+<!-- Email Verification Banner -->
+<EmailVerificationBanner />
+
+<!-- Beta Banner -->
+<BetaBanner />
 
 @if (_currentState?.IsInServiceMode == true)
 {
@@ -828,7 +835,22 @@
 
         try
         {
-            await LoadVehicleDataAsync();
+            // Create a new scope to get fresh service instances
+            // This is necessary because the event is fired from a background service
+            // and the component's injected services may have disposed contexts
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var vehicleService = scope.ServiceProvider.GetRequiredService<VehicleService>();
+            var batteryHealthService = scope.ServiceProvider.GetRequiredService<BatteryHealthService>();
+            var activityFeedService = scope.ServiceProvider.GetRequiredService<ActivityFeedService>();
+
+            _currentState = await vehicleService.GetLatestStateAsync(_vehicle.Id);
+            _healthSummary = await batteryHealthService.GetHealthSummaryAsync(_vehicle.Id);
+            _recentSessions = await vehicleService.GetRecentChargingSessionsAsync(_vehicle.Id, 4);
+            _recentDrives = await vehicleService.GetRecentDrivesAsync(_vehicle.Id, 4);
+            _recentActivity = await activityFeedService.GetRecentActivityAsync(_vehicle.Id, 3);
+            _efficiency = await vehicleService.GetAverageEfficiencyAsync(_vehicle.Id);
+            _isOnline = DetermineOnlineStatus();
+
             await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
@@ -843,7 +865,11 @@
 
         try
         {
-            _vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
+            // Create a new scope to get fresh service instances
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var vehicleService = scope.ServiceProvider.GetRequiredService<VehicleService>();
+
+            _vehicles = await vehicleService.GetVehiclesForUserAsync(_userId);
 
             // If we don't have a selected vehicle yet, select the first one
             if (_vehicle == null && _vehicles.Any())

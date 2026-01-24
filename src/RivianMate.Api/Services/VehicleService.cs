@@ -331,7 +331,7 @@ public class VehicleService
             RangeEstimate = KmToMiles(rs.DistanceToEmpty?.Value),  // API returns km
             TwelveVoltBatteryHealth = rs.TwelveVoltBatteryHealth?.Value,
             BatteryCellType = rs.BatteryCellType?.Value,
-            BatteryNeedsLfpCalibration = ParseBoolFromString(rs.BatteryNeedsLfpCalibration?.Value),
+            BatteryNeedsLfpCalibration = ParseBoolFromObject(rs.BatteryNeedsLfpCalibration?.Value),
 
             // Odometer (API returns in meters, convert to miles)
             Odometer = rs.VehicleMileage?.Value != null
@@ -342,12 +342,12 @@ public class VehicleService
             PowerState = ParsePowerState(rs.PowerState?.Value),
             GearStatus = ParseGearStatus(rs.GearStatus?.Value),
             DriveMode = rs.DriveMode?.Value,
-            IsInServiceMode = rs.ServiceMode?.Value?.ToLower() == "on",
+            IsInServiceMode = ParseServiceMode(rs.ServiceMode?.Value),
 
             // Charging
             ChargerState = ParseChargerState(rs.ChargerState?.Value ?? rs.ChargerStatus?.Value),
             TimeToEndOfCharge = rs.TimeToEndOfCharge?.Value,
-            ChargePortOpen = rs.ChargePortState?.Value?.ToLower() == "open",
+            ChargePortOpen = ParseChargePortState(rs.ChargePortState?.Value),
             ChargerDerateStatus = rs.ChargerDerateStatus?.Value,
 
             // Cold Weather (0 = not limited, >0 = limited)
@@ -425,6 +425,33 @@ public class VehicleService
         var lower = value.ToLower();
         if (lower == "true" || lower == "yes" || lower == "on" || lower == "1") return true;
         if (lower == "false" || lower == "no" || lower == "off" || lower == "0") return false;
+        return null;
+    }
+
+    private static bool? ParseBoolFromObject(object? value)
+    {
+        if (value == null) return null;
+
+        // Handle JsonElement (from System.Text.Json deserialization)
+        if (value is System.Text.Json.JsonElement jsonElement)
+        {
+            return jsonElement.ValueKind switch
+            {
+                System.Text.Json.JsonValueKind.True => true,
+                System.Text.Json.JsonValueKind.False => false,
+                System.Text.Json.JsonValueKind.Number => jsonElement.TryGetInt32(out var num) && num != 0,
+                System.Text.Json.JsonValueKind.String => ParseBoolFromString(jsonElement.GetString()),
+                _ => null
+            };
+        }
+
+        // Handle direct types
+        if (value is bool b) return b;
+        if (value is int i) return i != 0;
+        if (value is long l) return l != 0;
+        if (value is double d) return d != 0;
+        if (value is string s) return ParseBoolFromString(s);
+
         return null;
     }
 
@@ -844,6 +871,33 @@ public class VehicleService
     }
 
     /// <summary>
+    /// Parse charge port state from API response.
+    /// Returns true if "open", false if "closed", null otherwise.
+    /// Note: This is inverted from other closures (true = open, not closed).
+    /// </summary>
+    private static bool? ParseChargePortState(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return null;
+        var lower = value.ToLower();
+        if (lower == "open") return true;
+        if (lower == "closed") return false;
+        return null;
+    }
+
+    /// <summary>
+    /// Parse service mode state from API response.
+    /// Returns true if "on", false if "off", null otherwise.
+    /// </summary>
+    private static bool? ParseServiceMode(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return null;
+        var lower = value.ToLower();
+        if (lower == "on") return true;
+        if (lower == "off") return false;
+        return null;
+    }
+
+    /// <summary>
     /// Format Gear Guard status from API response.
     /// API returns values like "disabled", "enabled", "engaged" (with underscores replaced by spaces).
     /// </summary>
@@ -919,9 +973,7 @@ public class VehicleService
             newState.GearStatus = previousState.GearStatus;
         if (string.IsNullOrEmpty(newState.DriveMode))
             newState.DriveMode = previousState.DriveMode;
-        // Only update IsInServiceMode if the API actually provided a value
-        if (rivianState.ServiceMode == null)
-            newState.IsInServiceMode = previousState.IsInServiceMode;
+        newState.IsInServiceMode ??= previousState.IsInServiceMode;
 
         // Odometer
         newState.Odometer ??= previousState.Odometer;
@@ -1015,7 +1067,7 @@ public class VehicleService
 
         // Charging
         existing.ChargerState = incoming.ChargerState;
-        existing.ChargePortOpen = incoming.ChargePortOpen;
+        existing.ChargePortOpen = incoming.ChargePortOpen ?? existing.ChargePortOpen;
         existing.TimeToEndOfCharge = incoming.TimeToEndOfCharge;
         existing.ChargerDerateStatus = incoming.ChargerDerateStatus;
 
@@ -1023,7 +1075,7 @@ public class VehicleService
         existing.PowerState = incoming.PowerState;
         existing.GearStatus = incoming.GearStatus;
         existing.DriveMode = incoming.DriveMode;
-        existing.IsInServiceMode = incoming.IsInServiceMode;
+        existing.IsInServiceMode = incoming.IsInServiceMode ?? existing.IsInServiceMode;
 
         // Odometer
         existing.Odometer = incoming.Odometer;

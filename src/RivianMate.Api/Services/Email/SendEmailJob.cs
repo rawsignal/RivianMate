@@ -38,9 +38,17 @@ public class SendEmailJob
 
         try
         {
-            // Render the template
-            var htmlBody = await _templateRenderer.RenderAsync(request.Template, request.Tokens);
+            // Render subject first so we can include it in the HTML template
             var subject = _templateRenderer.RenderSubject(request.SubjectTemplate, request.Tokens);
+
+            // Add subject to tokens for the HTML template (used in <title> tag)
+            var tokensWithSubject = new Dictionary<string, string>(request.Tokens)
+            {
+                ["Subject"] = subject
+            };
+
+            // Render the template
+            var htmlBody = await _templateRenderer.RenderAsync(request.Template, tokensWithSubject);
 
             // Send the email
             var result = await _emailSender.SendAsync(request.To, subject, htmlBody);
