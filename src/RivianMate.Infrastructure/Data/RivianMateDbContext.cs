@@ -64,6 +64,9 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
     {
         base.OnModelCreating(modelBuilder);
 
+        // Configure table names based on edition
+        ConfigureTableNames(modelBuilder);
+
         // === ApplicationUser ===
         modelBuilder.Entity<ApplicationUser>(entity =>
         {
@@ -470,5 +473,41 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
             .Where(d => d.Id == driveId)
             .Select(d => d.Vehicle.OwnerId)
             .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Configure table names based on edition.
+    /// Pro uses production names, SelfHosted uses obfuscated names.
+    /// </summary>
+    private static void ConfigureTableNames(ModelBuilder modelBuilder)
+    {
+        // Identity tables
+        modelBuilder.Entity<ApplicationUser>().ToTable(TableNames.Users);
+        modelBuilder.Entity<IdentityRole<Guid>>().ToTable(TableNames.Roles);
+        modelBuilder.Entity<IdentityUserRole<Guid>>().ToTable(TableNames.UserRoles);
+        modelBuilder.Entity<IdentityUserClaim<Guid>>().ToTable(TableNames.UserClaims);
+        modelBuilder.Entity<IdentityUserLogin<Guid>>().ToTable(TableNames.UserLogins);
+        modelBuilder.Entity<IdentityUserToken<Guid>>().ToTable(TableNames.UserTokens);
+        modelBuilder.Entity<IdentityRoleClaim<Guid>>().ToTable(TableNames.RoleClaims);
+
+        // Core tables
+        modelBuilder.Entity<RivianAccount>().ToTable(TableNames.RivianAccounts);
+        modelBuilder.Entity<Vehicle>().ToTable(TableNames.Vehicles);
+        modelBuilder.Entity<VehicleState>().ToTable(TableNames.VehicleStates);
+        modelBuilder.Entity<ChargingSession>().ToTable(TableNames.ChargingSessions);
+        modelBuilder.Entity<Drive>().ToTable(TableNames.Drives);
+        modelBuilder.Entity<Position>().ToTable(TableNames.Positions);
+        modelBuilder.Entity<BatteryHealthSnapshot>().ToTable(TableNames.BatteryHealthSnapshots);
+        modelBuilder.Entity<ActivityFeedItem>().ToTable(TableNames.ActivityFeed);
+        modelBuilder.Entity<Setting>().ToTable(TableNames.Settings);
+        modelBuilder.Entity<UserDashboardConfig>().ToTable(TableNames.UserDashboardConfigs);
+        modelBuilder.Entity<UserPreferences>().ToTable(TableNames.UserPreferences);
+        modelBuilder.Entity<UserLocation>().ToTable(TableNames.UserLocations);
+        modelBuilder.Entity<GeocodingCache>().ToTable(TableNames.GeocodingCache);
+        modelBuilder.Entity<EmailLog>().ToTable(TableNames.EmailLogs);
+        modelBuilder.Entity<BroadcastEmail>().ToTable(TableNames.BroadcastEmails);
+        modelBuilder.Entity<UserRecoveryCode>().ToTable(TableNames.UserRecoveryCodes);
+        modelBuilder.Entity<SecurityEvent>().ToTable(TableNames.SecurityEvents);
+        modelBuilder.Entity<DataProtectionKey>().ToTable(TableNames.DataProtectionKeys);
     }
 }

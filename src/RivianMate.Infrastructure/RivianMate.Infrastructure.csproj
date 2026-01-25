@@ -6,6 +6,14 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Edition-specific compilation symbols -->
+  <PropertyGroup Condition="'$(Edition)' == 'Pro'">
+    <DefineConstants>$(DefineConstants);EDITION_PRO</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Edition)' != 'Pro'">
+    <DefineConstants>$(DefineConstants);EDITION_SELFHOSTED</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />

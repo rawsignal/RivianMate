@@ -16,6 +16,7 @@ using RivianMate.Infrastructure.Data;
 using RivianMate.Infrastructure.Nhtsa;
 using RivianMate.Infrastructure.Rivian;
 using RivianMate.Api.Services.Email;
+using Tables = RivianMate.Infrastructure.Data.TableNames;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -292,15 +293,15 @@ using (var scope = app.Services.CreateScope())
             }
         }
 
-        await AddColumnIfNotExistsAsync("Vehicles", "ImageData", "BLOB");
-        await AddColumnIfNotExistsAsync("Vehicles", "ImageContentType", "TEXT");
-        await AddColumnIfNotExistsAsync("Vehicles", "ImageVersion", "INTEGER");
-        await AddColumnIfNotExistsAsync("Positions", "Gear", "INTEGER DEFAULT 0");
+        await AddColumnIfNotExistsAsync(Tables.Vehicles, "ImageData", "BLOB");
+        await AddColumnIfNotExistsAsync(Tables.Vehicles, "ImageContentType", "TEXT");
+        await AddColumnIfNotExistsAsync(Tables.Vehicles, "ImageVersion", "INTEGER");
+        await AddColumnIfNotExistsAsync(Tables.Positions, "Gear", "INTEGER DEFAULT 0");
 
         // Battery health snapshot smoothing columns
-        await AddColumnIfNotExistsAsync("BatteryHealthSnapshots", "SmoothedCapacityKwh", "REAL");
-        await AddColumnIfNotExistsAsync("BatteryHealthSnapshots", "SmoothedHealthPercent", "REAL");
-        await AddColumnIfNotExistsAsync("BatteryHealthSnapshots", "ReadingConfidence", "REAL");
+        await AddColumnIfNotExistsAsync(Tables.BatteryHealthSnapshots, "SmoothedCapacityKwh", "REAL");
+        await AddColumnIfNotExistsAsync(Tables.BatteryHealthSnapshots, "SmoothedHealthPercent", "REAL");
+        await AddColumnIfNotExistsAsync(Tables.BatteryHealthSnapshots, "ReadingConfidence", "REAL");
 
         // Create UserPreferences table if it doesn't exist (for existing SQLite databases)
         async Task<bool> TableExistsAsync(string table)
@@ -320,11 +321,11 @@ using (var scope = app.Services.CreateScope())
             }
         }
 
-        if (!await TableExistsAsync("UserPreferences"))
+        if (!await TableExistsAsync(Tables.UserPreferences))
         {
             #pragma warning disable EF1002
-            await db.Database.ExecuteSqlRawAsync(@"
-                CREATE TABLE UserPreferences (
+            await db.Database.ExecuteSqlRawAsync($@"
+                CREATE TABLE {Tables.UserPreferences} (
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     UserId TEXT NOT NULL,
                     DistanceUnit INTEGER NOT NULL DEFAULT 0,
@@ -337,25 +338,25 @@ using (var scope = app.Services.CreateScope())
                     TimeZoneId TEXT,
                     CreatedAt TEXT NOT NULL,
                     UpdatedAt TEXT NOT NULL,
-                    FOREIGN KEY (UserId) REFERENCES AspNetUsers(Id) ON DELETE CASCADE
+                    FOREIGN KEY (UserId) REFERENCES {Tables.Users}(Id) ON DELETE CASCADE
                 )");
             await db.Database.ExecuteSqlRawAsync(
-                "CREATE UNIQUE INDEX IX_UserPreferences_UserId ON UserPreferences(UserId)");
+                $"CREATE UNIQUE INDEX IX_{Tables.UserPreferences}_UserId ON {Tables.UserPreferences}(UserId)");
             #pragma warning restore EF1002
-            logger.LogInformation("Created UserPreferences table");
+            logger.LogInformation("Created {Table} table", Tables.UserPreferences);
         }
         else
         {
             // Add TimeZoneId column if it doesn't exist (for existing UserPreferences tables)
-            await AddColumnIfNotExistsAsync("UserPreferences", "TimeZoneId", "TEXT");
+            await AddColumnIfNotExistsAsync(Tables.UserPreferences, "TimeZoneId", "TEXT");
         }
 
         // Create UserLocations table if it doesn't exist
-        if (!await TableExistsAsync("UserLocations"))
+        if (!await TableExistsAsync(Tables.UserLocations))
         {
             #pragma warning disable EF1002
-            await db.Database.ExecuteSqlRawAsync(@"
-                CREATE TABLE UserLocations (
+            await db.Database.ExecuteSqlRawAsync($@"
+                CREATE TABLE {Tables.UserLocations} (
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     UserId TEXT NOT NULL,
                     Name TEXT NOT NULL DEFAULT 'Home',
@@ -364,33 +365,33 @@ using (var scope = app.Services.CreateScope())
                     IsDefault INTEGER NOT NULL DEFAULT 0,
                     CreatedAt TEXT NOT NULL,
                     UpdatedAt TEXT NOT NULL,
-                    FOREIGN KEY (UserId) REFERENCES AspNetUsers(Id) ON DELETE CASCADE
+                    FOREIGN KEY (UserId) REFERENCES {Tables.Users}(Id) ON DELETE CASCADE
                 )");
             await db.Database.ExecuteSqlRawAsync(
-                "CREATE INDEX IX_UserLocations_UserId ON UserLocations(UserId)");
+                $"CREATE INDEX IX_{Tables.UserLocations}_UserId ON {Tables.UserLocations}(UserId)");
             #pragma warning restore EF1002
-            logger.LogInformation("Created UserLocations table");
+            logger.LogInformation("Created {Table} table", Tables.UserLocations);
 
             // Migrate existing home locations from UserPreferences
             #pragma warning disable EF1002
-            var migrated = await db.Database.ExecuteSqlRawAsync(@"
-                INSERT INTO UserLocations (UserId, Name, Latitude, Longitude, IsDefault, CreatedAt, UpdatedAt)
+            var migrated = await db.Database.ExecuteSqlRawAsync($@"
+                INSERT INTO {Tables.UserLocations} (UserId, Name, Latitude, Longitude, IsDefault, CreatedAt, UpdatedAt)
                 SELECT UserId, 'Home', HomeLatitude, HomeLongitude, 1, datetime('now'), datetime('now')
-                FROM UserPreferences
+                FROM {Tables.UserPreferences}
                 WHERE HomeLatitude IS NOT NULL AND HomeLongitude IS NOT NULL");
             #pragma warning restore EF1002
             if (migrated > 0)
             {
-                logger.LogInformation("Migrated {Count} home locations from UserPreferences to UserLocations", migrated);
+                logger.LogInformation("Migrated {Count} home locations from {From} to {To}", migrated, Tables.UserPreferences, Tables.UserLocations);
             }
         }
 
         // Create GeocodingCache table if it doesn't exist
-        if (!await TableExistsAsync("GeocodingCache"))
+        if (!await TableExistsAsync(Tables.GeocodingCache))
         {
             #pragma warning disable EF1002
-            await db.Database.ExecuteSqlRawAsync(@"
-                CREATE TABLE GeocodingCache (
+            await db.Database.ExecuteSqlRawAsync($@"
+                CREATE TABLE {Tables.GeocodingCache} (
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     Latitude REAL NOT NULL,
                     Longitude REAL NOT NULL,
@@ -402,9 +403,9 @@ using (var scope = app.Services.CreateScope())
                     CreatedAt TEXT NOT NULL
                 )");
             await db.Database.ExecuteSqlRawAsync(
-                "CREATE UNIQUE INDEX IX_GeocodingCache_Lat_Lon ON GeocodingCache(Latitude, Longitude)");
+                $"CREATE UNIQUE INDEX IX_{Tables.GeocodingCache}_Lat_Lon ON {Tables.GeocodingCache}(Latitude, Longitude)");
             #pragma warning restore EF1002
-            logger.LogInformation("Created GeocodingCache table");
+            logger.LogInformation("Created {Table} table", Tables.GeocodingCache);
         }
 
         logger.LogInformation("SQLite database ready");
