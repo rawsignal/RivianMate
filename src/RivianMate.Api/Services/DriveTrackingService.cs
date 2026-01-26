@@ -32,8 +32,7 @@ public class DriveTrackingService
         VehicleState currentState,
         CancellationToken cancellationToken = default)
     {
-        var vehicle = await _db.Vehicles
-            .FirstOrDefaultAsync(v => v.Id == vehicleId, cancellationToken);
+        var vehicle = await _db.Vehicles.FindWithoutImageAsync(vehicleId, cancellationToken);
 
         if (vehicle == null)
             return;

@@ -4,7 +4,7 @@ namespace RivianMate.Core.Entities;
 
 /// <summary>
 /// Represents a named charging location for a user (Home, Work, etc.).
-/// Charging sessions within 100m of these locations will be tagged with the location name.
+/// Charging sessions within 150m of these locations will be linked to this location.
 /// </summary>
 public class UserLocation : IUserOwnedEntity
 {
@@ -38,6 +38,11 @@ public class UserLocation : IUserOwnedEntity
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    // Navigation property
+    // Navigation properties
     public ApplicationUser? User { get; set; }
+
+    /// <summary>
+    /// Charging sessions that occurred at this location
+    /// </summary>
+    public ICollection<ChargingSession> ChargingSessions { get; set; } = new List<ChargingSession>();
 }

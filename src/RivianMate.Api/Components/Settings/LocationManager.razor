@@ -4,6 +4,7 @@
 
 @inject UserLocationService LocationService
 @inject VehicleService VehicleService
+@inject ChargingTrackingService ChargingTrackingService
 @inject IJSRuntime JS
 @inject ILogger<LocationManager> Logger
 
@@ -700,6 +701,13 @@
                 await LocationService.UpdateLocationAsync(
                     _editingLocation.Id, UserId, _modalName.Trim(),
                     _modalLatitude, _modalLongitude, _modalIsDefault);
+
+                // Sync the updated name/isDefault to all linked charging sessions
+                var syncedCount = await ChargingTrackingService.SyncLocationToSessionsAsync(_editingLocation.Id);
+                if (syncedCount > 0)
+                {
+                    Logger.LogInformation("Synced {Count} charging sessions to updated location", syncedCount);
+                }
             }
             else
             {
@@ -707,6 +715,13 @@
                 await LocationService.AddLocationAsync(
                     UserId, _modalName.Trim(),
                     _modalLatitude, _modalLongitude, _modalIsDefault);
+            }
+
+            // Retroactively match past charging sessions to the new/updated location
+            var matchedCount = await ChargingTrackingService.RematchSessionLocationsAsync(UserId);
+            if (matchedCount > 0)
+            {
+                Logger.LogInformation("Matched {Count} past charging sessions to saved locations", matchedCount);
             }
 
             await LoadLocationsAsync();

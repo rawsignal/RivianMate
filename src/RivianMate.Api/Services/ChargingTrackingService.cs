@@ -34,8 +34,7 @@ public class ChargingTrackingService
         VehicleState currentState,
         CancellationToken cancellationToken = default)
     {
-        var vehicle = await _db.Vehicles
-            .FirstOrDefaultAsync(v => v.Id == vehicleId, cancellationToken);
+        var vehicle = await _db.Vehicles.FindWithoutImageAsync(vehicleId, cancellationToken);
 
         if (vehicle == null)
             return;
@@ -98,6 +97,7 @@ public class ChargingTrackingService
         var matchingLocation = await GetMatchingLocationAsync(vehicle.OwnerId, state.Latitude, state.Longitude);
         if (matchingLocation != null)
         {
+            session.UserLocationId = matchingLocation.Id;
             session.LocationName = matchingLocation.Name;
             session.IsHomeCharging = matchingLocation.Name.Equals("Home", StringComparison.OrdinalIgnoreCase) || matchingLocation.IsDefault;
         }
@@ -170,6 +170,22 @@ public class ChargingTrackingService
         session.EndBatteryLevel = state.BatteryLevel;
         session.EndRangeEstimate = state.RangeEstimate;
 
+        // If location wasn't matched at start, try again now
+        // (user may have added their home location during or after the charging session)
+        if (session.UserLocationId == null && session.Latitude.HasValue && session.Longitude.HasValue)
+        {
+            var matchingLocation = await GetMatchingLocationAsync(vehicle.OwnerId, session.Latitude, session.Longitude);
+            if (matchingLocation != null)
+            {
+                session.UserLocationId = matchingLocation.Id;
+                session.LocationName = matchingLocation.Name;
+                session.IsHomeCharging = matchingLocation.Name.Equals("Home", StringComparison.OrdinalIgnoreCase) || matchingLocation.IsDefault;
+                _logger.LogInformation(
+                    "Matched charging session {SessionId} to location '{LocationName}' at session end",
+                    session.Id, matchingLocation.Name);
+            }
+        }
+
         // Calculate energy added
         if (session.EndBatteryLevel != null && session.StartBatteryLevel > 0)
         {
@@ -224,10 +240,11 @@ public class ChargingTrackingService
         await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "Ended charging session {SessionId} for vehicle {VehicleId}: {StartSoC}% -> {EndSoC}%, +{Energy:F1} kWh, {Duration:F1} hours",
+            "Ended charging session {SessionId} for vehicle {VehicleId}: {StartSoC}% -> {EndSoC}%, +{Energy:F1} kWh, {Duration:F1} hours, location: {Location}, isHome: {IsHome}",
             session.Id, session.VehicleId,
             session.StartBatteryLevel, session.EndBatteryLevel,
-            session.EnergyAddedKwh, (session.EndTime.Value - session.StartTime).TotalHours);
+            session.EnergyAddedKwh, (session.EndTime.Value - session.StartTime).TotalHours,
+            session.LocationName ?? "Unknown", session.IsHomeCharging);
     }
 
     private static ChargeType DetermineChargeType(VehicleState state, ChargeType? existing)
@@ -249,17 +266,128 @@ public class ChargingTrackingService
     /// </summary>
     private async Task<UserLocation?> GetMatchingLocationAsync(Guid? ownerId, double? latitude, double? longitude)
     {
-        if (latitude == null || longitude == null || ownerId == null)
+        if (ownerId == null)
+        {
+            _logger.LogDebug("Cannot match location: vehicle has no owner");
             return null;
+        }
+
+        if (latitude == null || longitude == null)
+        {
+            _logger.LogDebug("Cannot match location: charging session has no coordinates");
+            return null;
+        }
 
         try
         {
-            return await _locationService.GetMatchingLocationAsync(latitude.Value, longitude.Value, ownerId.Value);
+            var result = await _locationService.GetMatchingLocationAsync(latitude.Value, longitude.Value, ownerId.Value);
+            if (result != null)
+            {
+                _logger.LogDebug(
+                    "Matched charging location ({Lat}, {Lng}) to saved location '{Name}' for owner {OwnerId}",
+                    latitude, longitude, result.Name, ownerId);
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "No saved location within 100m of charging location ({Lat}, {Lng}) for owner {OwnerId}",
+                    latitude, longitude, ownerId);
+            }
+            return result;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error checking saved locations for owner {OwnerId}", ownerId);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Retroactively matches charging sessions to user locations.
+    /// Call this when a user adds a new saved location to update past sessions.
+    /// </summary>
+    public async Task<int> RematchSessionLocationsAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        // Get all vehicles for this user
+        var vehicles = await _db.Vehicles
+            .Where(v => v.OwnerId == userId)
+            .Select(v => v.Id)
+            .ToListAsync(cancellationToken);
+
+        if (!vehicles.Any())
+            return 0;
+
+        // Get sessions without a linked location that have coordinates
+        var unmatchedSessions = await _db.ChargingSessions
+            .Where(s => vehicles.Contains(s.VehicleId))
+            .Where(s => s.UserLocationId == null && s.Latitude != null && s.Longitude != null)
+            .ToListAsync(cancellationToken);
+
+        if (!unmatchedSessions.Any())
+            return 0;
+
+        int matched = 0;
+        foreach (var session in unmatchedSessions)
+        {
+            var matchingLocation = await _locationService.GetMatchingLocationAsync(
+                session.Latitude!.Value, session.Longitude!.Value, userId);
+
+            if (matchingLocation != null)
+            {
+                session.UserLocationId = matchingLocation.Id;
+                session.LocationName = matchingLocation.Name;
+                session.IsHomeCharging = matchingLocation.Name.Equals("Home", StringComparison.OrdinalIgnoreCase)
+                    || matchingLocation.IsDefault;
+                matched++;
+
+                _logger.LogInformation(
+                    "Retroactively matched charging session {SessionId} to location '{LocationName}'",
+                    session.Id, matchingLocation.Name);
+            }
+        }
+
+        if (matched > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation("Retroactively matched {Count} charging sessions for user {UserId}", matched, userId);
+        }
+
+        return matched;
+    }
+
+    /// <summary>
+    /// Updates cached location data on charging sessions when a UserLocation is modified.
+    /// Call this when a location is renamed or its IsDefault flag changes.
+    /// </summary>
+    public async Task<int> SyncLocationToSessionsAsync(int userLocationId, CancellationToken cancellationToken = default)
+    {
+        var location = await _db.UserLocations
+            .FirstOrDefaultAsync(l => l.Id == userLocationId, cancellationToken);
+
+        if (location == null)
+            return 0;
+
+        var linkedSessions = await _db.ChargingSessions
+            .Where(s => s.UserLocationId == userLocationId)
+            .ToListAsync(cancellationToken);
+
+        if (!linkedSessions.Any())
+            return 0;
+
+        var isHome = location.Name.Equals("Home", StringComparison.OrdinalIgnoreCase) || location.IsDefault;
+
+        foreach (var session in linkedSessions)
+        {
+            session.LocationName = location.Name;
+            session.IsHomeCharging = isHome;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Synced {Count} charging sessions to location '{Name}' (IsHome: {IsHome})",
+            linkedSessions.Count, location.Name, isHome);
+
+        return linkedSessions.Count;
     }
 }

@@ -303,6 +303,9 @@ using (var scope = app.Services.CreateScope())
         await AddColumnIfNotExistsAsync(Tables.BatteryHealthSnapshots, "SmoothedHealthPercent", "REAL");
         await AddColumnIfNotExistsAsync(Tables.BatteryHealthSnapshots, "ReadingConfidence", "REAL");
 
+        // Charging session location FK
+        await AddColumnIfNotExistsAsync(Tables.ChargingSessions, "UserLocationId", "INTEGER");
+
         // Create UserPreferences table if it doesn't exist (for existing SQLite databases)
         async Task<bool> TableExistsAsync(string table)
         {
@@ -420,6 +423,45 @@ using (var scope = app.Services.CreateScope())
         const int maxRetries = 10;
         const int delaySeconds = 3;
 
+        // Helper to add column if not exists (for post-migration schema updates)
+        async Task AddPostgresColumnIfNotExistsAsync(
+            RivianMateDbContext dbContext, string table, string column, string type, string? constraint = null)
+        {
+            var conn = dbContext.Database.GetDbConnection();
+            await conn.OpenAsync();
+            try
+            {
+                using var checkCmd = conn.CreateCommand();
+                checkCmd.CommandText = $@"
+                    SELECT COUNT(*) FROM information_schema.columns
+                    WHERE table_name = '{table}' AND column_name = '{column}'";
+                var exists = (long)(await checkCmd.ExecuteScalarAsync() ?? 0) > 0;
+
+                if (!exists)
+                {
+                    using var addCmd = conn.CreateCommand();
+                    var sql = $"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {type}";
+                    if (!string.IsNullOrEmpty(constraint))
+                        sql += $" {constraint}";
+                    addCmd.CommandText = sql;
+                    await addCmd.ExecuteNonQueryAsync();
+                    logger.LogInformation("Added {Column} column to {Table} table (PostgreSQL)", column, table);
+
+                    // Add index for FK
+                    if (constraint?.Contains("REFERENCES") == true)
+                    {
+                        using var indexCmd = conn.CreateCommand();
+                        indexCmd.CommandText = $"CREATE INDEX IF NOT EXISTS \"IX_{table}_{column}\" ON \"{table}\" (\"{column}\")";
+                        await indexCmd.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+            finally
+            {
+                await conn.CloseAsync();
+            }
+        }
+
         for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
@@ -430,6 +472,12 @@ using (var scope = app.Services.CreateScope())
                 {
                     logger.LogInformation("Applying database migrations...");
                     await db.Database.MigrateAsync();
+
+                    // Add UserLocationId FK to ChargingSessions if not exists (post-migration schema update)
+                    await AddPostgresColumnIfNotExistsAsync(
+                        db, Tables.ChargingSessions, "UserLocationId", "INTEGER",
+                        $"REFERENCES \"{Tables.UserLocations}\"(\"Id\") ON DELETE SET NULL");
+
                     logger.LogInformation("Database migrations applied successfully");
                     break;
                 }

@@ -39,8 +39,7 @@ public class BatteryHealthService
         int vehicleId,
         CancellationToken cancellationToken = default)
     {
-        var vehicle = await _db.Vehicles
-            .FirstOrDefaultAsync(v => v.Id == vehicleId, cancellationToken);
+        var vehicle = await _db.Vehicles.FindWithoutImageAsync(vehicleId, cancellationToken);
 
         if (vehicle == null)
         {

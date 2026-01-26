@@ -38,7 +38,7 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DataProtectionKeys");
+                    b.ToTable("DataProtectionKeys", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", b =>
@@ -201,7 +201,7 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("VehicleId", "Type", "Timestamp");
 
-                    b.ToTable("ActivityFeed");
+                    b.ToTable("ActivityFeed", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.ApplicationUser", b =>
@@ -365,7 +365,7 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("VehicleId", "Timestamp");
 
-                    b.ToTable("BatteryHealthSnapshots");
+                    b.ToTable("BatteryHealthSnapshots", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.BroadcastEmail", b =>
@@ -415,7 +415,7 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("BroadcastEmails");
+                    b.ToTable("BroadcastEmails", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.ChargingSession", b =>
@@ -516,7 +516,7 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("VehicleId", "StartTime");
 
-                    b.ToTable("ChargingSessions");
+                    b.ToTable("ChargingSessions", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.Drive", b =>
@@ -625,7 +625,7 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("VehicleId", "StartTime");
 
-                    b.ToTable("Drives");
+                    b.ToTable("Drives", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.EmailLog", b =>
@@ -676,7 +676,7 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("EmailLogs");
+                    b.ToTable("EmailLogs", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.GeocodingCache", b =>
@@ -722,7 +722,7 @@ namespace RivianMate.Infrastructure.Migrations
                     b.HasIndex("Latitude", "Longitude")
                         .IsUnique();
 
-                    b.ToTable("GeocodingCache");
+                    b.ToTable("GeocodingCache", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.Position", b =>
@@ -769,7 +769,7 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("DriveId", "Timestamp");
 
-                    b.ToTable("Positions");
+                    b.ToTable("Positions", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.RivianAccount", b =>
@@ -839,7 +839,7 @@ namespace RivianMate.Infrastructure.Migrations
                     b.HasIndex("UserId", "RivianEmail")
                         .IsUnique();
 
-                    b.ToTable("RivianAccounts");
+                    b.ToTable("RivianAccounts", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.SecurityEvent", b =>
@@ -879,7 +879,7 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("SecurityEvents");
+                    b.ToTable("SecurityEvents", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.Setting", b =>
@@ -910,7 +910,7 @@ namespace RivianMate.Infrastructure.Migrations
                     b.HasIndex("Key")
                         .IsUnique();
 
-                    b.ToTable("Settings");
+                    b.ToTable("Settings", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.UserDashboardConfig", b =>
@@ -945,7 +945,7 @@ namespace RivianMate.Infrastructure.Migrations
                     b.HasIndex("UserId", "CardId")
                         .IsUnique();
 
-                    b.ToTable("UserDashboardConfigs");
+                    b.ToTable("UserDashboardConfigs", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.UserLocation", b =>
@@ -983,7 +983,7 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("UserLocations");
+                    b.ToTable("UserLocations", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.UserPreferences", b =>
@@ -1034,7 +1034,7 @@ namespace RivianMate.Infrastructure.Migrations
                     b.HasIndex("UserId")
                         .IsUnique();
 
-                    b.ToTable("UserPreferences");
+                    b.ToTable("UserPreferences", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.UserRecoveryCode", b =>
@@ -1068,7 +1068,7 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "IsUsed");
 
-                    b.ToTable("UserRecoveryCodes");
+                    b.ToTable("UserRecoveryCodes", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.Vehicle", b =>
@@ -1176,7 +1176,7 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("Vin");
 
-                    b.ToTable("Vehicles");
+                    b.ToTable("Vehicles", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.VehicleState", b =>
@@ -1373,7 +1373,7 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("VehicleId", "Timestamp");
 
-                    b.ToTable("VehicleStates");
+                    b.ToTable("VehicleStates", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>

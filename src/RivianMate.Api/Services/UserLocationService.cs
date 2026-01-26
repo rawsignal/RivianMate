@@ -14,7 +14,8 @@ public class UserLocationService
     private readonly ILogger<UserLocationService> _logger;
 
     // Fixed radius for location detection (in meters)
-    private const double LocationRadiusMeters = 100;
+    // 150m accounts for GPS drift and larger properties
+    private const double LocationRadiusMeters = 150;
 
     public UserLocationService(IDbContextFactory<RivianMateDbContext> dbFactory, ILogger<UserLocationService> logger)
     {
@@ -166,13 +167,40 @@ public class UserLocationService
     {
         var locations = await GetLocationsAsync(userId);
 
+        if (!locations.Any())
+        {
+            _logger.LogDebug("User {UserId} has no saved locations", userId);
+            return null;
+        }
+
+        UserLocation? closestLocation = null;
+        double closestDistance = double.MaxValue;
+
         foreach (var location in locations)
         {
             var distance = CalculateDistanceMeters(latitude, longitude, location.Latitude, location.Longitude);
+
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                closestLocation = location;
+            }
+
             if (distance <= LocationRadiusMeters)
             {
+                _logger.LogDebug(
+                    "Location ({Lat}, {Lng}) matched '{Name}' at {Distance:F0}m for user {UserId}",
+                    latitude, longitude, location.Name, distance, userId);
                 return location;
             }
+        }
+
+        // Log the closest location even if not within radius (helps with debugging)
+        if (closestLocation != null)
+        {
+            _logger.LogDebug(
+                "Location ({Lat}, {Lng}) not matched - closest is '{Name}' at {Distance:F0}m (radius is {Radius}m) for user {UserId}",
+                latitude, longitude, closestLocation.Name, closestDistance, LocationRadiusMeters, userId);
         }
 
         return null;

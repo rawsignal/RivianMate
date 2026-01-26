@@ -111,7 +111,7 @@ else
                                 <span class="charging-list-date">@FormatSessionDate(session.StartTime)</span>
                             </div>
                             <div class="charging-list-meta">
-                                <span>@(session.LocationName ?? GetChargeTypeName(session.ChargeType))</span>
+                                <span>@GetSessionLocationDisplay(session)</span>
                                 <span>·</span>
                                 <span>@session.StartBatteryLevel.ToString("0")% → @(session.EndBatteryLevel?.ToString("0") ?? "—")%</span>
                             </div>
@@ -573,7 +573,7 @@ else
         ChargeType.DC_Fast => "dcfc",
         ChargeType.AC_Level2 => "level2",
         ChargeType.AC_Level1 => "level1",
-        _ => "home"
+        _ => "level1" // Default to level1 styling for unknown
     };
 
     private static string GetChargeTypeName(ChargeType? type) => type switch
@@ -581,8 +581,26 @@ else
         ChargeType.DC_Fast => "DC Fast Charge",
         ChargeType.AC_Level2 => "Level 2",
         ChargeType.AC_Level1 => "Level 1",
-        _ => "Home"
+        _ => "AC Charging" // Don't assume "Home" for unknown charge types
     };
+
+    /// <summary>
+    /// Get the display text for a session's location.
+    /// Shows location name if available, "Home" if marked as home charging, or charge type.
+    /// </summary>
+    private static string GetSessionLocationDisplay(ChargingSession session)
+    {
+        // If we have a location name, use it
+        if (!string.IsNullOrEmpty(session.LocationName))
+            return session.LocationName;
+
+        // If marked as home charging (even without location name), show "Home"
+        if (session.IsHomeCharging == true)
+            return "Home";
+
+        // Fall back to charge type
+        return GetChargeTypeName(session.ChargeType);
+    }
 
     /// <summary>
     /// Get the cost for a charging session.

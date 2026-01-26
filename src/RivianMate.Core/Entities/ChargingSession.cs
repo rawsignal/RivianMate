@@ -79,18 +79,25 @@ public class ChargingSession : IVehicleOwnedEntity
     
     // === Charge Type & Location ===
     public ChargeType ChargeType { get; set; } = ChargeType.Unknown;
-    
+
     /// <summary>
     /// Location where charging occurred
     /// </summary>
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
-    
+
     /// <summary>
-    /// Optional: Address or location name
+    /// FK to user's saved location (if matched)
+    /// </summary>
+    public int? UserLocationId { get; set; }
+    public UserLocation? UserLocation { get; set; }
+
+    /// <summary>
+    /// Cached location name for display (denormalized for performance).
+    /// Updated when UserLocation is linked or when geocoded.
     /// </summary>
     public string? LocationName { get; set; }
-    
+
     /// <summary>
     /// Is this a "home" charging location?
     /// </summary>

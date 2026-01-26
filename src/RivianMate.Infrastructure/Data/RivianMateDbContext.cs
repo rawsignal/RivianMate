@@ -168,12 +168,19 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
             entity.HasIndex(e => e.StartTime);
             entity.HasIndex(e => new { e.VehicleId, e.StartTime });
             entity.HasIndex(e => e.IsActive);
-            
+            entity.HasIndex(e => e.UserLocationId);
+
             entity.HasOne(e => e.Vehicle)
                 .WithMany(v => v.ChargingSessions)
                 .HasForeignKey(e => e.VehicleId)
                 .OnDelete(DeleteBehavior.Cascade);
-            
+
+            // Link to user's saved location (nullable - SET NULL on delete)
+            entity.HasOne(e => e.UserLocation)
+                .WithMany(l => l.ChargingSessions)
+                .HasForeignKey(e => e.UserLocationId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             entity.Property(e => e.LocationName).HasMaxLength(200);
         });
         
