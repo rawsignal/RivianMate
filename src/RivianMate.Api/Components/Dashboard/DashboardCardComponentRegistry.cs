@@ -23,6 +23,8 @@ public static class DashboardCardComponentRegistry
         ["efficiency"] = typeof(EfficiencyCard),
         ["software"] = typeof(SoftwareCard),
         ["vehicle-status"] = typeof(VehicleStatusCard),
+        ["referral"] = typeof(ReferralCard),
+        ["support"] = typeof(SupportCard),
     };
 
     /// <summary>

@@ -124,6 +124,7 @@ public class DevDataSeeder
             OriginalCapacityKwh = 135.0,
             EpaRangeMiles = 314,
             SoftwareVersion = "2024.50.0",
+            BuildDate = new DateTime(2023, 1, 26),
             CreatedAt = DateTime.UtcNow.AddMonths(-24),
             LastSeenAt = DateTime.UtcNow,
             IsActive = true

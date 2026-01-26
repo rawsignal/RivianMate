@@ -5,6 +5,7 @@
 @using Microsoft.JSInterop
 @using RivianMate.Api.Components.Shared
 @using RivianMate.Api.Components.Dashboard
+@using RivianMate.Api.Components.VehicleStatus
 @using RivianMate.Core.Enums
 @attribute [Authorize]
 @implements IDisposable
@@ -104,6 +105,9 @@
 
 <!-- Beta Banner -->
 <BetaBanner />
+
+<!-- Birthday Banner -->
+<BirthdayBanner Vehicle="_vehicle" />
 
 @if (_currentState?.IsInServiceMode == true)
 {

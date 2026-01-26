@@ -90,4 +90,5 @@ public class FeatureService
     public bool HasExportData => IsEnabled(Features.ExportData);
     public bool HasNotifications => IsEnabled(Features.Notifications);
     public bool HasApiAccess => IsEnabled(Features.ApiAccess);
+    public bool HasReferrals => IsEnabled(Features.Referrals);
 }

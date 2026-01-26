@@ -1,0 +1,297 @@
+@using Microsoft.JSInterop
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Entities
+
+@inject IJSRuntime JS
+
+@implements IDisposable
+
+@if (_show)
+{
+    <div class="birthday-overlay">
+        <div class="confetti-container">
+            @for (var i = 0; i < 60; i++)
+            {
+                var left = _random.Next(0, 100);
+                var delay = _random.Next(0, 3000);
+                var duration = _random.Next(2500, 5000);
+                var colorIndex = _random.Next(0, _colors.Length);
+                var size = _random.Next(6, 12);
+                var rotation = _random.Next(0, 360);
+                var shape = _random.Next(0, 3);
+                <div class="confetti-piece @(_shapes[shape])"
+                     style="left: @(left)%; animation-delay: @(delay)ms; animation-duration: @(duration)ms; background: @(_colors[colorIndex]); width: @(size)px; height: @(size * (shape == 0 ? 1 : 2))px; transform: rotate(@(rotation)deg);">
+                </div>
+            }
+        </div>
+
+        <div class="birthday-banner">
+            <button class="birthday-dismiss" @onclick="Dismiss" title="Dismiss">
+                <Icon Name="x" Size="18" />
+            </button>
+            <div class="birthday-icon">
+                <Icon Name="cake" Size="40" />
+            </div>
+            <div class="birthday-message">
+                <h2>Happy @FormatOrdinal(_age) Birthday!</h2>
+                <p>@(_vehicleName) was built @_age year@(_age != 1 ? "s" : "") ago today</p>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .birthday-overlay {
+        position: relative;
+        margin-bottom: var(--space-6);
+        overflow: hidden;
+    }
+
+    .birthday-banner {
+        position: relative;
+        z-index: 2;
+        background: linear-gradient(135deg, rgba(255, 171, 0, 0.15) 0%, rgba(255, 100, 50, 0.12) 50%, rgba(180, 80, 255, 0.12) 100%);
+        border: 1px solid rgba(255, 171, 0, 0.3);
+        border-radius: var(--radius-lg);
+        padding: var(--space-6) var(--space-8);
+        display: flex;
+        align-items: center;
+        gap: var(--space-5);
+        justify-content: center;
+        animation: bannerSlideIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .birthday-icon {
+        width: 72px;
+        height: 72px;
+        background: rgba(255, 171, 0, 0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--color-accent);
+        flex-shrink: 0;
+        animation: iconBounce 1s ease 0.3s;
+    }
+
+    .birthday-message {
+        text-align: left;
+    }
+
+    .birthday-message h2 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--color-text-primary);
+        margin: 0 0 var(--space-1);
+    }
+
+    .birthday-message p {
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+        margin: 0;
+    }
+
+    .birthday-dismiss {
+        position: absolute;
+        top: var(--space-3);
+        right: var(--space-3);
+        background: transparent;
+        border: none;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        padding: var(--space-1);
+        border-radius: var(--radius-md);
+        transition: color 0.2s, background 0.2s;
+    }
+
+    .birthday-dismiss:hover {
+        color: var(--color-text-primary);
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Confetti */
+    .confetti-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1;
+        pointer-events: none;
+        overflow: hidden;
+        border-radius: var(--radius-lg);
+    }
+
+    .confetti-piece {
+        position: absolute;
+        top: -20px;
+        opacity: 0;
+        animation-name: confettiFall;
+        animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        animation-fill-mode: forwards;
+        animation-iteration-count: 1;
+    }
+
+    .confetti-rect {
+        border-radius: 2px;
+    }
+
+    .confetti-square {
+        border-radius: 1px;
+    }
+
+    .confetti-circle {
+        border-radius: 50%;
+    }
+
+    @@keyframes confettiFall {
+        0% {
+            opacity: 1;
+            top: -10%;
+            transform: translateX(0) rotateZ(0deg);
+        }
+        25% {
+            opacity: 1;
+        }
+        100% {
+            opacity: 0;
+            top: 100%;
+            transform: translateX(calc(var(--drift, 30px))) rotateZ(720deg);
+        }
+    }
+
+    @@keyframes bannerSlideIn {
+        0% {
+            opacity: 0;
+            transform: translateY(-20px) scale(0.95);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    @@keyframes iconBounce {
+        0%, 100% { transform: scale(1); }
+        30% { transform: scale(1.2); }
+        50% { transform: scale(0.95); }
+        70% { transform: scale(1.08); }
+    }
+
+    @@media (max-width: 640px) {
+        .birthday-banner {
+            flex-direction: column;
+            text-align: center;
+            padding: var(--space-5);
+        }
+
+        .birthday-message {
+            text-align: center;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public Vehicle? Vehicle { get; set; }
+
+    private bool _show;
+    private bool _checked;
+    private int _age;
+    private string _vehicleName = "";
+    private System.Timers.Timer? _autoDismissTimer;
+
+    private readonly Random _random = new(42); // fixed seed for consistent confetti layout across renders
+    private readonly string[] _colors = { "#FFAB00", "#4A90E2", "#22C55E", "#EF4444", "#8B5CF6", "#F97316", "#EC4899", "#06B6D4" };
+    private readonly string[] _shapes = { "confetti-square", "confetti-rect", "confetti-circle" };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_checked) return;
+        if (Vehicle?.BuildDate == null) return;
+        _checked = true;
+
+        var today = DateTime.Today;
+        var buildDate = Vehicle.BuildDate.Value;
+
+        // Check if today is the anniversary (same month and day)
+        if (today.Month != buildDate.Month || today.Day != buildDate.Day) return;
+
+        _age = today.Year - buildDate.Year;
+        if (_age <= 0) return;
+
+        // Check if already dismissed this year
+        var dismissKey = $"rivianmate_birthday_{Vehicle.Id}_{today.Year}";
+        try
+        {
+            var dismissed = await JS.InvokeAsync<string?>("rivianMate.storage.get", dismissKey);
+            if (dismissed == "1") return;
+        }
+        catch
+        {
+            // JS interop can fail during prerendering
+        }
+
+        _vehicleName = Vehicle.Name ?? Vehicle.Model.ToString();
+        _show = true;
+        StateHasChanged();
+
+        // Auto-dismiss after 20 seconds
+        _autoDismissTimer = new System.Timers.Timer(20000);
+        _autoDismissTimer.Elapsed += async (_, _) =>
+        {
+            await DismissInternal();
+        };
+        _autoDismissTimer.AutoReset = false;
+        _autoDismissTimer.Start();
+    }
+
+    private async Task Dismiss()
+    {
+        await DismissInternal();
+    }
+
+    private async Task DismissInternal()
+    {
+        _autoDismissTimer?.Stop();
+        _autoDismissTimer?.Dispose();
+        _autoDismissTimer = null;
+
+        _show = false;
+        await InvokeAsync(StateHasChanged);
+
+        if (Vehicle != null)
+        {
+            var dismissKey = $"rivianmate_birthday_{Vehicle.Id}_{DateTime.Today.Year}";
+            try
+            {
+                await JS.InvokeVoidAsync("rivianMate.storage.set", dismissKey, "1");
+            }
+            catch
+            {
+                // Ignore
+            }
+        }
+    }
+
+    private static string FormatOrdinal(int n)
+    {
+        if (n <= 0) return n.ToString();
+        var suffix = (n % 100) switch
+        {
+            11 or 12 or 13 => "th",
+            _ => (n % 10) switch
+            {
+                1 => "st",
+                2 => "nd",
+                3 => "rd",
+                _ => "th"
+            }
+        };
+        return $"{n}{suffix}";
+    }
+
+    public void Dispose()
+    {
+        _autoDismissTimer?.Dispose();
+    }
+}

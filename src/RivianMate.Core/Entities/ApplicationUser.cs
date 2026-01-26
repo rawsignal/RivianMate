@@ -48,6 +48,16 @@ public class ApplicationUser : IdentityUser<Guid>
     public bool EmailVerificationReminderSent { get; set; }
 
     /// <summary>
+    /// User's unique referral code (e.g., "LOGAN-7K2M"), generated on demand
+    /// </summary>
+    public string? ReferralCode { get; set; }
+
+    /// <summary>
+    /// The user who referred this user (nullable)
+    /// </summary>
+    public Guid? ReferredByUserId { get; set; }
+
+    /// <summary>
     /// When the user accepted the Terms of Service
     /// </summary>
     public DateTime? TermsAcceptedAt { get; set; }

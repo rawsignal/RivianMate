@@ -1,0 +1,261 @@
+@page "/referrals"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Enums
+@using RivianMate.Core.Licensing
+@attribute [Authorize]
+@inject ReferralService ReferralService
+@inject FeatureService FeatureService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+@inject ILogger<Referrals> Logger
+
+<PageTitle>Referrals - RivianMate</PageTitle>
+
+<FeatureGate Feature="@Features.Referrals">
+
+<!-- Page Header -->
+<div style="margin-bottom: var(--space-6);">
+    <a href="/" style="font-size: 0.875rem; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+        <Icon Name="chevron-left" Size="16" />
+        Back to Dashboard
+    </a>
+    <h1 style="display: flex; align-items: center; gap: var(--space-3);">
+        <Icon Name="gift" Size="28" Style="color: var(--color-accent);" />
+        Refer a Friend
+    </h1>
+    <p style="color: var(--color-text-muted); margin-top: var(--space-2);">
+        Share your referral code and earn free months of RivianMate Pro
+    </p>
+</div>
+
+@if (_loading)
+{
+    <div class="card" style="text-align: center; padding: var(--space-12);">
+        <div class="spinner" style="width: 48px; height: 48px; margin: 0 auto var(--space-4);"></div>
+        <p>Loading referral info...</p>
+    </div>
+}
+else
+{
+    <!-- Referral Code Card -->
+    <div class="card" style="margin-bottom: var(--space-6);">
+        <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4);">
+            <Icon Name="link" Size="20" Style="color: var(--color-accent);" />
+            <h2 style="margin: 0;">Your Referral Code</h2>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: var(--space-4);">
+            <!-- Code display -->
+            <div style="display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;">
+                <div style="background: var(--color-bg-elevated); border: 2px solid var(--color-accent); border-radius: var(--radius-md); padding: var(--space-3) var(--space-6); font-size: 1.5rem; font-weight: 700; font-family: var(--font-mono, monospace); letter-spacing: 0.1em; color: var(--color-accent);">
+                    @_referralCode
+                </div>
+                <button class="btn btn-secondary" @onclick="CopyCode" style="display: inline-flex; align-items: center; gap: var(--space-2);">
+                    <Icon Name="@(_copied ? "check" : "copy")" Size="16" />
+                    @(_copied ? "Copied!" : "Copy Code")
+                </button>
+            </div>
+
+            <!-- Share link -->
+            <div>
+                <label style="display: block; font-size: 0.875rem; color: var(--color-text-muted); margin-bottom: var(--space-1);">Share this registration link:</label>
+                <div style="display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;">
+                    <code style="background: var(--color-bg-elevated); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font-size: 0.875rem; word-break: break-all;">@_shareLink</code>
+                    <button class="btn btn-secondary" style="font-size: 0.875rem; padding: var(--space-1) var(--space-3);" @onclick="CopyLink">
+                        <Icon Name="@(_linkCopied ? "check" : "copy")" Size="14" />
+                        @(_linkCopied ? "Copied!" : "Copy")
+                    </button>
+                </div>
+            </div>
+
+            <p style="font-size: 0.875rem; color: var(--color-text-muted); margin: 0;">
+                When someone signs up using your code, verifies their email, and links a Rivian account,
+                you both receive 1 month of free RivianMate Pro credit.
+            </p>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-6);">
+        <div class="card" style="text-align: center; padding: var(--space-4);">
+            <div style="font-size: 2rem; font-weight: 700; color: var(--color-accent);">@_stats.TotalReferrals</div>
+            <div style="font-size: 0.875rem; color: var(--color-text-muted);">Total Referrals</div>
+        </div>
+        <div class="card" style="text-align: center; padding: var(--space-4);">
+            <div style="font-size: 2rem; font-weight: 700; color: var(--color-warning);">@_stats.PendingReferrals</div>
+            <div style="font-size: 0.875rem; color: var(--color-text-muted);">Pending</div>
+        </div>
+        <div class="card" style="text-align: center; padding: var(--space-4);">
+            <div style="font-size: 2rem; font-weight: 700; color: var(--color-success);">@_stats.CompletedReferrals</div>
+            <div style="font-size: 0.875rem; color: var(--color-text-muted);">Completed</div>
+        </div>
+        <div class="card" style="text-align: center; padding: var(--space-4);">
+            <div style="font-size: 2rem; font-weight: 700; color: var(--color-accent);">@_stats.AvailableCredits</div>
+            <div style="font-size: 0.875rem; color: var(--color-text-muted);">Credits Available</div>
+        </div>
+    </div>
+
+    <!-- Referral List -->
+    <div class="card">
+        <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4);">
+            <Icon Name="users" Size="20" Style="color: var(--color-accent);" />
+            <h2 style="margin: 0;">Your Referrals</h2>
+        </div>
+
+        @if (_referrals == null || !_referrals.Any())
+        {
+            <div style="text-align: center; padding: var(--space-8); color: var(--color-text-muted);">
+                <Icon Name="users" Size="48" Style="opacity: 0.3; margin-bottom: var(--space-4);" />
+                <p>No referrals yet. Share your code to get started!</p>
+            </div>
+        }
+        else
+        {
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--color-border);">
+                            <th style="text-align: left; padding: var(--space-3); font-size: 0.875rem; color: var(--color-text-muted); font-weight: 500;">User</th>
+                            <th style="text-align: left; padding: var(--space-3); font-size: 0.875rem; color: var(--color-text-muted); font-weight: 500;">Status</th>
+                            <th style="text-align: left; padding: var(--space-3); font-size: 0.875rem; color: var(--color-text-muted); font-weight: 500;">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var referral in _referrals)
+                        {
+                            <tr style="border-bottom: 1px solid var(--color-border-subtle, var(--color-border));">
+                                <td style="padding: var(--space-3);">@referral.ReferredUserName</td>
+                                <td style="padding: var(--space-3);">
+                                    <span style="display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: 0.75rem; font-weight: 600; @GetStatusStyle(referral.Status)">
+                                        @GetStatusLabel(referral.Status)
+                                    </span>
+                                </td>
+                                <td style="padding: var(--space-3); color: var(--color-text-muted); font-size: 0.875rem;">
+                                    @referral.CreatedAt.ToString("MMM d, yyyy")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <!-- Credit Summary -->
+    @if (_stats.TotalCreditsEarned > 0)
+    {
+        <div class="card" style="margin-top: var(--space-6);">
+            <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4);">
+                <Icon Name="gift" Size="20" Style="color: var(--color-accent);" />
+                <h2 style="margin: 0;">Credit Summary</h2>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-4);">
+                <div>
+                    <div style="font-size: 0.875rem; color: var(--color-text-muted);">Total Earned</div>
+                    <div style="font-size: 1.25rem; font-weight: 600;">@_stats.TotalCreditsEarned month@(_stats.TotalCreditsEarned != 1 ? "s" : "")</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.875rem; color: var(--color-text-muted);">Available</div>
+                    <div style="font-size: 1.25rem; font-weight: 600; color: var(--color-success);">@_stats.AvailableCredits month@(_stats.AvailableCredits != 1 ? "s" : "")</div>
+                </div>
+                <div>
+                    <div style="font-size: 0.875rem; color: var(--color-text-muted);">Used</div>
+                    <div style="font-size: 1.25rem; font-weight: 600;">@_stats.UsedCredits month@(_stats.UsedCredits != 1 ? "s" : "")</div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+</FeatureGate>
+
+@code {
+    private bool _loading = true;
+    private string _referralCode = "";
+    private string _shareLink = "";
+    private bool _copied;
+    private bool _linkCopied;
+    private ReferralStats _stats = new();
+    private List<ReferralInfo>? _referrals;
+    private Guid _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdClaim, out _userId))
+                return;
+
+            _referralCode = await ReferralService.GetOrCreateReferralCodeAsync(_userId);
+            var baseUrl = NavigationManager.BaseUri.TrimEnd('/');
+            _shareLink = $"{baseUrl}/register?ref={_referralCode}";
+
+            _stats = await ReferralService.GetReferralStatsAsync(_userId);
+            _referrals = await ReferralService.GetReferralsAsync(_userId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading referral data");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CopyCode()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _referralCode);
+            _copied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copied = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to copy referral code to clipboard");
+        }
+    }
+
+    private async Task CopyLink()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _shareLink);
+            _linkCopied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _linkCopied = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to copy referral link to clipboard");
+        }
+    }
+
+    private static string GetStatusLabel(ReferralStatus status) => status switch
+    {
+        ReferralStatus.Pending => "Pending",
+        ReferralStatus.Qualified => "Qualified",
+        ReferralStatus.Rewarded => "Rewarded",
+        ReferralStatus.Expired => "Expired",
+        _ => "Unknown"
+    };
+
+    private static string GetStatusStyle(ReferralStatus status) => status switch
+    {
+        ReferralStatus.Pending => "background: rgba(255, 193, 7, 0.15); color: var(--color-warning);",
+        ReferralStatus.Qualified => "background: rgba(0, 123, 255, 0.15); color: var(--color-accent);",
+        ReferralStatus.Rewarded => "background: rgba(40, 167, 69, 0.15); color: var(--color-success);",
+        ReferralStatus.Expired => "background: rgba(108, 117, 125, 0.15); color: var(--color-text-muted);",
+        _ => ""
+    };
+}

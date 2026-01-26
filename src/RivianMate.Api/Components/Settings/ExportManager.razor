@@ -1,0 +1,468 @@
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Services
+@using RivianMate.Api.Services.Jobs
+@using RivianMate.Core.Entities
+@using RivianMate.Core.Enums
+
+@inject DataExportService ExportService
+@inject VehicleService VehicleService
+@inject ILogger<ExportManager> Logger
+
+@implements IDisposable
+
+<div class="export-manager">
+    <div class="export-form">
+        @if (_vehicles.Count > 1)
+        {
+            <div class="form-group">
+                <label class="form-label">Vehicle</label>
+                <select class="form-select" @bind="_selectedVehicleId">
+                    @foreach (var vehicle in _vehicles)
+                    {
+                        <option value="@vehicle.Id">@(vehicle.Name ?? vehicle.Vin ?? $"Vehicle {vehicle.Id}")</option>
+                    }
+                </select>
+            </div>
+        }
+
+        <div class="form-group">
+            <label class="form-label">Export Type</label>
+            <select class="form-select" @bind="_selectedExportType">
+                <option value="Drives">Drives</option>
+                <option value="Charging">Charging Sessions</option>
+                <option value="BatteryHealth">Battery Health</option>
+                <option value="All">All Data (ZIP)</option>
+            </select>
+        </div>
+
+        <button class="btn btn-primary" @onclick="RequestExportAsync" disabled="@(_isRequesting || _selectedVehicleId == 0)">
+            @if (_isRequesting)
+            {
+                <div class="loading-spinner-sm"></div>
+                <span>Requesting...</span>
+            }
+            else
+            {
+                <Icon Name="download" Size="16" />
+                <span>Export</span>
+            }
+        </button>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="alert alert-error" style="margin-top: var(--space-3);">
+                @_errorMessage
+            </div>
+        }
+
+        @if (_exportSuccess)
+        {
+            <div class="alert alert-success" style="margin-top: var(--space-3);">
+                <Icon Name="check" Size="16" />
+                Export queued
+            </div>
+        }
+    </div>
+
+    @if (_exports.Count > 0)
+    {
+        <div class="export-history">
+            <h3 class="export-history-title">Recent Exports</h3>
+            @foreach (var export in _exports)
+            {
+                <div class="export-item">
+                    <div class="export-item-info">
+                        <div class="export-item-header">
+                            <Icon Name="@GetExportTypeIcon(export.ExportType)" Size="16" Style="color: var(--color-accent);" />
+                            <span class="export-item-type">@GetExportTypeLabel(export.ExportType)</span>
+                        </div>
+                        <span class="export-item-date">
+                            @export.CreatedAt.ToString("MMM d, yyyy h:mm tt")
+                        </span>
+                    </div>
+                    <div class="export-item-status">
+                        @switch (export.Status)
+                        {
+                            case ExportStatus.Pending:
+                            case ExportStatus.Processing:
+                                <div class="status-badge status-processing">
+                                    <div class="loading-spinner-sm"></div>
+                                    <span>Processing</span>
+                                </div>
+                                break;
+
+                            case ExportStatus.Completed:
+                                if (DateTime.UtcNow < export.ExpiresAt)
+                                {
+                                    <div class="export-item-meta">
+                                        <span>@FormatFileSize(export.FileSizeBytes) · @export.RecordCount records</span>
+                                    </div>
+                                    <a href="/api/exports/@export.DownloadToken" class="btn btn-primary btn-sm" target="_blank">
+                                        <Icon Name="download" Size="14" />
+                                        Download
+                                    </a>
+                                }
+                                else
+                                {
+                                    <div class="status-badge status-expired">Expired</div>
+                                }
+                                break;
+
+                            case ExportStatus.Failed:
+                                <div class="status-badge status-failed" title="@export.ErrorMessage">
+                                    <Icon Name="alert-triangle" Size="14" />
+                                    Failed
+                                </div>
+                                break;
+
+                            case ExportStatus.Expired:
+                                <div class="status-badge status-expired">Expired</div>
+                                break;
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .export-manager {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-4);
+    }
+
+    .export-form {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: var(--space-3);
+    }
+
+    .export-form .form-group {
+        margin-bottom: 0;
+    }
+
+    .export-form .form-select {
+        max-width: 220px;
+    }
+
+    .export-form .btn {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        white-space: nowrap;
+    }
+
+    .export-history {
+        border-top: 1px solid var(--color-border);
+        padding-top: var(--space-4);
+    }
+
+    .export-history-title {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--color-text-muted);
+        margin: 0 0 var(--space-3);
+    }
+
+    .export-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: var(--space-3) 0;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .export-item:last-child {
+        border-bottom: none;
+    }
+
+    .export-item-info {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+    }
+
+    .export-item-header {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+    }
+
+    .export-item-type {
+        font-weight: 500;
+        color: var(--color-text-primary);
+        font-size: 0.875rem;
+    }
+
+    .export-item-date {
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+    }
+
+    .export-item-status {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+    }
+
+    .export-item-meta {
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+    }
+
+    .status-badge {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+        font-size: 0.75rem;
+        padding: 2px 8px;
+        border-radius: var(--radius-sm);
+        font-weight: 500;
+    }
+
+    .status-processing {
+        background: rgba(255, 171, 0, 0.15);
+        color: var(--color-accent);
+    }
+
+    .status-failed {
+        background: rgba(239, 68, 68, 0.15);
+        color: var(--color-error);
+    }
+
+    .status-expired {
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--color-text-muted);
+    }
+
+    .loading-spinner-sm {
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255, 171, 0, 0.3);
+        border-top-color: var(--color-accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    .btn-sm {
+        font-size: 0.75rem;
+        padding: var(--space-1) var(--space-2);
+    }
+
+    .alert-error {
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        color: var(--color-error);
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-md);
+        font-size: 0.875rem;
+    }
+
+    .alert-success {
+        background: rgba(34, 197, 94, 0.1);
+        border: 1px solid rgba(34, 197, 94, 0.3);
+        color: #22c55e;
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-md);
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: 0.875rem;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    @@media (max-width: 640px) {
+        .export-form {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .export-form .form-select {
+            max-width: 100%;
+        }
+
+        .export-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: var(--space-2);
+        }
+
+        .export-item-status {
+            align-self: flex-end;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public Guid UserId { get; set; }
+
+    private List<Vehicle> _vehicles = new();
+    private List<DataExport> _exports = new();
+    private int _selectedVehicleId;
+    private string _selectedExportType = "Drives";
+    private bool _isRequesting;
+    private bool _exportSuccess;
+    private string? _errorMessage;
+    private System.Timers.Timer? _pollTimer;
+    private System.Timers.Timer? _successTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadVehiclesAsync();
+        await LoadExportsAsync();
+        StartPollingIfNeeded();
+    }
+
+    private async Task LoadVehiclesAsync()
+    {
+        try
+        {
+            _vehicles = await VehicleService.GetVehiclesForUserAsync(UserId);
+            if (_vehicles.Count > 0 && _selectedVehicleId == 0)
+            {
+                _selectedVehicleId = _vehicles[0].Id;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load vehicles for export");
+        }
+    }
+
+    private async Task LoadExportsAsync()
+    {
+        try
+        {
+            _exports = await ExportService.GetExportsForUserAsync(UserId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load exports");
+        }
+    }
+
+    private async Task RequestExportAsync()
+    {
+        _isRequesting = true;
+        _errorMessage = null;
+        _exportSuccess = false;
+
+        try
+        {
+            var (export, error) = await ExportService.RequestExportAsync(
+                UserId, _selectedVehicleId, _selectedExportType);
+
+            if (error != null)
+            {
+                _errorMessage = error;
+                return;
+            }
+
+            if (export != null)
+            {
+                DataExportJob.Enqueue(export.Id);
+                _exportSuccess = true;
+                await LoadExportsAsync();
+                StartPollingIfNeeded();
+                HideSuccessAfterDelay();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to request export");
+            _errorMessage = "Failed to request export. Please try again.";
+        }
+        finally
+        {
+            _isRequesting = false;
+        }
+    }
+
+    private void StartPollingIfNeeded()
+    {
+        var hasPending = _exports.Any(e =>
+            e.Status == ExportStatus.Pending || e.Status == ExportStatus.Processing);
+
+        if (hasPending && _pollTimer == null)
+        {
+            _pollTimer = new System.Timers.Timer(3000);
+            _pollTimer.Elapsed += async (_, _) =>
+            {
+                try
+                {
+                    await LoadExportsAsync();
+                    await InvokeAsync(StateHasChanged);
+
+                    var stillPending = _exports.Any(e =>
+                        e.Status == ExportStatus.Pending || e.Status == ExportStatus.Processing);
+
+                    if (!stillPending)
+                    {
+                        _pollTimer?.Stop();
+                        _pollTimer?.Dispose();
+                        _pollTimer = null;
+                    }
+                }
+                catch
+                {
+                    // Ignore polling errors
+                }
+            };
+            _pollTimer.AutoReset = true;
+            _pollTimer.Start();
+        }
+    }
+
+    private void HideSuccessAfterDelay()
+    {
+        _successTimer?.Dispose();
+        _successTimer = new System.Timers.Timer(2000);
+        _successTimer.Elapsed += (_, _) =>
+        {
+            _exportSuccess = false;
+            InvokeAsync(StateHasChanged);
+            _successTimer?.Dispose();
+        };
+        _successTimer.AutoReset = false;
+        _successTimer.Start();
+    }
+
+    private static string GetExportTypeIcon(string exportType) => exportType switch
+    {
+        "Drives" => "car",
+        "Charging" => "zap",
+        "BatteryHealth" => "battery",
+        "All" => "file-text",
+        _ => "file-text"
+    };
+
+    private static string GetExportTypeLabel(string exportType) => exportType switch
+    {
+        "Drives" => "Drives",
+        "Charging" => "Charging Sessions",
+        "BatteryHealth" => "Battery Health",
+        "All" => "All Data",
+        _ => exportType
+    };
+
+    private static string FormatFileSize(long? bytes)
+    {
+        if (bytes == null) return "";
+        var b = bytes.Value;
+        if (b >= 1024 * 1024) return $"{b / (1024.0 * 1024.0):F1} MB";
+        if (b >= 1024) return $"{b / 1024.0:F1} KB";
+        return $"{b} B";
+    }
+
+    public void Dispose()
+    {
+        _pollTimer?.Dispose();
+        _successTimer?.Dispose();
+    }
+}

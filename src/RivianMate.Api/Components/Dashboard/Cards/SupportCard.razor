@@ -1,0 +1,48 @@
+@using RivianMate.Api.Components.Shared
+
+@if (Compact)
+{
+    <div class="bottom-stat-card">
+        <div class="bottom-stat-label">
+            <Icon Name="@_definition.Icon" Size="14" />
+            @_definition.Title
+        </div>
+        <p class="bottom-stat-value">
+            <a href="https://ko-fi.com/rossignolsoftwareservicesllc" target="_blank" rel="noopener noreferrer" style="color: var(--color-accent); text-decoration: none; font-size: 0.85rem;">
+                Ko-fi <Icon Name="external-link" Size="12" />
+            </a>
+        </p>
+    </div>
+}
+else
+{
+    <CardWrapper Definition="_definition">
+        <div class="support-card-content" style="text-align: center; padding: 0.5rem;">
+            <p style="margin: 0 0 0.75rem; color: var(--color-text-secondary); font-size: 0.9rem;">
+                If RivianMate has been useful, consider supporting its development.
+            </p>
+            <a href="https://ko-fi.com/rossignolsoftwareservicesllc"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="btn btn-outline"
+               style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                <Icon Name="coffee" Size="16" />
+                Support on Ko-fi
+            </a>
+        </div>
+    </CardWrapper>
+}
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private bool Compact => Context?.IsCompact ?? false;
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "support",
+        Icon = "coffee",
+        Title = "Support RivianMate"
+    };
+}

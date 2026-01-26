@@ -154,6 +154,17 @@ public class EmailTriggerService : IEmailTrigger
         }
     }
 
+    /// <inheritdoc />
+    public void FireReferralCreditAwarded(string toEmail, Guid userId, string? userName, string otherPartyName, int creditAmount)
+    {
+        Fire(EmailTriggers.ReferralCreditAwarded, toEmail, new
+        {
+            UserName = userName ?? "there",
+            ReferredName = otherPartyName,
+            CreditAmount = creditAmount.ToString()
+        }, userId);
+    }
+
     private static Dictionary<string, string> ConvertToTokens(object context)
     {
         var tokens = new Dictionary<string, string>();
@@ -221,6 +232,11 @@ public interface IEmailTrigger
     /// Fire a security alert email.
     /// </summary>
     void FireSecurityAlert(string toEmail, Guid userId, string alertType, object details);
+
+    /// <summary>
+    /// Fire a referral credit awarded email.
+    /// </summary>
+    void FireReferralCreditAwarded(string toEmail, Guid userId, string? userName, string otherPartyName, int creditAmount);
 }
 
 /// <summary>
@@ -240,4 +256,5 @@ public static class EmailTriggers
     public const string ChargingInterrupted = "ChargingInterrupted";
     public const string SoftwareUpdate = "SoftwareUpdate";
     public const string AdminBroadcast = "AdminBroadcast";
+    public const string ReferralCreditAwarded = "ReferralCreditAwarded";
 }

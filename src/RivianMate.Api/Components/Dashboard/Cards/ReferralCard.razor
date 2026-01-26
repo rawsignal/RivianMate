@@ -1,0 +1,84 @@
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Components.Dashboard
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ReferralService ReferralService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<CardWrapper Definition="@_definition">
+    @if (_loading)
+    {
+        <div class="card-loading-state">
+            <div class="spinner"></div>
+            <p>Loading...</p>
+        </div>
+    }
+    else
+    {
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+            <!-- Referral Code -->
+            @if (!string.IsNullOrEmpty(_referralCode))
+            {
+                <div style="display: flex; align-items: center; gap: var(--space-2);">
+                    <code style="background: var(--color-bg-elevated); border: 1px solid var(--color-accent); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-3); font-size: 1.1rem; font-weight: 700; letter-spacing: 0.05em; color: var(--color-accent);">
+                        @_referralCode
+                    </code>
+                </div>
+            }
+
+            <!-- Quick Stats -->
+            <div style="display: flex; gap: var(--space-4);">
+                <div>
+                    <div style="font-size: 1.25rem; font-weight: 700;">@_stats.TotalReferrals</div>
+                    <div style="font-size: 0.75rem; color: var(--color-text-muted);">Referrals</div>
+                </div>
+                <div>
+                    <div style="font-size: 1.25rem; font-weight: 700; color: var(--color-success);">@_stats.AvailableCredits</div>
+                    <div style="font-size: 0.75rem; color: var(--color-text-muted);">Credits</div>
+                </div>
+            </div>
+        </div>
+    }
+</CardWrapper>
+
+@code {
+    [Parameter]
+    public DashboardContext? Context { get; set; }
+
+    private bool _loading = true;
+    private string? _referralCode;
+    private ReferralStats _stats = new();
+
+    private static readonly DashboardCardDefinition _definition = new()
+    {
+        CardId = "referral",
+        Icon = "gift",
+        Title = "Referrals",
+        DetailUrl = "/referrals",
+        DetailLabel = "View All"
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_referralCode != null)
+            return;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (Guid.TryParse(userIdClaim, out var userId))
+            {
+                _referralCode = await ReferralService.GetOrCreateReferralCodeAsync(userId);
+                _stats = await ReferralService.GetReferralStatsAsync(userId);
+            }
+        }
+        catch (Exception)
+        {
+            // Silently fail - card is non-critical
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

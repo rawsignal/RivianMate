@@ -22,6 +22,7 @@ public class RivianAccountService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly NhtsaVinDecoderService _nhtsaService;
     private readonly VehicleStateNotifier _stateNotifier;
+    private readonly ReferralService _referralService;
     private readonly ILogger<RivianAccountService> _logger;
     private readonly ILogger<RivianApiClient> _rivianLogger;
 
@@ -31,6 +32,7 @@ public class RivianAccountService
         IHttpClientFactory httpClientFactory,
         NhtsaVinDecoderService nhtsaService,
         VehicleStateNotifier stateNotifier,
+        ReferralService referralService,
         ILogger<RivianAccountService> logger,
         ILogger<RivianApiClient> rivianLogger)
     {
@@ -39,6 +41,7 @@ public class RivianAccountService
         _httpClientFactory = httpClientFactory;
         _nhtsaService = nhtsaService;
         _stateNotifier = stateNotifier;
+        _referralService = referralService;
         _logger = logger;
         _rivianLogger = rivianLogger;
     }
@@ -188,6 +191,11 @@ public class RivianAccountService
             // WebSocket service will pick up the account on next refresh
             _logger.LogInformation("Updated existing Rivian account {AccountId} for user {UserId}",
                 existingAccount.Id, userId);
+
+            // Check if referral reward can be awarded (user now has a linked Rivian account)
+            try { await _referralService.CheckAndAwardAsync(userId, cancellationToken); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Failed to check referral award for user {UserId}", userId); }
+
             return existingAccount;
         }
 
@@ -211,6 +219,11 @@ public class RivianAccountService
         // WebSocket service will pick up the account on next refresh
         _logger.LogInformation("Created new Rivian account {AccountId} for user {UserId}",
             account.Id, userId);
+
+        // Check if referral reward can be awarded (user now has a linked Rivian account)
+        try { await _referralService.CheckAndAwardAsync(userId, cancellationToken); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to check referral award for user {UserId}", userId); }
+
         return account;
     }
 
@@ -337,6 +350,12 @@ public class RivianAccountService
             {
                 if (rivianVehicle.Vehicle.ModelYear.HasValue)
                     vehicle.Year = rivianVehicle.Vehicle.ModelYear.Value;
+
+                if (vehicle.BuildDate == null && !string.IsNullOrEmpty(rivianVehicle.Vehicle.ActualGeneralAssemblyDate))
+                {
+                    if (DateTime.TryParse(rivianVehicle.Vehicle.ActualGeneralAssemblyDate, out var buildDate))
+                        vehicle.BuildDate = buildDate;
+                }
 
                 var model = rivianVehicle.Vehicle.Model?.ToUpperInvariant();
                 vehicle.Model = model switch

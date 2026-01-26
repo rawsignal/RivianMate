@@ -18,6 +18,7 @@ public static class Features
     public const string ExportData = "export_data";
     public const string Notifications = "notifications";
     public const string ApiAccess = "api_access";
+    public const string Referrals = "referrals";
 
     /// <summary>
     /// Features included in self-hosted edition.
@@ -44,6 +45,7 @@ public static class Features
     {
         Notifications,
         ApiAccess,
+        Referrals,
     };
 
     /// <summary>

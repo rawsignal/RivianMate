@@ -35,6 +35,10 @@ public static class TableNames
     public const string UserRecoveryCodes = "UserRecoveryCodes";
     public const string SecurityEvents = "SecurityEvents";
     public const string DataProtectionKeys = "DataProtectionKeys";
+    public const string DataExports = "DataExports";
+    public const string PromoCampaigns = "PromoCampaigns";
+    public const string Referrals = "Referrals";
+    public const string PromoCredits = "PromoCredits";
 #else
     // Identity tables (obfuscated)
     public const string Users = "Users";
@@ -64,5 +68,9 @@ public static class TableNames
     public const string UserRecoveryCodes = "RecoveryCodes";
     public const string SecurityEvents = "AuditLog";
     public const string DataProtectionKeys = "KeyStore";
+    public const string DataExports = "Downloads";
+    public const string PromoCampaigns = "Offers";
+    public const string Referrals = "Invites";
+    public const string PromoCredits = "Bonuses";
 #endif
 }

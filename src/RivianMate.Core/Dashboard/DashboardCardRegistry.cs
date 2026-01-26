@@ -1,4 +1,5 @@
 using RivianMate.Core.Enums;
+using RivianMate.Core.Licensing;
 
 namespace RivianMate.Core.Dashboard;
 
@@ -11,7 +12,9 @@ public record DashboardCardDefinition(
     string Icon,
     DashboardSection Section,
     int DefaultOrder,
-    int ColSpan = 1
+    int ColSpan = 1,
+    string? RequiredFeature = null,
+    bool SelfHostedOnly = false
 );
 
 /// <summary>
@@ -149,6 +152,24 @@ public static class DashboardCardRegistry
             Icon: "alert-triangle",
             Section: DashboardSection.MainGrid,
             DefaultOrder: 5
+        ));
+
+        cards.Add("referral", new DashboardCardDefinition(
+            Id: "referral",
+            Name: "Referrals",
+            Icon: "gift",
+            Section: DashboardSection.MainGrid,
+            DefaultOrder: 6,
+            RequiredFeature: Features.Referrals
+        ));
+
+        cards.Add("support", new DashboardCardDefinition(
+            Id: "support",
+            Name: "Support RivianMate",
+            Icon: "coffee",
+            Section: DashboardSection.BottomStats,
+            DefaultOrder: 4,
+            SelfHostedOnly: true
         ));
 
         Cards = cards;

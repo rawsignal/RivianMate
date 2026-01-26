@@ -158,6 +158,22 @@
         </div>
     </div>
 
+    <!-- Data Export Section -->
+    <div class="card mb-6">
+        <div class="card-header">
+            <h2 class="card-title">
+                <Icon Name="download" Size="20" Style="color: var(--color-accent);" />
+                Data Export
+            </h2>
+        </div>
+        <div style="padding: var(--space-4);">
+            <p class="form-hint" style="margin-bottom: var(--space-3);">
+                Export your drive history, charging sessions, or battery health data as CSV. Exports are available for download for 24 hours.
+            </p>
+            <ExportManager UserId="@_userId" />
+        </div>
+    </div>
+
     <!-- Danger Zone -->
     <div class="card mb-6 danger-card">
         <div class="card-header">

@@ -78,6 +78,11 @@ public class Vehicle : IOwnerOwnedEntity
     public string? BatteryCellType { get; set; }
 
     /// <summary>
+    /// Date the vehicle was assembled (from Rivian API actualGeneralAssemblyDate)
+    /// </summary>
+    public DateTime? BuildDate { get; set; }
+
+    /// <summary>
     /// Current software version
     /// </summary>
     public string? SoftwareVersion { get; set; }

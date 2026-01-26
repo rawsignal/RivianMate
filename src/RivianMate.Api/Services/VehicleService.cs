@@ -85,6 +85,12 @@ public class VehicleService
                 vehicle.Year = rivianVehicle.Vehicle.ModelYear ?? vehicle.Year;
                 vehicle.Model = ParseVehicleModel(rivianVehicle.Vehicle.Model);
 
+                if (vehicle.BuildDate == null && !string.IsNullOrEmpty(rivianVehicle.Vehicle.ActualGeneralAssemblyDate))
+                {
+                    if (DateTime.TryParse(rivianVehicle.Vehicle.ActualGeneralAssemblyDate, out var buildDate))
+                        vehicle.BuildDate = buildDate;
+                }
+
                 if (rivianVehicle.Vehicle.MobileConfiguration != null)
                 {
                     var config = rivianVehicle.Vehicle.MobileConfiguration;

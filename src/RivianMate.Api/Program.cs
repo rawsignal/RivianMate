@@ -205,6 +205,7 @@ builder.Services.AddScoped<UnitConversionService>();
 builder.Services.AddScoped<TwoFactorService>();
 builder.Services.AddHttpClient<GeocodingService>();
 builder.Services.AddScoped<GeocodeAddressJob>();
+builder.Services.AddScoped<ReferralService>();
 builder.Services.AddScoped<DevDataSeeder>();
 
 // === Email Services ===
@@ -224,6 +225,9 @@ builder.Services.Configure<TwoFactorConfiguration>(
 
 // === Background Job Services ===
 builder.Services.AddScoped<DataRetentionJob>();
+builder.Services.AddScoped<DataExportService>();
+builder.Services.AddScoped<DataExportJob>();
+builder.Services.AddScoped<ExportCleanupJob>();
 
 // === WebSocket Subscription Service (conditionally enabled) ===
 var pollingMode = builder.Configuration.GetValue<string>("RivianMate:Polling:Mode") ?? "GraphQL";
@@ -296,6 +300,7 @@ using (var scope = app.Services.CreateScope())
         await AddColumnIfNotExistsAsync(Tables.Vehicles, "ImageData", "BLOB");
         await AddColumnIfNotExistsAsync(Tables.Vehicles, "ImageContentType", "TEXT");
         await AddColumnIfNotExistsAsync(Tables.Vehicles, "ImageVersion", "INTEGER");
+        await AddColumnIfNotExistsAsync(Tables.Vehicles, "BuildDate", "TEXT");
         await AddColumnIfNotExistsAsync(Tables.Positions, "Gear", "INTEGER DEFAULT 0");
 
         // Battery health snapshot smoothing columns
@@ -411,7 +416,137 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("Created {Table} table", Tables.GeocodingCache);
         }
 
+        // Create DataExports table if it doesn't exist
+        if (!await TableExistsAsync(Tables.DataExports))
+        {
+            #pragma warning disable EF1002
+            await db.Database.ExecuteSqlRawAsync($@"
+                CREATE TABLE {Tables.DataExports} (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    UserId TEXT NOT NULL,
+                    VehicleId INTEGER NOT NULL,
+                    ExportType TEXT NOT NULL,
+                    Status INTEGER NOT NULL DEFAULT 0,
+                    DownloadToken TEXT NOT NULL,
+                    FileData BLOB,
+                    FileName TEXT,
+                    FileSizeBytes INTEGER,
+                    RecordCount INTEGER,
+                    ErrorMessage TEXT,
+                    CreatedAt TEXT NOT NULL,
+                    CompletedAt TEXT,
+                    ExpiresAt TEXT NOT NULL,
+                    DownloadedAt TEXT,
+                    FOREIGN KEY (UserId) REFERENCES {Tables.Users}(Id) ON DELETE CASCADE,
+                    FOREIGN KEY (VehicleId) REFERENCES {Tables.Vehicles}(Id) ON DELETE CASCADE
+                )");
+            await db.Database.ExecuteSqlRawAsync(
+                $"CREATE INDEX IX_{Tables.DataExports}_UserId ON {Tables.DataExports}(UserId)");
+            await db.Database.ExecuteSqlRawAsync(
+                $"CREATE UNIQUE INDEX IX_{Tables.DataExports}_DownloadToken ON {Tables.DataExports}(DownloadToken)");
+            await db.Database.ExecuteSqlRawAsync(
+                $"CREATE INDEX IX_{Tables.DataExports}_ExpiresAt ON {Tables.DataExports}(ExpiresAt)");
+            #pragma warning restore EF1002
+            logger.LogInformation("Created {Table} table", Tables.DataExports);
+        }
+
+        // Add referral columns to Users table
+        await AddColumnIfNotExistsAsync(Tables.Users, "ReferralCode", "TEXT");
+        await AddColumnIfNotExistsAsync(Tables.Users, "ReferredByUserId", "TEXT");
+
+        // Create PromoCampaigns table if it doesn't exist
+        if (!await TableExistsAsync(Tables.PromoCampaigns))
+        {
+            #pragma warning disable EF1002
+            await db.Database.ExecuteSqlRawAsync($@"
+                CREATE TABLE {Tables.PromoCampaigns} (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name TEXT NOT NULL,
+                    Description TEXT,
+                    CampaignType TEXT NOT NULL,
+                    CreditsPerReward INTEGER NOT NULL DEFAULT 1,
+                    IsActive INTEGER NOT NULL DEFAULT 1,
+                    StartsAt TEXT,
+                    EndsAt TEXT,
+                    MaxRedemptionsPerUser INTEGER,
+                    CreatedAt TEXT NOT NULL
+                )");
+            #pragma warning restore EF1002
+            logger.LogInformation("Created {Table} table", Tables.PromoCampaigns);
+        }
+
+        // Create Referrals table if it doesn't exist
+        if (!await TableExistsAsync(Tables.Referrals))
+        {
+            #pragma warning disable EF1002
+            await db.Database.ExecuteSqlRawAsync($@"
+                CREATE TABLE {Tables.Referrals} (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    CampaignId INTEGER NOT NULL,
+                    ReferrerId TEXT NOT NULL,
+                    ReferredUserId TEXT NOT NULL,
+                    ReferralCode TEXT NOT NULL,
+                    Status INTEGER NOT NULL DEFAULT 0,
+                    CreatedAt TEXT NOT NULL,
+                    QualifiedAt TEXT,
+                    RewardedAt TEXT,
+                    FOREIGN KEY (CampaignId) REFERENCES {Tables.PromoCampaigns}(Id),
+                    FOREIGN KEY (ReferrerId) REFERENCES {Tables.Users}(Id),
+                    FOREIGN KEY (ReferredUserId) REFERENCES {Tables.Users}(Id) ON DELETE CASCADE
+                )");
+            await db.Database.ExecuteSqlRawAsync(
+                $"CREATE INDEX IX_{Tables.Referrals}_ReferrerId ON {Tables.Referrals}(ReferrerId)");
+            await db.Database.ExecuteSqlRawAsync(
+                $"CREATE INDEX IX_{Tables.Referrals}_ReferredUserId ON {Tables.Referrals}(ReferredUserId)");
+            #pragma warning restore EF1002
+            logger.LogInformation("Created {Table} table", Tables.Referrals);
+        }
+
+        // Create PromoCredits table if it doesn't exist
+        if (!await TableExistsAsync(Tables.PromoCredits))
+        {
+            #pragma warning disable EF1002
+            await db.Database.ExecuteSqlRawAsync($@"
+                CREATE TABLE {Tables.PromoCredits} (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    UserId TEXT NOT NULL,
+                    CampaignId INTEGER NOT NULL,
+                    ReferralId INTEGER,
+                    Credits INTEGER NOT NULL DEFAULT 1,
+                    Reason TEXT NOT NULL,
+                    CreatedAt TEXT NOT NULL,
+                    ExpiresAt TEXT,
+                    ConsumedAt TEXT,
+                    FOREIGN KEY (UserId) REFERENCES {Tables.Users}(Id) ON DELETE CASCADE,
+                    FOREIGN KEY (CampaignId) REFERENCES {Tables.PromoCampaigns}(Id),
+                    FOREIGN KEY (ReferralId) REFERENCES {Tables.Referrals}(Id) ON DELETE SET NULL
+                )");
+            await db.Database.ExecuteSqlRawAsync(
+                $"CREATE INDEX IX_{Tables.PromoCredits}_UserId ON {Tables.PromoCredits}(UserId)");
+            #pragma warning restore EF1002
+            logger.LogInformation("Created {Table} table", Tables.PromoCredits);
+        }
+
         logger.LogInformation("SQLite database ready");
+
+        // Seed default referral campaign
+        #pragma warning disable EF1002
+        var campaignExists = await db.PromoCampaigns.AnyAsync(c => c.CampaignType == "Referral");
+        #pragma warning restore EF1002
+        if (!campaignExists)
+        {
+            db.PromoCampaigns.Add(new PromoCampaign
+            {
+                Name = "Refer a Friend",
+                Description = "Refer a friend and both get 1 month of credit",
+                CampaignType = "Referral",
+                CreditsPerReward = 1,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+            logger.LogInformation("Seeded default referral campaign");
+        }
 
         // Seed development data for SQLite
         var seeder = scope.ServiceProvider.GetRequiredService<DevDataSeeder>();
@@ -478,7 +613,35 @@ using (var scope = app.Services.CreateScope())
                         db, Tables.ChargingSessions, "UserLocationId", "INTEGER",
                         $"REFERENCES \"{Tables.UserLocations}\"(\"Id\") ON DELETE SET NULL");
 
+                    // Add BuildDate to Vehicles if not exists
+                    await AddPostgresColumnIfNotExistsAsync(
+                        db, Tables.Vehicles, "BuildDate", "TIMESTAMP WITHOUT TIME ZONE");
+
+                    // Add referral columns to Users if not exists
+                    await AddPostgresColumnIfNotExistsAsync(
+                        db, Tables.Users, "ReferralCode", "VARCHAR(20)");
+                    await AddPostgresColumnIfNotExistsAsync(
+                        db, Tables.Users, "ReferredByUserId", "UUID");
+
                     logger.LogInformation("Database migrations applied successfully");
+
+                    // Seed default referral campaign
+                    var pgCampaignExists = await db.PromoCampaigns.AnyAsync(c => c.CampaignType == "Referral");
+                    if (!pgCampaignExists)
+                    {
+                        db.PromoCampaigns.Add(new PromoCampaign
+                        {
+                            Name = "Refer a Friend",
+                            Description = "Refer a friend and both get 1 month of credit",
+                            CampaignType = "Referral",
+                            CreditsPerReward = 1,
+                            IsActive = true,
+                            CreatedAt = DateTime.UtcNow
+                        });
+                        await db.SaveChangesAsync();
+                        logger.LogInformation("Seeded default referral campaign");
+                    }
+
                     break;
                 }
 
@@ -554,6 +717,12 @@ RecurringJob.AddOrUpdate<EmailVerificationReminderJob>(
     "email-verification-reminder",
     job => job.ExecuteAsync(),
     "0 * * * *"); // Every hour at minute 0
+
+// Export cleanup - runs daily at 4 AM to delete expired exports and free storage
+RecurringJob.AddOrUpdate<ExportCleanupJob>(
+    "export-cleanup",
+    job => job.ExecuteAsync(CancellationToken.None),
+    "0 4 * * *"); // Daily at 4:00 AM
 
 app.UseAntiforgery();
 
@@ -639,6 +808,27 @@ app.MapGet("/api/drives/{driveId:int}/positions", async (
         PositionCount = positions.Count,
         Positions = positions
     });
+}).RequireAuthorization();
+
+// Data export download endpoint
+app.MapGet("/api/exports/{downloadToken:guid}", async (
+    Guid downloadToken,
+    DataExportService exportService,
+    HttpContext httpContext) =>
+{
+    var userIdClaim = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    if (!Guid.TryParse(userIdClaim, out var userId))
+        return Results.Unauthorized();
+
+    var export = await exportService.GetExportForDownloadAsync(downloadToken, userId);
+    if (export?.FileData == null)
+        return Results.NotFound();
+
+    var contentType = export.FileName?.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) == true
+        ? "application/zip"
+        : "text/csv";
+
+    return Results.File(export.FileData, contentType, export.FileName);
 }).RequireAuthorization();
 
 app.MapRazorComponents<App>()

@@ -259,6 +259,7 @@ public class RivianApiClient : IDisposable
                             modelYear
                             make
                             model
+                            actualGeneralAssemblyDate
                             mobileConfiguration {
                                 trimOption { optionId optionName }
                                 driveSystemOption { optionId optionName }

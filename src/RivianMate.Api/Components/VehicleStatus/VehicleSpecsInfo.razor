@@ -13,6 +13,10 @@
     <StatusItem Label="Interior Color" Value="@(Vehicle?.InteriorColor ?? "—")" />
     <StatusItem Label="Wheels" Value="@(Vehicle?.WheelConfig ?? "—")" />
     <StatusItem Label="EPA Range" Value="@FormatEpaRange(Vehicle?.EpaRangeMiles)" />
+    @if (Vehicle?.BuildDate != null)
+    {
+        <StatusItem Label="Birthday" Value="@Vehicle.BuildDate.Value.ToString("MMMM d, yyyy")" />
+    }
 </StatusSection>
 
 @code {

@@ -89,6 +89,9 @@ secrets.json
 *.pfx
 *.p12
 
+# Local build overrides
+Directory.Build.props
+
 # Docker
 docker-compose.override.yml
 

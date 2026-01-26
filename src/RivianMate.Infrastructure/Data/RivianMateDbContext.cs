@@ -56,6 +56,10 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
     public DbSet<BroadcastEmail> BroadcastEmails => Set<BroadcastEmail>();
     public DbSet<UserRecoveryCode> UserRecoveryCodes => Set<UserRecoveryCode>();
     public DbSet<SecurityEvent> SecurityEvents => Set<SecurityEvent>();
+    public DbSet<DataExport> DataExports => Set<DataExport>();
+    public DbSet<PromoCampaign> PromoCampaigns => Set<PromoCampaign>();
+    public DbSet<Referral> Referrals => Set<Referral>();
+    public DbSet<PromoCredit> PromoCredits => Set<PromoCredit>();
 
     // For ASP.NET Data Protection key storage
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -71,6 +75,8 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
         modelBuilder.Entity<ApplicationUser>(entity =>
         {
             entity.Property(e => e.DisplayName).HasMaxLength(100);
+            entity.Property(e => e.ReferralCode).HasMaxLength(20);
+            entity.HasIndex(e => e.ReferralCode).IsUnique();
         });
 
         // === RivianAccount ===
@@ -357,6 +363,93 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+        // === DataExport ===
+        modelBuilder.Entity<DataExport>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.DownloadToken).IsUnique();
+            entity.HasIndex(e => e.ExpiresAt);
+
+            entity.Property(e => e.ExportType).HasMaxLength(50);
+            entity.Property(e => e.FileName).HasMaxLength(200);
+            entity.Property(e => e.ErrorMessage).HasMaxLength(1000);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Vehicle)
+                .WithMany()
+                .HasForeignKey(e => e.VehicleId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // === PromoCampaign ===
+        modelBuilder.Entity<PromoCampaign>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.Name).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.CampaignType).HasMaxLength(50);
+        });
+
+        // === Referral ===
+        modelBuilder.Entity<Referral>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ReferrerId);
+            entity.HasIndex(e => e.ReferredUserId);
+            entity.HasIndex(e => new { e.ReferredUserId, e.Status });
+
+            entity.Property(e => e.ReferralCode).HasMaxLength(20);
+
+            // UserId is mapped to ReferrerId - ignore it as a separate column
+            entity.Ignore(e => e.UserId);
+
+            entity.HasOne(e => e.Campaign)
+                .WithMany(c => c.Referrals)
+                .HasForeignKey(e => e.CampaignId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Referrer)
+                .WithMany()
+                .HasForeignKey(e => e.ReferrerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.ReferredUser)
+                .WithMany()
+                .HasForeignKey(e => e.ReferredUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // === PromoCredit ===
+        modelBuilder.Entity<PromoCredit>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => new { e.UserId, e.ConsumedAt });
+
+            entity.Property(e => e.Reason).HasMaxLength(200);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Campaign)
+                .WithMany(c => c.PromoCredits)
+                .HasForeignKey(e => e.CampaignId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Referral)
+                .WithMany()
+                .HasForeignKey(e => e.ReferralId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
     }
 
     /// <summary>
@@ -515,6 +608,10 @@ public class RivianMateDbContext : IdentityDbContext<ApplicationUser, IdentityRo
         modelBuilder.Entity<BroadcastEmail>().ToTable(TableNames.BroadcastEmails);
         modelBuilder.Entity<UserRecoveryCode>().ToTable(TableNames.UserRecoveryCodes);
         modelBuilder.Entity<SecurityEvent>().ToTable(TableNames.SecurityEvents);
+        modelBuilder.Entity<DataExport>().ToTable(TableNames.DataExports);
+        modelBuilder.Entity<PromoCampaign>().ToTable(TableNames.PromoCampaigns);
+        modelBuilder.Entity<Referral>().ToTable(TableNames.Referrals);
+        modelBuilder.Entity<PromoCredit>().ToTable(TableNames.PromoCredits);
         modelBuilder.Entity<DataProtectionKey>().ToTable(TableNames.DataProtectionKeys);
     }
 }

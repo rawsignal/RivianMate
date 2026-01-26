@@ -14,6 +14,7 @@
 @inject NavigationManager NavigationManager
 @inject ILogger<Register> Logger
 @inject RivianMate.Api.Services.FeatureService FeatureService
+@inject RivianMate.Api.Services.ReferralService ReferralService
 @inject IEmailTrigger EmailTrigger
 @inject IOptions<EmailConfiguration> EmailConfig
 
@@ -115,6 +116,9 @@
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
+    [SupplyParameterFromQuery(Name = "ref")]
+    private string? ReferralCode { get; set; }
+
     private const string GenericRegistrationError = "We're sorry, we aren't able to complete your account registration at this time. Please try again later.";
 
     public async Task RegisterUser()
@@ -164,6 +168,20 @@
             if (EmailConfig.Value.Enabled && verificationConfig.Required)
             {
                 await SendVerificationEmailAsync(user, gracePeriodDays);
+            }
+
+            // Register referral if a code was provided
+            if (!string.IsNullOrWhiteSpace(ReferralCode))
+            {
+                try
+                {
+                    await ReferralService.RegisterReferralAsync(user.Id, ReferralCode.Trim());
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Failed to register referral with code {Code} for user {UserId}", ReferralCode, user.Id);
+                    // Don't fail registration if referral registration fails
+                }
             }
 
             // Sign in the new user

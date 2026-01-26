@@ -8,6 +8,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject SignInManager<ApplicationUser> SignInManager
 @inject NavigationManager NavigationManager
+@inject RivianMate.Api.Services.ReferralService ReferralService
 @inject ILogger<VerifyEmail> Logger
 
 <PageTitle>Verify Email - RivianMate</PageTitle>
@@ -157,6 +158,16 @@
                 user.EmailVerificationDeadline = null;
                 user.EmailVerificationReminderSent = false;
                 await UserManager.UpdateAsync(user);
+
+                // Check if referral reward can be awarded
+                try
+                {
+                    await ReferralService.CheckAndAwardAsync(user.Id);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Failed to check referral award for user {UserId}", user.Id);
+                }
 
                 _success = true;
             }

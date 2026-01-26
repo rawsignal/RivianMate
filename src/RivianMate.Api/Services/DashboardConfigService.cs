@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using RivianMate.Core.Dashboard;
 using RivianMate.Core.Entities;
 using RivianMate.Core.Enums;
+using RivianMate.Core.Licensing;
 using RivianMate.Infrastructure.Data;
 
 namespace RivianMate.Api.Services;
@@ -26,11 +27,13 @@ public record DashboardCardConfig(
 public class DashboardConfigService
 {
     private readonly IDbContextFactory<RivianMateDbContext> _dbFactory;
+    private readonly FeatureService _featureService;
     private readonly ILogger<DashboardConfigService> _logger;
 
-    public DashboardConfigService(IDbContextFactory<RivianMateDbContext> dbFactory, ILogger<DashboardConfigService> logger)
+    public DashboardConfigService(IDbContextFactory<RivianMateDbContext> dbFactory, FeatureService featureService, ILogger<DashboardConfigService> logger)
     {
         _dbFactory = dbFactory;
+        _featureService = featureService;
         _logger = logger;
     }
 
@@ -51,6 +54,14 @@ public class DashboardConfigService
 
         foreach (var card in DashboardCardRegistry.Cards.Values)
         {
+            // Skip cards that require a feature the current edition doesn't have
+            if (card.RequiredFeature != null && !_featureService.IsEnabled(card.RequiredFeature))
+                continue;
+
+            // Skip SelfHosted-only cards on Pro builds
+            if (card.SelfHostedOnly && !BuildInfo.IsSelfHosted)
+                continue;
+
             if (userConfigs.TryGetValue(card.Id, out var userConfig))
             {
                 // User has customized this card
