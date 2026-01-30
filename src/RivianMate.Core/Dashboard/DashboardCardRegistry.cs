@@ -95,7 +95,7 @@ public static class DashboardCardRegistry
             Icon: "navigation",
             Section: DashboardSection.MainGrid,
             DefaultOrder: 2,
-            ColSpan: 2
+            ColSpan: 3
         ));
 
         // Bottom Stats Row
@@ -136,7 +136,8 @@ public static class DashboardCardRegistry
             Name: "Vehicle Status",
             Icon: "activity",
             Section: DashboardSection.MainGrid,
-            DefaultOrder: 3
+            DefaultOrder: 4,
+            ColSpan: 2
         ));
 
         cards.Add("activity-feed", new DashboardCardDefinition(
@@ -144,7 +145,7 @@ public static class DashboardCardRegistry
             Name: "Activity Feed",
             Icon: "list",
             Section: DashboardSection.MainGrid,
-            DefaultOrder: 4
+            DefaultOrder: 3
         ));
 
         cards.Add("recalls", new DashboardCardDefinition(
@@ -152,7 +153,8 @@ public static class DashboardCardRegistry
             Name: "Safety Recalls",
             Icon: "alert-triangle",
             Section: DashboardSection.MainGrid,
-            DefaultOrder: 5
+            DefaultOrder: 5,
+            ColSpan: 2
         ));
 
         cards.Add("referral", new DashboardCardDefinition(

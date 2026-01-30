@@ -1,0 +1,78 @@
+@inherits LayoutComponentBase
+@using RivianMate.Api.Components.Shared
+@using RivianMate.Core.Licensing
+@using Microsoft.AspNetCore.Components.Authorization
+
+<div class="public-layout">
+    <header class="public-header">
+        <div class="public-header-content">
+            <a href="/features" class="public-logo">
+                <div class="logo-icon"></div>
+                <span class="logo-text">@BuildInfo.DisplayName</span>
+            </a>
+
+            <nav class="public-nav">
+                <a href="/features" class="public-nav-link">Features</a>
+                <a href="/privacy" class="public-nav-link">Privacy</a>
+                <a href="/terms" class="public-nav-link">Terms</a>
+            </nav>
+
+            <div class="public-auth-buttons">
+                <AuthorizeView>
+                    <Authorized>
+                        <a href="/" class="btn btn-primary btn-sm">Go to Dashboard</a>
+                    </Authorized>
+                    <NotAuthorized>
+                        <a href="/login" class="btn btn-secondary btn-sm">Sign In</a>
+                        <a href="/register" class="btn btn-primary btn-sm">Get Started</a>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </div>
+
+            <button class="public-mobile-menu-btn" onclick="document.querySelector('.public-mobile-menu').classList.toggle('open')">
+                <Icon Name="menu" Size="24" />
+            </button>
+        </div>
+    </header>
+
+    <div class="public-mobile-menu">
+        <nav class="public-mobile-nav">
+            <a href="/features" class="public-mobile-nav-link">Features</a>
+            <a href="/privacy" class="public-mobile-nav-link">Privacy</a>
+            <a href="/terms" class="public-mobile-nav-link">Terms</a>
+            <div class="public-mobile-auth">
+                <AuthorizeView>
+                    <Authorized>
+                        <a href="/" class="btn btn-primary btn-full">Go to Dashboard</a>
+                    </Authorized>
+                    <NotAuthorized>
+                        <a href="/login" class="btn btn-secondary btn-full">Sign In</a>
+                        <a href="/register" class="btn btn-primary btn-full">Get Started</a>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </div>
+        </nav>
+    </div>
+
+    <main class="public-main">
+        @Body
+    </main>
+
+    <footer class="public-footer">
+        <div class="public-footer-content">
+            <div class="public-footer-brand">
+                <div class="logo-icon" style="width: 24px; height: 24px;"></div>
+                <span>@BuildInfo.DisplayName</span>
+            </div>
+            <div class="public-footer-links">
+                <a href="/features">Features</a>
+                <a href="/privacy">Privacy</a>
+                <a href="/terms">Terms</a>
+            </div>
+            <div class="public-footer-legal">
+                <p>&copy; @DateTime.Now.Year Rossignol Software Services, LLC</p>
+                <p class="public-footer-disclaimer">RivianMate is not affiliated with Rivian Automotive</p>
+            </div>
+        </div>
+    </footer>
+</div>
