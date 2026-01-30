@@ -88,7 +88,7 @@ public class VehicleService
                 if (vehicle.BuildDate == null && !string.IsNullOrEmpty(rivianVehicle.Vehicle.ActualGeneralAssemblyDate))
                 {
                     if (DateTime.TryParse(rivianVehicle.Vehicle.ActualGeneralAssemblyDate, out var buildDate))
-                        vehicle.BuildDate = buildDate;
+                        vehicle.BuildDate = DateTime.SpecifyKind(buildDate, DateTimeKind.Utc);
                 }
 
                 if (rivianVehicle.Vehicle.MobileConfiguration != null)
@@ -356,9 +356,9 @@ public class VehicleService
             ChargePortOpen = ParseChargePortState(rs.ChargePortState?.Value),
             ChargerDerateStatus = rs.ChargerDerateStatus?.Value,
 
-            // Cold Weather (0 = not limited, >0 = limited)
-            LimitedAccelCold = rs.LimitedAccelCold?.Value > 0,
-            LimitedRegenCold = rs.LimitedRegenCold?.Value > 0,
+            // Cold Weather (0 = not limited, >0 = limited, null = preserve previous)
+            LimitedAccelCold = rs.LimitedAccelCold?.Value != null ? rs.LimitedAccelCold.Value > 0 : null,
+            LimitedRegenCold = rs.LimitedRegenCold?.Value != null ? rs.LimitedRegenCold.Value > 0 : null,
 
             // Climate
             CabinTemperature = rs.CabinClimateInteriorTemperature?.Value,
@@ -425,7 +425,7 @@ public class VehicleService
         return state;
     }
 
-    private static bool? ParseBoolFromString(string? value)
+    internal static bool? ParseBoolFromString(string? value)
     {
         if (string.IsNullOrEmpty(value)) return null;
         var lower = value.ToLower();
@@ -434,7 +434,7 @@ public class VehicleService
         return null;
     }
 
-    private static bool? ParseBoolFromObject(object? value)
+    internal static bool? ParseBoolFromObject(object? value)
     {
         if (value == null) return null;
 
@@ -478,6 +478,7 @@ public class VehicleService
     public async Task<List<Vehicle>> GetVehiclesForUserAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         return await _db.Vehicles
+            .AsNoTracking()
             .Where(v => v.IsActive && v.OwnerId == userId)
             .OrderBy(v => v.Name ?? v.RivianVehicleId)
             .ToListAsync(cancellationToken);
@@ -562,6 +563,54 @@ public class VehicleService
     }
 
     /// <summary>
+    /// Get aggregate summary stats for charging sessions (computed in DB, no full data load).
+    /// </summary>
+    public async Task<ChargingSummaryStats> GetChargingSummaryStatsAsync(
+        int vehicleId, double homeElectricityRate = 0, CancellationToken cancellationToken = default)
+    {
+        var stats = await _db.ChargingSessions
+            .Where(s => s.VehicleId == vehicleId && !s.IsActive)
+            .GroupBy(s => 1)
+            .Select(g => new ChargingSummaryStats
+            {
+                TotalSessions = g.Count(),
+                TotalEnergyKwh = g.Sum(s => s.EnergyAddedKwh ?? 0),
+                TotalCostFromDb = g.Sum(s => s.Cost ?? 0),
+                HomeCharges = g.Count(s => s.IsHomeCharging == true),
+                DcfcCharges = g.Count(s => s.ChargeType == ChargeType.DC_Fast),
+                HomeEnergyWithoutCost = g.Where(s => s.IsHomeCharging == true && !s.Cost.HasValue && s.EnergyAddedKwh > 0)
+                    .Sum(s => s.EnergyAddedKwh ?? 0)
+            })
+            .FirstOrDefaultAsync(cancellationToken) ?? new ChargingSummaryStats();
+
+        // Add legacy fallback cost for home charges without stored cost
+        if (homeElectricityRate > 0 && stats.HomeEnergyWithoutCost > 0)
+            stats = stats with { TotalCost = stats.TotalCostFromDb + stats.HomeEnergyWithoutCost * homeElectricityRate };
+        else
+            stats = stats with { TotalCost = stats.TotalCostFromDb };
+
+        return stats;
+    }
+
+    /// <summary>
+    /// Get aggregate summary stats for drives (computed in DB, no full data load).
+    /// </summary>
+    public async Task<DrivesSummaryStats> GetDrivesSummaryStatsAsync(
+        int vehicleId, CancellationToken cancellationToken = default)
+    {
+        return await _db.Drives
+            .Where(d => d.VehicleId == vehicleId && !d.IsActive)
+            .GroupBy(d => 1)
+            .Select(g => new DrivesSummaryStats
+            {
+                TotalDrives = g.Count(),
+                TotalDistanceMiles = g.Sum(d => d.DistanceMiles ?? 0),
+                TotalEnergyKwh = g.Sum(d => d.EnergyUsedKwh ?? 0)
+            })
+            .FirstOrDefaultAsync(cancellationToken) ?? new DrivesSummaryStats();
+    }
+
+    /// <summary>
     /// Get all charging sessions for a vehicle.
     /// </summary>
     public async Task<List<ChargingSession>> GetChargingSessionsAsync(
@@ -584,7 +633,7 @@ public class VehicleService
         CancellationToken cancellationToken = default)
     {
         var query = _db.ChargingSessions
-            .Where(s => s.VehicleId == vehicleId && !s.IsActive)
+            .Where(s => s.VehicleId == vehicleId)
             .OrderByDescending(s => s.StartTime);
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -621,6 +670,18 @@ public class VehicleService
     {
         return await _db.ChargingSessions
             .FirstOrDefaultAsync(s => s.Id == sessionId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Get a specific charging session by ID (for deep-linking from dashboard).
+    /// </summary>
+    public async Task<ChargingSession?> GetChargingSessionByIdAsync(
+        int vehicleId,
+        int sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _db.ChargingSessions
+            .FirstOrDefaultAsync(s => s.VehicleId == vehicleId && s.Id == sessionId, cancellationToken);
     }
 
     /// <summary>
@@ -672,6 +733,18 @@ public class VehicleService
             .OrderByDescending(d => d.StartTime)
             .Take(count)
             .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Get a specific drive by ID (for deep-linking from dashboard).
+    /// </summary>
+    public async Task<Drive?> GetDriveByIdAsync(
+        int vehicleId,
+        int driveId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _db.Drives
+            .FirstOrDefaultAsync(d => d.VehicleId == vehicleId && d.Id == driveId, cancellationToken);
     }
 
     /// <summary>
@@ -730,7 +803,7 @@ public class VehicleService
 
     // === Helper parsing methods ===
 
-    private static VehicleModel ParseVehicleModel(string? model)
+    internal static VehicleModel ParseVehicleModel(string? model)
     {
         if (string.IsNullOrEmpty(model)) return VehicleModel.Unknown;
         
@@ -744,7 +817,7 @@ public class VehicleService
         };
     }
 
-    private static DriveType ParseDriveType(string? driveSystem)
+    internal static DriveType ParseDriveType(string? driveSystem)
     {
         if (string.IsNullOrEmpty(driveSystem)) return DriveType.Unknown;
         
@@ -756,7 +829,7 @@ public class VehicleService
         return DriveType.Unknown;
     }
 
-    private static BatteryPackType ParseBatteryPack(string? batteryOption)
+    internal static BatteryPackType ParseBatteryPack(string? batteryOption)
     {
         if (string.IsNullOrEmpty(batteryOption)) return BatteryPackType.Unknown;
         
@@ -768,7 +841,7 @@ public class VehicleService
         return BatteryPackType.Unknown;
     }
 
-    private static PowerState ParsePowerState(string? value)
+    internal static PowerState ParsePowerState(string? value)
     {
         if (string.IsNullOrEmpty(value)) return PowerState.Unknown;
         
@@ -783,7 +856,7 @@ public class VehicleService
         };
     }
 
-    private static GearStatus ParseGearStatus(string? value)
+    internal static GearStatus ParseGearStatus(string? value)
     {
         if (string.IsNullOrEmpty(value)) return GearStatus.Unknown;
         
@@ -797,7 +870,7 @@ public class VehicleService
         };
     }
 
-    private static ChargerState ParseChargerState(string? value)
+    internal static ChargerState ParseChargerState(string? value)
     {
         if (string.IsNullOrEmpty(value)) return ChargerState.Unknown;
         
@@ -812,7 +885,7 @@ public class VehicleService
         return ChargerState.Unknown;
     }
 
-    private static TirePressureStatus ParseTirePressure(string? value)
+    internal static TirePressureStatus ParseTirePressure(string? value)
     {
         if (string.IsNullOrEmpty(value)) return TirePressureStatus.Unknown;
         
@@ -853,7 +926,7 @@ public class VehicleService
     /// Returns true if "closed", false if "open", null otherwise.
     /// Unknown/undefined values are treated as null (unknown) rather than open.
     /// </summary>
-    private static bool? ParseClosedState(string? value)
+    internal static bool? ParseClosedState(string? value)
     {
         if (string.IsNullOrEmpty(value)) return null;
         var lower = value.ToLower();
@@ -867,7 +940,7 @@ public class VehicleService
     /// Parse locked state from API response.
     /// Returns true if "locked", false if "unlocked", null otherwise.
     /// </summary>
-    private static bool? ParseLockedState(string? value)
+    internal static bool? ParseLockedState(string? value)
     {
         if (string.IsNullOrEmpty(value)) return null;
         var lower = value.ToLower();
@@ -878,15 +951,18 @@ public class VehicleService
 
     /// <summary>
     /// Parse charge port state from API response.
-    /// Returns true if "open", false if "closed", null otherwise.
+    /// Returns true only if "open", false if "closed"/"locked"/"unlocked", null otherwise.
     /// Note: This is inverted from other closures (true = open, not closed).
+    /// "locked" and "unlocked" both mean the door is closed (just different lock states).
     /// </summary>
-    private static bool? ParseChargePortState(string? value)
+    internal static bool? ParseChargePortState(string? value)
     {
         if (string.IsNullOrEmpty(value)) return null;
         var lower = value.ToLower();
+        // Only "open" means the charge port door is physically open
+        // "closed", "locked", "unlocked" all mean the door is closed (just different lock states)
         if (lower == "open") return true;
-        if (lower == "closed") return false;
+        if (lower == "closed" || lower == "locked" || lower == "unlocked") return false;
         return null;
     }
 
@@ -894,7 +970,7 @@ public class VehicleService
     /// Parse service mode state from API response.
     /// Returns true if "on", false if "off", null otherwise.
     /// </summary>
-    private static bool? ParseServiceMode(string? value)
+    internal static bool? ParseServiceMode(string? value)
     {
         if (string.IsNullOrEmpty(value)) return null;
         var lower = value.ToLower();
@@ -907,7 +983,7 @@ public class VehicleService
     /// Format Gear Guard status from API response.
     /// API returns values like "disabled", "enabled", "engaged" (with underscores replaced by spaces).
     /// </summary>
-    private static string? FormatGearGuardStatus(string? value)
+    internal static string? FormatGearGuardStatus(string? value)
     {
         if (string.IsNullOrEmpty(value)) return null;
         // Convert snake_case to Title Case (e.g., "away_from_home" -> "Away From Home")
@@ -918,13 +994,13 @@ public class VehicleService
     /// <summary>
     /// Convert kilometers to miles. Rivian API returns distance in km.
     /// </summary>
-    private static double? KmToMiles(double? km)
+    internal static double? KmToMiles(double? km)
     {
         if (km == null) return null;
         return km.Value * 0.621371;
     }
 
-    private static string? FormatOtaVersion(int? year, int? week, int? number)
+    internal static string? FormatOtaVersion(int? year, int? week, int? number)
     {
         if (year == null || year == 0) return null;
         return $"{year}.{week ?? 0}.{number ?? 0}";
@@ -1137,9 +1213,33 @@ public class VehicleService
     /// Convert tire pressure from bar to PSI.
     /// Rivian API returns pressure in bar, but PSI is more common in the US.
     /// </summary>
-    private static double? BarToPsi(double? bar)
+    internal static double? BarToPsi(double? bar)
     {
         if (bar == null) return null;
         return bar.Value * 14.5038;
     }
+}
+
+/// <summary>
+/// Aggregate charging session stats computed in the database.
+/// </summary>
+public record ChargingSummaryStats
+{
+    public int TotalSessions { get; init; }
+    public double TotalEnergyKwh { get; init; }
+    public double TotalCostFromDb { get; init; }
+    public double TotalCost { get; init; }
+    public int HomeCharges { get; init; }
+    public int DcfcCharges { get; init; }
+    public double HomeEnergyWithoutCost { get; init; }
+}
+
+/// <summary>
+/// Aggregate drive stats computed in the database.
+/// </summary>
+public record DrivesSummaryStats
+{
+    public int TotalDrives { get; init; }
+    public double TotalDistanceMiles { get; init; }
+    public double TotalEnergyKwh { get; init; }
 }

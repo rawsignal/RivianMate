@@ -354,7 +354,7 @@ public class RivianAccountService
                 if (vehicle.BuildDate == null && !string.IsNullOrEmpty(rivianVehicle.Vehicle.ActualGeneralAssemblyDate))
                 {
                     if (DateTime.TryParse(rivianVehicle.Vehicle.ActualGeneralAssemblyDate, out var buildDate))
-                        vehicle.BuildDate = buildDate;
+                        vehicle.BuildDate = DateTime.SpecifyKind(buildDate, DateTimeKind.Utc);
                 }
 
                 var model = rivianVehicle.Vehicle.Model?.ToUpperInvariant();

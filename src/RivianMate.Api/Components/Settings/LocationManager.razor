@@ -14,66 +14,61 @@
     <div class="location-layout">
         <!-- Left side: Location list -->
         <div class="location-list-panel">
+            <div class="location-saving-overlay" style="display: @(_isSaving ? "flex" : "none");">
+                <div class="loading-spinner"></div>
+                <span>Saving...</span>
+            </div>
+
             <div class="location-list-header">
                 <h3>Your Locations</h3>
             </div>
 
-            @if (_isLoading)
-            {
-                <div class="location-loading">
-                    <div class="loading-spinner"></div>
-                </div>
-            }
-            else if (_locations.Count == 0)
-            {
-                <div class="location-empty">
-                    <Icon Name="map-pin" Size="32" Style="opacity: 0.5;" />
-                    <p>No locations saved yet.</p>
-                    <p class="location-hint">Click the map to add a location.</p>
-                </div>
-            }
-            else
-            {
-                <div class="location-items">
-                    @foreach (var (location, index) in _locations.Select((l, i) => (l, i)))
-                    {
-                        <div class="location-item @(_editingLocationId == location.Id ? "editing" : "")" @onclick="() => HighlightLocation(location)">
-                            <div class="location-color" style="background-color: @GetLocationColor(index);"></div>
-                            <div class="location-details">
-                                <span class="location-name">
-                                    @location.Name
-                                    @if (location.IsDefault)
-                                    {
-                                        <span class="location-default-badge">Default</span>
-                                    }
-                                </span>
-                                <span class="location-coords">@location.Latitude.ToString("F6"), @location.Longitude.ToString("F6")</span>
-                            </div>
-                            <div class="location-actions">
-                                <button class="btn btn-ghost btn-icon" @onclick="() => StartEditLocation(location)" @onclick:stopPropagation="true" title="Edit">
-                                    <Icon Name="edit-2" Size="16" />
-                                </button>
-                                <button class="btn btn-ghost btn-icon" @onclick="() => DeleteLocation(location)" @onclick:stopPropagation="true" title="Delete">
-                                    <Icon Name="trash-2" Size="16" Style="color: var(--color-error);" />
-                                </button>
-                            </div>
+            <div class="location-loading" style="display: @(_isLoading ? "flex" : "none");">
+                <div class="loading-spinner"></div>
+            </div>
+
+            <div class="location-empty" style="display: @(!_isLoading && _locations.Count == 0 ? "flex" : "none");">
+                <Icon Name="map-pin" Size="32" Style="opacity: 0.5;" />
+                <p>No locations saved yet.</p>
+                <p class="location-hint">Click the map to add a location.</p>
+            </div>
+
+            <div class="location-items" style="display: @(!_isLoading && _locations.Count > 0 ? "block" : "none");">
+                @foreach (var (location, index) in _locations.Select((l, i) => (l, i)))
+                {
+                    <div @key="location.Id" class="location-item @(_editingLocationId == location.Id ? "editing" : "")" @onclick="() => HighlightLocation(location)">
+                        <div class="location-color" style="background-color: @GetLocationColor(index);"></div>
+                        <div class="location-details">
+                            <span class="location-name">
+                                @location.Name
+                                @if (location.IsDefault)
+                                {
+                                    <span class="location-default-badge">Default</span>
+                                }
+                                @if (location.CostPerKwh.HasValue)
+                                {
+                                    <span class="location-rate-badge">@location.CostPerKwh.Value.ToString("G")/kWh</span>
+                                }
+                            </span>
+                            <span class="location-coords">@location.Latitude.ToString("F6"), @location.Longitude.ToString("F6")</span>
                         </div>
-                    }
-                </div>
-            }
+                        <div class="location-actions">
+                            <button class="btn btn-ghost btn-icon" @onclick="() => StartEditLocation(location)" @onclick:stopPropagation="true" title="Edit">
+                                <Icon Name="edit-2" Size="16" />
+                            </button>
+                            <button class="btn btn-ghost btn-icon" @onclick="() => DeleteLocation(location)" @onclick:stopPropagation="true" title="Delete">
+                                <Icon Name="trash-2" Size="16" Style="color: var(--color-error);" />
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
 
             <div class="location-buttons">
                 <button class="btn btn-secondary" @onclick="UseCurrentVehicleLocation"
                         disabled="@(_vehicleLocation == null || _isAddingFromVehicle)">
-                    @if (_isAddingFromVehicle)
-                    {
-                        <span>Adding...</span>
-                    }
-                    else
-                    {
-                        <Icon Name="car" Size="16" />
-                        <span>Use Vehicle Location</span>
-                    }
+                    <Icon Name="car" Size="16" Style="@(_isAddingFromVehicle ? "display:none" : "")" />
+                    <span>@(_isAddingFromVehicle ? "Adding..." : "Use Vehicle Location")</span>
                 </button>
             </div>
         </div>
@@ -88,61 +83,66 @@
         </div>
     </div>
 
-    <!-- Edit/Add Modal -->
-    @if (_showModal)
-    {
-        <div class="modal-overlay" @onclick="CloseModal">
-            <div class="modal-content" @onclick:stopPropagation="true">
-                <div class="modal-header">
-                    <h3>@(_editingLocation == null ? "Add Location" : "Edit Location")</h3>
-                    <button class="btn btn-ghost btn-icon" @onclick="CloseModal">
-                        <Icon Name="x" Size="20" />
-                    </button>
+    <!-- Modal — always in DOM, toggled only via inline style -->
+    <div class="modal-overlay" style="display: @(_showModal ? "flex" : "none");" @onclick="CloseModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>@(_editingLocation == null ? "Add Location" : "Edit Location")</h3>
+                <button class="btn btn-ghost btn-icon" @onclick="CloseModal">
+                    <Icon Name="x" Size="20" />
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-input" @bind="_modalName" placeholder="e.g., Home, Work, Beach House" maxlength="100" />
                 </div>
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label class="form-label">Name</label>
-                        <input type="text" class="form-input" @bind="_modalName" placeholder="e.g., Home, Work, Beach House" maxlength="100" />
+                <div class="form-group">
+                    <label class="form-label">Electricity Rate</label>
+                    <div style="display: flex; gap: var(--space-2); align-items: center;">
+                        <input type="number" step="0.001" min="0" max="2"
+                               class="form-input" style="width: 100px;"
+                               placeholder="0.15"
+                               @bind="_modalCostPerKwh" />
+                        <span style="color: var(--color-text-muted);">@CurrencyCode /kWh</span>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Coordinates</label>
-                        <div class="coord-inputs">
-                            <div class="coord-input">
-                                <label>Lat:</label>
-                                <input type="number" step="0.000001" min="-90" max="90" class="form-input"
-                                       @bind="_modalLatitude" />
-                            </div>
-                            <div class="coord-input">
-                                <label>Lon:</label>
-                                <input type="number" step="0.000001" min="-180" max="180" class="form-input"
-                                       @bind="_modalLongitude" />
-                            </div>
+                    <p class="form-hint">Used to estimate charging cost at this location</p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Coordinates</label>
+                    <div class="coord-inputs">
+                        <div class="coord-input">
+                            <label>Lat:</label>
+                            <input type="number" step="0.000001" min="-90" max="90" class="form-input"
+                                   @bind="_modalLatitude" />
+                        </div>
+                        <div class="coord-input">
+                            <label>Lon:</label>
+                            <input type="number" step="0.000001" min="-180" max="180" class="form-input"
+                                   @bind="_modalLongitude" />
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-checkbox">
-                            <input type="checkbox" @bind="_modalIsDefault" />
-                            <span>Set as default location</span>
-                        </label>
-                    </div>
                 </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
-                    <button class="btn btn-primary" @onclick="SaveLocation" disabled="@string.IsNullOrWhiteSpace(_modalName)">
-                        @(_editingLocation == null ? "Add" : "Save")
-                    </button>
+                <div class="form-group">
+                    <label class="form-checkbox">
+                        <input type="checkbox" @bind="_modalIsDefault" />
+                        <span>Set as default location</span>
+                    </label>
                 </div>
             </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                <button class="btn btn-primary" @onclick="SaveLocation" disabled="@string.IsNullOrWhiteSpace(_modalName)">
+                    @(_editingLocation == null ? "Add" : "Save")
+                </button>
+            </div>
         </div>
-    }
+    </div>
 
-    @if (_saveSuccess)
-    {
-        <div class="alert alert-success location-alert">
-            <Icon Name="check" Size="16" />
-            Location saved
-        </div>
-    }
+    <div class="alert alert-success location-alert" style="display: @(_saveSuccess ? "flex" : "none");">
+        <Icon Name="check" Size="16" />
+        Location saved
+    </div>
 </div>
 
 <style>
@@ -158,6 +158,7 @@
     }
 
     .location-list-panel {
+        position: relative;
         display: flex;
         flex-direction: column;
         background: var(--color-surface-elevated);
@@ -188,6 +189,21 @@
         padding: var(--space-4);
         color: var(--color-text-muted);
         text-align: center;
+    }
+
+    .location-saving-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: var(--space-3);
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: var(--radius-lg);
+        z-index: 10;
+        color: var(--color-text-muted);
+        font-size: 0.875rem;
     }
 
     .location-empty p {
@@ -258,6 +274,15 @@
         text-transform: uppercase;
     }
 
+    .location-rate-badge {
+        font-size: 0.625rem;
+        padding: 1px 4px;
+        background: rgba(34, 197, 94, 0.15);
+        color: #22c55e;
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+    }
+
     .location-coords {
         display: block;
         font-size: 0.75rem;
@@ -320,18 +345,18 @@
         right: 0;
         bottom: 0;
         background: rgba(0, 0, 0, 0.6);
-        display: flex;
         align-items: center;
         justify-content: center;
         z-index: 1000;
     }
+
 
     .modal-content {
         background: var(--color-surface);
         border-radius: var(--radius-lg);
         border: 1px solid var(--color-border);
         width: 100%;
-        max-width: 400px;
+        max-width: 480px;
         box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
     }
 
@@ -359,6 +384,7 @@
         padding: var(--space-4);
         border-top: 1px solid var(--color-border);
     }
+
 
     .form-group {
         margin-bottom: var(--space-4);
@@ -413,6 +439,12 @@
     .coord-input .form-input {
         width: auto;
         flex: 1;
+    }
+
+    .form-hint {
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+        margin-top: var(--space-1);
     }
 
     .form-checkbox {
@@ -496,14 +528,21 @@
         overflow: hidden;
         text-overflow: ellipsis;
     }
+
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
 </style>
 
 @code {
     [Parameter] public Guid UserId { get; set; }
     [Parameter] public List<RivianAccount>? Accounts { get; set; }
+    [Parameter] public string CurrencyCode { get; set; } = "USD";
 
     private List<UserLocation> _locations = new();
     private bool _isLoading = true;
+    private bool _isSaving;
     private bool _saveSuccess;
     private System.Timers.Timer? _successTimer;
 
@@ -515,6 +554,7 @@
     private double _modalLatitude;
     private double _modalLongitude;
     private bool _modalIsDefault;
+    private double? _modalCostPerKwh;
 
     // Vehicle location
     private (double Lat, double Lon)? _vehicleLocation;
@@ -570,6 +610,22 @@
         {
             _isLoading = false;
             StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Reload the location list without toggling the loading spinner.
+    /// Used after save/delete to avoid render tree disruption.
+    /// </summary>
+    private async Task RefreshLocationsQuietAsync()
+    {
+        try
+        {
+            _locations = await LocationService.GetLocationsAsync(UserId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to refresh locations");
         }
     }
 
@@ -637,6 +693,7 @@
         _modalLatitude = Math.Round(lat, 6);
         _modalLongitude = Math.Round(lon, 6);
         _modalIsDefault = _locations.Count == 0;
+        _modalCostPerKwh = null;
         _showModal = true;
         StateHasChanged();
     }
@@ -651,7 +708,7 @@
             {
                 await LocationService.UpdateLocationAsync(
                     locationId, UserId, location.Name,
-                    Math.Round(lat, 6), Math.Round(lon, 6), location.IsDefault);
+                    Math.Round(lat, 6), Math.Round(lon, 6), location.IsDefault, location.CostPerKwh);
 
                 // Update local state
                 location.Latitude = Math.Round(lat, 6);
@@ -686,6 +743,7 @@
         _modalLatitude = location.Latitude;
         _modalLongitude = location.Longitude;
         _modalIsDefault = location.IsDefault;
+        _modalCostPerKwh = location.CostPerKwh;
         _showModal = true;
     }
 
@@ -693,17 +751,30 @@
     {
         if (string.IsNullOrWhiteSpace(_modalName)) return;
 
+        // Capture modal values before closing
+        var editingLoc = _editingLocation;
+        var name = _modalName.Trim();
+        var lat = _modalLatitude;
+        var lon = _modalLongitude;
+        var isDefault = _modalIsDefault;
+        var costPerKwh = _modalCostPerKwh;
+
+        // Close modal and show saving overlay — flush render so the UI updates immediately
+        CloseModal();
+        _isSaving = true;
+        StateHasChanged();
+        await Task.Yield();
+
         try
         {
-            if (_editingLocation != null)
+            if (editingLoc != null)
             {
                 // Update existing location
                 await LocationService.UpdateLocationAsync(
-                    _editingLocation.Id, UserId, _modalName.Trim(),
-                    _modalLatitude, _modalLongitude, _modalIsDefault);
+                    editingLoc.Id, UserId, name, lat, lon, isDefault, costPerKwh);
 
-                // Sync the updated name/isDefault to all linked charging sessions
-                var syncedCount = await ChargingTrackingService.SyncLocationToSessionsAsync(_editingLocation.Id);
+                // Sync the updated name/isDefault/cost to all linked charging sessions
+                var syncedCount = await ChargingTrackingService.SyncLocationToSessionsAsync(editingLoc.Id);
                 if (syncedCount > 0)
                 {
                     Logger.LogInformation("Synced {Count} charging sessions to updated location", syncedCount);
@@ -713,8 +784,7 @@
             {
                 // Add new location
                 await LocationService.AddLocationAsync(
-                    UserId, _modalName.Trim(),
-                    _modalLatitude, _modalLongitude, _modalIsDefault);
+                    UserId, name, lat, lon, isDefault, costPerKwh);
             }
 
             // Retroactively match past charging sessions to the new/updated location
@@ -724,14 +794,17 @@
                 Logger.LogInformation("Matched {Count} past charging sessions to saved locations", matchedCount);
             }
 
-            await LoadLocationsAsync();
+            await RefreshLocationsQuietAsync();
             await UpdateMapMarkersAsync();
-            CloseModal();
             ShowSaveSuccess();
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to save location");
+        }
+        finally
+        {
+            _isSaving = false;
         }
     }
 
@@ -762,6 +835,7 @@
         _modalLatitude = Math.Round(_vehicleLocation.Value.Lat, 6);
         _modalLongitude = Math.Round(_vehicleLocation.Value.Lon, 6);
         _modalIsDefault = _locations.Count == 0;
+        _modalCostPerKwh = null;
         _showModal = true;
 
         _isAddingFromVehicle = false;

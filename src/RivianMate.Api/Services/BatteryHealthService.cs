@@ -108,7 +108,7 @@ public class BatteryHealthService
     /// Calculate confidence score for a reading based on SoC and temperature.
     /// Returns value between 0 and 1.
     /// </summary>
-    private static double CalculateReadingConfidence(double? soc, double? temperature)
+    internal static double CalculateReadingConfidence(double? soc, double? temperature)
     {
         var confidence = 0.5; // Base confidence
 
@@ -320,7 +320,7 @@ public class BatteryHealthService
     /// Returns (slope, intercept) for y = intercept + slope * x
     /// Uses weights (confidence scores) to favor more reliable readings.
     /// </summary>
-    private static (double Slope, double Intercept) CalculateWeightedLinearRegression(
+    internal static (double Slope, double Intercept) CalculateWeightedLinearRegression(
         List<(double Odometer, double Health, double Confidence)> points)
     {
         // Weighted linear regression formulas
@@ -402,6 +402,13 @@ public class BatteryHealthService
             .OrderBy(s => s.Timestamp)
             .FirstOrDefaultAsync(cancellationToken);
 
+        // Get best (max) capacity reading in last 30 days
+        var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
+        var bestRecentSnapshot = await _db.BatteryHealthSnapshots
+            .Where(s => s.VehicleId == vehicleId && s.Timestamp >= thirtyDaysAgo)
+            .OrderByDescending(s => s.ReportedCapacityKwh)
+            .FirstOrDefaultAsync(cancellationToken);
+
         // Calculate vehicle-specific warranty miles
         var warrantyMiles = vehicle.BatteryPack != BatteryPackType.Unknown && vehicle.DriveType != DriveType.Unknown
             ? BatteryPackSpecs.GetWarrantyMiles(vehicle.BatteryPack, vehicle.DriveType, vehicle.Year)
@@ -428,7 +435,13 @@ public class BatteryHealthService
             FirstRecordedHealth = firstSnapshot?.SmoothedHealthPercent ?? firstSnapshot?.HealthPercent,
             LastUpdated = latestSnapshot.Timestamp,
             WarrantyThresholdPercent = BatteryPackSpecs.WarrantyThresholdPercent,
-            WarrantyMiles = warrantyMiles
+            WarrantyMiles = warrantyMiles,
+            BestCapacityLast30Days = bestRecentSnapshot?.ReportedCapacityKwh,
+            BestHealthPercentLast30Days = bestRecentSnapshot != null
+                ? (bestRecentSnapshot.ReportedCapacityKwh / latestSnapshot.OriginalCapacityKwh) * 100
+                : null,
+            BestCapacityTemperature = bestRecentSnapshot?.Temperature,
+            BestCapacityDate = bestRecentSnapshot?.Timestamp
         };
     }
 }
@@ -470,7 +483,13 @@ public class BatteryHealthSummary
     // Warranty info
     public double WarrantyThresholdPercent { get; set; }
     public int WarrantyMiles { get; set; }
-    
+
+    // Best reading in last 30 days (less affected by cold weather)
+    public double? BestCapacityLast30Days { get; set; }
+    public double? BestHealthPercentLast30Days { get; set; }
+    public double? BestCapacityTemperature { get; set; }  // Celsius
+    public DateTime? BestCapacityDate { get; set; }
+
     // Computed properties for display
     public string HealthStatus => CurrentHealthPercent switch
     {

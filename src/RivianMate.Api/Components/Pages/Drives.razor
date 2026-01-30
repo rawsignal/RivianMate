@@ -6,6 +6,7 @@
 @using RivianMate.Api.Components.Shared
 @using RivianMate.Core.Entities
 @using RivianMate.Core.Enums
+@using RivianMate.Api.Helpers
 @attribute [Authorize]
 @inject VehicleService VehicleService
 @inject TimeZoneService TimeZoneService
@@ -14,6 +15,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject ILogger<Drives> Logger
+@inject VehicleSelectionService VehicleSelectionService
 @implements IAsyncDisposable
 
 <PageTitle>Drives - RivianMate</PageTitle>
@@ -104,7 +106,7 @@ else
                         <div class="drive-list-content">
                             <div class="drive-list-header">
                                 <span class="drive-list-distance">@FormatDistance(drive.DistanceMiles)</span>
-                                <span class="drive-list-date">@FormatDriveDate(drive.StartTime)</span>
+                                <span class="drive-list-date">@DateTimeFormatHelper.FormatRelativeDate(drive.StartTime, TimeZoneService)</span>
                             </div>
                             @if (!string.IsNullOrEmpty(drive.StartAddress) || !string.IsNullOrEmpty(drive.EndAddress))
                             {
@@ -120,7 +122,7 @@ else
                                 </div>
                             }
                             <div class="drive-list-meta">
-                                @FormatDuration(drive.StartTime, drive.EndTime)
+                                @DateTimeFormatHelper.FormatDuration(drive.StartTime, drive.EndTime)
                                 @if (drive.EfficiencyMilesPerKwh.HasValue)
                                 {
                                     <span>·</span>
@@ -169,15 +171,15 @@ else
                         <div class="drive-detail-grid">
                             <div class="drive-detail-item">
                                 <span class="drive-detail-label">Started</span>
-                                <span class="drive-detail-value">@FormatDateTime(_selectedDrive.StartTime)</span>
+                                <span class="drive-detail-value">@DateTimeFormatHelper.FormatDateTime(_selectedDrive.StartTime, TimeZoneService)</span>
                             </div>
                             <div class="drive-detail-item">
                                 <span class="drive-detail-label">Ended</span>
-                                <span class="drive-detail-value">@(_selectedDrive.EndTime.HasValue ? FormatDateTime(_selectedDrive.EndTime.Value) : "In Progress")</span>
+                                <span class="drive-detail-value">@(_selectedDrive.EndTime.HasValue ? DateTimeFormatHelper.FormatDateTime(_selectedDrive.EndTime.Value, TimeZoneService) : "In Progress")</span>
                             </div>
                             <div class="drive-detail-item">
                                 <span class="drive-detail-label">Duration</span>
-                                <span class="drive-detail-value">@FormatDuration(_selectedDrive.StartTime, _selectedDrive.EndTime)</span>
+                                <span class="drive-detail-value">@DateTimeFormatHelper.FormatDuration(_selectedDrive.StartTime, _selectedDrive.EndTime)</span>
                             </div>
                         </div>
                     </div>
@@ -334,6 +336,9 @@ else
     [Parameter]
     public Guid? VehicleId { get; set; }
 
+    [SupplyParameterFromQuery(Name = "selected")]
+    public int? SelectedDriveId { get; set; }
+
     private Vehicle? _vehicle;
     private List<Drive>? _drives;
     private Drive? _selectedDrive;
@@ -344,8 +349,6 @@ else
     private bool _noVehicles;
     private bool _mapInitialized;
 
-    // LocalStorage key (shared with Home.razor)
-    private const string SelectedVehicleKey = "rivianmate_selectedVehicleId";
     private bool _pendingMapUpdate;
     private double _totalDistance;
     private double _totalEnergy;
@@ -364,11 +367,28 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        TimeZoneService.OnTimeZoneChanged += OnTimeZoneChanged;
         await LoadDataAsync();
+    }
+
+    private void OnTimeZoneChanged()
+    {
+        InvokeAsync(StateHasChanged);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            // Initialize timezone from localStorage
+            var previousTz = TimeZoneService.TimeZoneId;
+            await TimeZoneService.InitializeAsync();
+            if (previousTz != TimeZoneService.TimeZoneId)
+            {
+                StateHasChanged();
+            }
+        }
+
         // Initialize or update the map after render when we have positions
         if (_pendingMapUpdate && _positions != null && _positions.Count > 0)
         {
@@ -409,56 +429,26 @@ else
 
         try
         {
-            // Get current user ID
-            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (!Guid.TryParse(userIdClaim, out _userId))
-            {
-                return;
-            }
+            _userId = await VehicleSelectionService.GetUserIdAsync(AuthStateProvider);
+            if (_userId == Guid.Empty) return;
 
             // Load user preferences for unit display
             _userPreferences = await UserPreferencesService.GetPreferencesAsync(_userId);
             _distanceUnit = _userPreferences?.DistanceUnit ?? DistanceUnit.Miles;
 
-            // Get all vehicles first
-            var vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
-
-            if (vehicles.Count == 0)
-            {
-                _noVehicles = true;
-                return;
-            }
-
-            if (VehicleId.HasValue)
-            {
-                // Verify the vehicle belongs to this user via PublicId
-                _vehicle = await VehicleService.GetVehicleByPublicIdAsync(VehicleId.Value, _userId);
-                if (_vehicle == null)
-                {
-                    Logger.LogWarning("User {UserId} attempted to access vehicle {VehiclePublicId} they don't own", _userId, VehicleId);
-                    _notFound = true;
-                    return;
-                }
-            }
-            else
-            {
-                // Try to get last selected vehicle from localStorage
-                _vehicle = await GetLastSelectedVehicleAsync(vehicles);
-                _vehicle ??= vehicles.FirstOrDefault();
-            }
+            var selection = await VehicleSelectionService.ResolveVehicleAsync(_userId, VehicleId, JS);
+            if (selection.NoVehicles) { _noVehicles = true; return; }
+            if (selection.NotFound) { _notFound = true; return; }
+            _vehicle = selection.Vehicle;
 
             if (_vehicle != null)
             {
-                // Load all drives first for summary stats
-                var allDrives = await VehicleService.GetDrivesAsync(_vehicle.Id);
-                if (allDrives?.Any() == true)
-                {
-                    _totalDrives = allDrives.Count;
-                    _totalDistance = allDrives.Sum(d => d.DistanceMiles ?? 0);
-                    _totalEnergy = allDrives.Sum(d => d.EnergyUsedKwh ?? 0);
-                    _avgEfficiency = _totalEnergy > 0 ? _totalDistance / _totalEnergy : null;
-                }
+                // Load aggregate summary stats (computed in DB, no full data load)
+                var stats = await VehicleService.GetDrivesSummaryStatsAsync(_vehicle.Id);
+                _totalDrives = stats.TotalDrives;
+                _totalDistance = stats.TotalDistanceMiles;
+                _totalEnergy = stats.TotalEnergyKwh;
+                _avgEfficiency = _totalEnergy > 0 ? _totalDistance / _totalEnergy : null;
 
                 // Load paginated drives for display
                 var (drives, totalCount) = await VehicleService.GetDrivesPagedAsync(
@@ -468,8 +458,29 @@ else
 
                 if (_drives?.Any() == true)
                 {
-                    // Select the first drive by default
-                    if (_drives.FirstOrDefault() is { } firstDrive)
+                    // If a specific drive was requested via query param, try to select it
+                    if (SelectedDriveId.HasValue)
+                    {
+                        var requestedDrive = _drives.FirstOrDefault(d => d.Id == SelectedDriveId.Value);
+                        if (requestedDrive != null)
+                        {
+                            await SelectDriveAsync(requestedDrive);
+                        }
+                        else
+                        {
+                            // Drive not on current page, try to load it directly
+                            var drive = await VehicleService.GetDriveByIdAsync(_vehicle.Id, SelectedDriveId.Value);
+                            if (drive != null)
+                            {
+                                await SelectDriveAsync(drive);
+                            }
+                            else if (_drives.FirstOrDefault() is { } firstDrive)
+                            {
+                                await SelectDriveAsync(firstDrive);
+                            }
+                        }
+                    }
+                    else if (_drives.FirstOrDefault() is { } firstDrive)
                     {
                         await SelectDriveAsync(firstDrive);
                     }
@@ -530,29 +541,6 @@ else
             _positions = null;
             _positionCount = 0;
         }
-    }
-
-    private string FormatDriveDate(DateTime utcTime)
-    {
-        var localTime = TimeZoneService.ToLocalTime(utcTime);
-        var today = TimeZoneService.ToLocalTime(DateTime.UtcNow).Date;
-        if (localTime.Date == today) return "Today";
-        if (localTime.Date == today.AddDays(-1)) return "Yesterday";
-        return localTime.ToString("MMM d, yyyy");
-    }
-
-    private string FormatDateTime(DateTime utcTime)
-    {
-        var localTime = TimeZoneService.ToLocalTime(utcTime);
-        return localTime.ToString("MMM d, yyyy h:mm tt");
-    }
-
-    private static string FormatDuration(DateTime start, DateTime? end)
-    {
-        if (end == null) return "In progress";
-        var duration = end.Value - start;
-        if (duration.TotalMinutes < 60) return $"{(int)duration.TotalMinutes} min";
-        return $"{(int)duration.TotalHours}h {duration.Minutes}m";
     }
 
     private static string FormatDriveMode(string? mode) => mode switch
@@ -630,25 +618,10 @@ else
         return $"{feet:0} ft";
     }
 
-    private async Task<Vehicle?> GetLastSelectedVehicleAsync(List<Vehicle> vehicles)
-    {
-        try
-        {
-            var savedIdStr = await JS.InvokeAsync<string?>("rivianMate.storage.get", SelectedVehicleKey);
-            if (int.TryParse(savedIdStr, out var savedId))
-            {
-                return vehicles.FirstOrDefault(v => v.Id == savedId);
-            }
-        }
-        catch
-        {
-            // JS interop can fail during prerendering
-        }
-        return null;
-    }
-
     public async ValueTask DisposeAsync()
     {
+        TimeZoneService.OnTimeZoneChanged -= OnTimeZoneChanged;
+
         if (_mapInitialized)
         {
             try

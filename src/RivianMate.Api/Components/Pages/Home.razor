@@ -8,7 +8,7 @@
 @using RivianMate.Api.Components.VehicleStatus
 @using RivianMate.Core.Enums
 @attribute [Authorize]
-@implements IDisposable
+@implements IAsyncDisposable
 @inject VehicleService VehicleService
 @inject BatteryHealthService BatteryHealthService
 @inject ActivityFeedService ActivityFeedService
@@ -263,6 +263,13 @@
     private string? _draggingCardId;
     private string? _hoverTargetCardId;
 
+    // Tiered refresh: state transition tracking
+    private PowerState _lastPowerState;
+    private ChargerState _lastChargerState;
+    private GearStatus _lastGearStatus;
+    private PeriodicTimer? _coolTimer;
+    private CancellationTokenSource? _coolTimerCts;
+
     // Display card helper record
     private record DisplayCard(string CardId, int ColSpan, bool IsPlaceholder);
 
@@ -273,6 +280,7 @@
         // Subscribe to real-time state updates
         StateNotifier.OnVehicleStateChanged += OnVehicleStateChangedAsync;
         StateNotifier.OnVehiclesChanged += OnVehiclesChangedAsync;
+        TimeZoneService.OnTimeZoneChanged += OnTimeZoneChanged;
 
         try
         {
@@ -311,6 +319,10 @@
             {
                 Logger.LogWarning("No vehicles found for user {UserId}", _userId);
             }
+
+            // Start the cool-tier periodic refresh (every 2 minutes)
+            _coolTimerCts = new CancellationTokenSource();
+            _ = RunCoolTimerAsync(_coolTimerCts.Token);
         }
         catch (Exception ex)
         {
@@ -320,17 +332,31 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !_initialLoadComplete && _vehicles?.Count > 1)
+        if (firstRender)
         {
-            _initialLoadComplete = true;
+            // Initialize timezone from localStorage - must happen in OnAfterRenderAsync
+            // because JS interop isn't available until after first render
+            var previousTz = TimeZoneService.TimeZoneId;
+            await TimeZoneService.InitializeAsync();
 
-            // Now JS interop is available - check for saved vehicle selection
-            var savedVehicle = await GetLastSelectedVehicleAsync();
-            if (savedVehicle != null && savedVehicle.Id != _vehicle?.Id)
+            // If timezone changed, re-render to update all displayed times
+            if (previousTz != TimeZoneService.TimeZoneId)
             {
-                _vehicle = savedVehicle;
-                await LoadVehicleDataAsync();
                 StateHasChanged();
+            }
+
+            if (!_initialLoadComplete && _vehicles?.Count > 1)
+            {
+                _initialLoadComplete = true;
+
+                // Now JS interop is available - check for saved vehicle selection
+                var savedVehicle = await GetLastSelectedVehicleAsync();
+                if (savedVehicle != null && savedVehicle.Id != _vehicle?.Id)
+                {
+                    _vehicle = savedVehicle;
+                    await LoadVehicleDataAsync();
+                    StateHasChanged();
+                }
             }
         }
     }
@@ -361,6 +387,11 @@
 
         // Determine online status from power state and last update time
         _isOnline = DetermineOnlineStatus();
+
+        // Seed transition tracking fields (also handles vehicle switching)
+        _lastPowerState = _currentState?.PowerState ?? PowerState.Unknown;
+        _lastChargerState = _currentState?.ChargerState ?? ChargerState.Unknown;
+        _lastGearStatus = _currentState?.GearStatus ?? GearStatus.Unknown;
     }
 
     private async Task SelectVehicleAsync(RivianMate.Core.Entities.Vehicle vehicle)
@@ -829,31 +860,62 @@
 
     // === Real-time Updates ===
 
-    private async Task OnVehicleStateChangedAsync(int vehicleId)
+    private async Task OnVehicleStateChangedAsync(int vehicleId, RivianMate.Core.Entities.VehicleState vehicleState)
     {
         // Only refresh if it's the currently displayed vehicle
         if (_vehicle?.Id != vehicleId)
             return;
 
-        Logger.LogDebug("Received state update for current vehicle {VehicleId}, refreshing dashboard", vehicleId);
-
         try
         {
-            // Create a new scope to get fresh service instances
-            // This is necessary because the event is fired from a background service
-            // and the component's injected services may have disposed contexts
-            await using var scope = ScopeFactory.CreateAsyncScope();
-            var vehicleService = scope.ServiceProvider.GetRequiredService<VehicleService>();
-            var batteryHealthService = scope.ServiceProvider.GetRequiredService<BatteryHealthService>();
-            var activityFeedService = scope.ServiceProvider.GetRequiredService<ActivityFeedService>();
-
-            _currentState = await vehicleService.GetLatestStateAsync(_vehicle.Id);
-            _healthSummary = await batteryHealthService.GetHealthSummaryAsync(_vehicle.Id);
-            _recentSessions = await vehicleService.GetRecentChargingSessionsAsync(_vehicle.Id, 4);
-            _recentDrives = await vehicleService.GetRecentDrivesAsync(_vehicle.Id, 4);
-            _recentActivity = await activityFeedService.GetRecentActivityAsync(_vehicle.Id, 3);
-            _efficiency = await vehicleService.GetAverageEfficiencyAsync(_vehicle.Id);
+            // === Hot tier: update in-memory state (zero DB queries) ===
+            _currentState = vehicleState;
             _isOnline = DetermineOnlineStatus();
+
+            // === Warm tier: refresh on state transitions (3 parallel DB queries) ===
+            var powerChanged = vehicleState.PowerState != _lastPowerState;
+            var chargerChanged = vehicleState.ChargerState != _lastChargerState;
+            var gearChanged = vehicleState.GearStatus != _lastGearStatus;
+
+            if (powerChanged || chargerChanged || gearChanged)
+            {
+                Logger.LogDebug(
+                    "State transition detected for vehicle {VehicleId}: Power={Old}->{New}, Charger={OldC}->{NewC}, Gear={OldG}->{NewG}",
+                    vehicleId, _lastPowerState, vehicleState.PowerState,
+                    _lastChargerState, vehicleState.ChargerState,
+                    _lastGearStatus, vehicleState.GearStatus);
+
+                _lastPowerState = vehicleState.PowerState;
+                _lastChargerState = vehicleState.ChargerState;
+                _lastGearStatus = vehicleState.GearStatus;
+
+                // Each parallel operation needs its own scope to avoid DbContext concurrency issues
+                var vehicleId_ = _vehicle.Id;
+                var drivesTask = Task.Run(async () =>
+                {
+                    await using var scope = ScopeFactory.CreateAsyncScope();
+                    var svc = scope.ServiceProvider.GetRequiredService<VehicleService>();
+                    return await svc.GetRecentDrivesAsync(vehicleId_, 4);
+                });
+                var sessionsTask = Task.Run(async () =>
+                {
+                    await using var scope = ScopeFactory.CreateAsyncScope();
+                    var svc = scope.ServiceProvider.GetRequiredService<VehicleService>();
+                    return await svc.GetRecentChargingSessionsAsync(vehicleId_, 4);
+                });
+                var activityTask = Task.Run(async () =>
+                {
+                    await using var scope = ScopeFactory.CreateAsyncScope();
+                    var svc = scope.ServiceProvider.GetRequiredService<ActivityFeedService>();
+                    return await svc.GetRecentActivityAsync(vehicleId_, 3);
+                });
+
+                await Task.WhenAll(drivesTask, sessionsTask, activityTask);
+
+                _recentDrives = drivesTask.Result;
+                _recentSessions = sessionsTask.Result;
+                _recentActivity = activityTask.Result;
+            }
 
             await InvokeAsync(StateHasChanged);
         }
@@ -875,11 +937,16 @@
 
             _vehicles = await vehicleService.GetVehiclesForUserAsync(_userId);
 
-            // If we don't have a selected vehicle yet, select the first one
             if (_vehicle == null && _vehicles.Any())
             {
+                // No vehicle selected yet, pick the first one
                 _vehicle = _vehicles.First();
                 await LoadVehicleDataAsync();
+            }
+            else if (_vehicle != null)
+            {
+                // Update the current vehicle reference so new data (e.g. image) comes through
+                _vehicle = _vehicles.FirstOrDefault(v => v.Id == _vehicle.Id) ?? _vehicle;
             }
 
             await InvokeAsync(StateHasChanged);
@@ -890,9 +957,104 @@
         }
     }
 
-    public void Dispose()
+    private async Task RunCoolTimerAsync(CancellationToken cancellationToken)
+    {
+        _coolTimer = new PeriodicTimer(TimeSpan.FromMinutes(2));
+        try
+        {
+            while (await _coolTimer.WaitForNextTickAsync(cancellationToken))
+            {
+                if (_vehicle == null) continue;
+
+                try
+                {
+                    // Each parallel operation needs its own scope to avoid DbContext concurrency issues
+                    var vehicleId = _vehicle.Id;
+
+                    var stateTask = Task.Run(async () =>
+                    {
+                        await using var scope = ScopeFactory.CreateAsyncScope();
+                        var svc = scope.ServiceProvider.GetRequiredService<VehicleService>();
+                        return await svc.GetLatestStateAsync(vehicleId);
+                    });
+                    var healthTask = Task.Run(async () =>
+                    {
+                        await using var scope = ScopeFactory.CreateAsyncScope();
+                        var svc = scope.ServiceProvider.GetRequiredService<BatteryHealthService>();
+                        return await svc.GetHealthSummaryAsync(vehicleId);
+                    });
+                    var drivesTask = Task.Run(async () =>
+                    {
+                        await using var scope = ScopeFactory.CreateAsyncScope();
+                        var svc = scope.ServiceProvider.GetRequiredService<VehicleService>();
+                        return await svc.GetRecentDrivesAsync(vehicleId, 4);
+                    });
+                    var sessionsTask = Task.Run(async () =>
+                    {
+                        await using var scope = ScopeFactory.CreateAsyncScope();
+                        var svc = scope.ServiceProvider.GetRequiredService<VehicleService>();
+                        return await svc.GetRecentChargingSessionsAsync(vehicleId, 4);
+                    });
+                    var activityTask = Task.Run(async () =>
+                    {
+                        await using var scope = ScopeFactory.CreateAsyncScope();
+                        var svc = scope.ServiceProvider.GetRequiredService<ActivityFeedService>();
+                        return await svc.GetRecentActivityAsync(vehicleId, 3);
+                    });
+                    var efficiencyTask = Task.Run(async () =>
+                    {
+                        await using var scope = ScopeFactory.CreateAsyncScope();
+                        var svc = scope.ServiceProvider.GetRequiredService<VehicleService>();
+                        return await svc.GetAverageEfficiencyAsync(vehicleId);
+                    });
+
+                    await Task.WhenAll(stateTask, healthTask, drivesTask, sessionsTask, activityTask, efficiencyTask);
+
+                    _currentState = stateTask.Result;
+                    _healthSummary = healthTask.Result;
+                    _recentDrives = drivesTask.Result;
+                    _recentSessions = sessionsTask.Result;
+                    _recentActivity = activityTask.Result;
+                    _efficiency = efficiencyTask.Result;
+                    _isOnline = DetermineOnlineStatus();
+
+                    // Re-seed tracking fields in case we missed a transition
+                    _lastPowerState = _currentState?.PowerState ?? PowerState.Unknown;
+                    _lastChargerState = _currentState?.ChargerState ?? ChargerState.Unknown;
+                    _lastGearStatus = _currentState?.GearStatus ?? GearStatus.Unknown;
+
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Error in cool-tier periodic refresh");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on disposal
+        }
+    }
+
+    private void OnTimeZoneChanged()
+    {
+        // Re-render when timezone is initialized/changed to update all formatted times
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
     {
         StateNotifier.OnVehicleStateChanged -= OnVehicleStateChangedAsync;
         StateNotifier.OnVehiclesChanged -= OnVehiclesChangedAsync;
+        TimeZoneService.OnTimeZoneChanged -= OnTimeZoneChanged;
+
+        if (_coolTimerCts != null)
+        {
+            await _coolTimerCts.CancelAsync();
+            _coolTimerCts.Dispose();
+        }
+
+        _coolTimer?.Dispose();
     }
 }

@@ -13,15 +13,18 @@ public class ChargingTrackingService
 {
     private readonly RivianMateDbContext _db;
     private readonly UserLocationService _locationService;
+    private readonly GeocodingService _geocodingService;
     private readonly ILogger<ChargingTrackingService> _logger;
 
     public ChargingTrackingService(
         RivianMateDbContext db,
         UserLocationService locationService,
+        GeocodingService geocodingService,
         ILogger<ChargingTrackingService> logger)
     {
         _db = db;
         _locationService = locationService;
+        _geocodingService = geocodingService;
         _logger = logger;
     }
 
@@ -110,6 +113,9 @@ public class ChargingTrackingService
             session.Id, vehicleId, session.StartBatteryLevel, state.Latitude, state.Longitude, session.LocationName ?? "Unknown");
     }
 
+    // Minimum interval between charging session updates to ensure periodic saves
+    private static readonly TimeSpan MinUpdateInterval = TimeSpan.FromMinutes(5);
+
     private async Task UpdateChargingSessionAsync(
         ChargingSession session,
         Vehicle vehicle,
@@ -147,15 +153,62 @@ public class ChargingTrackingService
             hasChanges = true;
         }
 
-        // Always update the last updated timestamp when we have changes
-        if (hasChanges)
+        // Check if we need a periodic update even without data changes
+        var timeSinceLastUpdate = session.LastUpdatedAt.HasValue
+            ? DateTime.UtcNow - session.LastUpdatedAt.Value
+            : TimeSpan.MaxValue;
+        var needsPeriodicUpdate = timeSinceLastUpdate >= MinUpdateInterval;
+
+        // Save if we have changes OR if it's been too long since the last update
+        if (hasChanges || needsPeriodicUpdate)
         {
             session.LastUpdatedAt = DateTime.UtcNow;
+
+            // Calculate live energy stats during the session
+            UpdateLiveEnergyStats(session, vehicle);
+
             await _db.SaveChangesAsync(cancellationToken);
 
             _logger.LogDebug(
-                "Updated charging session {SessionId}: Battery={Battery}%, Range={Range}mi, ChargeLimit={Limit}%",
-                session.Id, session.CurrentBatteryLevel, session.CurrentRangeEstimate, session.ChargeLimit);
+                "Updated charging session {SessionId}: Battery={Battery}%, Range={Range}mi, ChargeLimit={Limit}%, EnergyAdded={Energy:F1}kWh, AvgPower={Power:F1}kW{Periodic}",
+                session.Id, session.CurrentBatteryLevel, session.CurrentRangeEstimate, session.ChargeLimit,
+                session.EnergyAddedKwh, session.AveragePowerKw,
+                needsPeriodicUpdate && !hasChanges ? " (periodic)" : "");
+        }
+    }
+
+    /// <summary>
+    /// Updates live energy statistics during an active charging session.
+    /// These are estimates that will be finalized when the session ends.
+    /// </summary>
+    private void UpdateLiveEnergyStats(ChargingSession session, Vehicle vehicle)
+    {
+        // Calculate current energy added based on battery level change
+        var currentBattery = session.CurrentBatteryLevel ?? session.StartBatteryLevel;
+        var batteryGainPercent = currentBattery - session.StartBatteryLevel;
+
+        if (batteryGainPercent > 0)
+        {
+            var capacity = vehicle.OriginalCapacityKwh
+                ?? BatteryPackSpecs.GetOriginalCapacityKwh(vehicle.BatteryPack, vehicle.Year);
+
+            if (capacity > 0)
+            {
+                session.EnergyAddedKwh = capacity * (batteryGainPercent / 100.0);
+
+                // Calculate current average power
+                var durationHours = (DateTime.UtcNow - session.StartTime).TotalHours;
+                if (durationHours > 0.01) // Avoid division by very small numbers
+                {
+                    session.AveragePowerKw = session.EnergyAddedKwh.Value / durationHours;
+                }
+            }
+        }
+
+        // Calculate range added so far
+        if (session.CurrentRangeEstimate != null && session.StartRangeEstimate != null)
+        {
+            session.RangeAdded = session.CurrentRangeEstimate.Value - session.StartRangeEstimate.Value;
         }
     }
 
@@ -172,6 +225,7 @@ public class ChargingTrackingService
 
         // If location wasn't matched at start, try again now
         // (user may have added their home location during or after the charging session)
+        UserLocation? endMatchedLocation = null;
         if (session.UserLocationId == null && session.Latitude.HasValue && session.Longitude.HasValue)
         {
             var matchingLocation = await GetMatchingLocationAsync(vehicle.OwnerId, session.Latitude, session.Longitude);
@@ -180,9 +234,30 @@ public class ChargingTrackingService
                 session.UserLocationId = matchingLocation.Id;
                 session.LocationName = matchingLocation.Name;
                 session.IsHomeCharging = matchingLocation.Name.Equals("Home", StringComparison.OrdinalIgnoreCase) || matchingLocation.IsDefault;
+                endMatchedLocation = matchingLocation;
                 _logger.LogInformation(
                     "Matched charging session {SessionId} to location '{LocationName}' at session end",
                     session.Id, matchingLocation.Name);
+            }
+            else
+            {
+                // No saved location matched — reverse geocode for a display name
+                try
+                {
+                    var address = await _geocodingService.GetShortAddressAsync(
+                        session.Latitude.Value, session.Longitude.Value, cancellationToken);
+                    if (!string.IsNullOrEmpty(address))
+                    {
+                        session.LocationName = address;
+                        _logger.LogInformation(
+                            "Geocoded charging session {SessionId} location to '{Address}'",
+                            session.Id, address);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to geocode location for session {SessionId}", session.Id);
+                }
             }
         }
 
@@ -208,6 +283,23 @@ public class ChargingTrackingService
                         session.CapacityConfidence = Math.Min(1.0, batteryGainPercent / 50.0);
                     }
                 }
+            }
+        }
+
+        // Calculate cost from location's electricity rate
+        if (session.UserLocationId != null && session.EnergyAddedKwh > 0 && !session.Cost.HasValue)
+        {
+            // Use the location we just matched, or load it from DB if matched at start
+            var costLocation = endMatchedLocation
+                ?? await _db.UserLocations.AsNoTracking()
+                    .FirstOrDefaultAsync(l => l.Id == session.UserLocationId, cancellationToken);
+
+            if (costLocation?.CostPerKwh > 0)
+            {
+                session.Cost = session.EnergyAddedKwh.Value * costLocation.CostPerKwh.Value;
+                _logger.LogInformation(
+                    "Calculated cost {Cost:F2} for session {SessionId} using rate {Rate}/kWh from location '{Location}'",
+                    session.Cost, session.Id, costLocation.CostPerKwh, costLocation.Name);
             }
         }
 
@@ -338,6 +430,13 @@ public class ChargingTrackingService
                 session.LocationName = matchingLocation.Name;
                 session.IsHomeCharging = matchingLocation.Name.Equals("Home", StringComparison.OrdinalIgnoreCase)
                     || matchingLocation.IsDefault;
+
+                // Calculate cost if the location has a rate and the session has energy data
+                if (matchingLocation.CostPerKwh > 0 && session.EnergyAddedKwh > 0 && !session.Cost.HasValue)
+                {
+                    session.Cost = session.EnergyAddedKwh.Value * matchingLocation.CostPerKwh.Value;
+                }
+
                 matched++;
 
                 _logger.LogInformation(
@@ -380,6 +479,21 @@ public class ChargingTrackingService
         {
             session.LocationName = location.Name;
             session.IsHomeCharging = isHome;
+
+            // Recalculate cost from the location's rate
+            if (location.CostPerKwh > 0 && session.EnergyAddedKwh > 0)
+            {
+                session.Cost = session.EnergyAddedKwh.Value * location.CostPerKwh.Value;
+            }
+            else if (location.CostPerKwh == null || location.CostPerKwh == 0)
+            {
+                // Clear estimated cost if location no longer has a rate
+                // (only clear costs that were location-estimated, not API-provided)
+                if (session.UserLocationId == userLocationId)
+                {
+                    session.Cost = null;
+                }
+            }
         }
 
         await _db.SaveChangesAsync(cancellationToken);

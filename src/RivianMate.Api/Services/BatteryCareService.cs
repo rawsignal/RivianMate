@@ -42,11 +42,13 @@ public class BatteryCareService
             cellType = BatteryCellType.LFP;
         }
 
-        // Get charge limit history from the last 30 days
         var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
-        var chargeLimitHistory = await _db.VehicleStates
-            .Where(s => s.VehicleId == vehicleId && s.Timestamp >= thirtyDaysAgo && s.BatteryLimit != null)
-            .Select(s => new { s.Timestamp, s.BatteryLimit })
+
+        // Get completed charging sessions from the last 30 days
+        // Use EndBatteryLevel as the actual level they charged to (more meaningful than limit setting)
+        var recentChargingSessions = await _db.ChargingSessions
+            .Where(s => s.VehicleId == vehicleId && !s.IsActive && s.StartTime >= thirtyDaysAgo && s.EndBatteryLevel != null)
+            .Select(s => new { s.StartTime, s.EndBatteryLevel, s.ChargeLimit })
             .ToListAsync(cancellationToken);
 
         // Get completed drives from the last 30 days
@@ -55,7 +57,7 @@ public class BatteryCareService
             .Select(d => new { d.StartTime, d.DistanceMiles })
             .ToListAsync(cancellationToken);
 
-        // Analyze charge limit patterns
+        // Analyze charging patterns
         var analysis = new BatteryCareAnalysis
         {
             CellType = cellType,
@@ -83,20 +85,21 @@ public class BatteryCareService
             }
         }
 
-        if (chargeLimitHistory.Count > 0)
+        // Analyze charging session patterns - use actual end battery levels
+        if (recentChargingSessions.Count > 0)
         {
-            var limits = chargeLimitHistory.Select(h => h.BatteryLimit!.Value).ToList();
-            analysis.AverageChargeLimit = limits.Average();
-            analysis.MaxChargeLimit = limits.Max();
-            analysis.ChargesAbove90Percent = limits.Count(l => l > 90);
-            analysis.ChargesAt100Percent = limits.Count(l => l >= 100);
-            analysis.TotalChargeRecords = limits.Count;
+            var endLevels = recentChargingSessions.Select(s => s.EndBatteryLevel!.Value).ToList();
+            analysis.AverageChargeLimit = endLevels.Average();
+            analysis.MaxChargeLimit = endLevels.Max();
+            analysis.ChargesAbove90Percent = endLevels.Count(l => l > 90);
+            analysis.ChargesAt100Percent = endLevels.Count(l => l >= 99); // Use 99+ to account for rounding
+            analysis.TotalChargeRecords = endLevels.Count;
 
-            // Calculate percentage of time spent at high charge limits
-            if (limits.Count > 0)
+            // Calculate percentage of charges to high levels
+            if (endLevels.Count > 0)
             {
-                analysis.PercentTimeAbove90 = (double)analysis.ChargesAbove90Percent / limits.Count * 100;
-                analysis.PercentTimeAt100 = (double)analysis.ChargesAt100Percent / limits.Count * 100;
+                analysis.PercentTimeAbove90 = (double)analysis.ChargesAbove90Percent / endLevels.Count * 100;
+                analysis.PercentTimeAt100 = (double)analysis.ChargesAt100Percent / endLevels.Count * 100;
             }
         }
 
@@ -196,7 +199,12 @@ public class BatteryCareService
             Icon = "battery",
             Title = "NMC Battery: Charge Only What You Need",
             Description = "Your vehicle has NMC (Nickel Manganese Cobalt) cells. For optimal longevity, charge only as much as you need for your daily driving. Lower average state of charge means longer battery life. 80-90% is fine when needed, but 50-70% is even better for daily use if it covers your needs.",
-            IsPersonalized = false
+            IsPersonalized = false,
+            References = new List<TipReference>
+            {
+                new() { Title = "Effect of High SOC on Battery Degradation", Source = "Battery University", Url = "https://batteryuniversity.com/article/bu-808-how-to-prolong-lithium-based-batteries" },
+                new() { Title = "Calendar aging and SOC study", Source = "Journal of Power Sources", Year = "2017", Url = "https://doi.org/10.1016/j.jpowsour.2017.03.004" }
+            }
         });
 
         // Context about typical driving
@@ -206,8 +214,12 @@ public class BatteryCareService
             Priority = TipPriority.Medium,
             Icon = "map-pin",
             Title = "Most Commutes Need Less Than You Think",
-            Description = "The average American commute is under 30 miles round-trip—less than 10% of your Rivian's range. If your daily driving is predictable, consider setting a lower charge limit (50-60%) and only increasing it when you have longer trips planned. Your battery will thank you.",
-            IsPersonalized = false
+            Description = "The average American commute is about 40 miles round-trip—roughly 10-15% of your Rivian's range. If your daily driving is predictable, consider setting a lower charge limit (50-60%) and only increasing it when you have longer trips planned. Your battery will thank you.",
+            IsPersonalized = false,
+            References = new List<TipReference>
+            {
+                new() { Title = "Average Commute Time Statistics", Source = "Zippia", Year = "2023", Url = "https://www.zippia.com/advice/average-commute-time-statistics/" }
+            }
         });
 
         // Personalized tip: Low mileage but high charge limit
@@ -249,7 +261,11 @@ public class BatteryCareService
                 Icon = "info",
                 Title = "Could You Charge Less?",
                 Description = $"Your average charge limit is {analysis.AverageChargeLimit:0}%. While this is acceptable, research shows batteries last longer at lower average SOC. If your daily driving doesn't require this much range, try lowering your limit to 60-70% and see if it still meets your needs.",
-                IsPersonalized = true
+                IsPersonalized = true,
+                References = new List<TipReference>
+                {
+                    new() { Title = "Effect of SOC on Calendar Aging", Source = "Journal of Power Sources", Year = "2017", Url = "https://doi.org/10.1016/j.jpowsour.2017.03.004" }
+                }
             });
         }
         else if (analysis.AverageChargeLimit <= 70 && analysis.TotalChargeRecords > 10)
@@ -292,7 +308,12 @@ public class BatteryCareService
             Icon = "battery",
             Title = "LFP Battery: Charge to 100% Weekly",
             Description = "Your vehicle has LFP (Lithium Iron Phosphate) cells. LFP batteries have a flat voltage curve, which makes it difficult for the battery management system (BMS) to accurately estimate state of charge. Charging to 100% weekly allows the BMS to recalibrate for accurate range estimates.",
-            IsPersonalized = false
+            IsPersonalized = false,
+            References = new List<TipReference>
+            {
+                new() { Title = "LFP voltage curve characteristics", Source = "Nature Communications", Year = "2021", Url = "https://doi.org/10.1038/s41467-021-25334-8" },
+                new() { Title = "Tesla LFP Charging Guidance", Source = "Tesla Support", Url = "https://www.tesla.com/support/charging" }
+            }
         });
 
         // Add nuance about LFP degradation
@@ -303,7 +324,11 @@ public class BatteryCareService
             Icon = "info",
             Title = "LFP Longevity Note",
             Description = "While LFP batteries are more tolerant of high charge levels than NMC, recent research shows they still experience slightly faster degradation at 100% SOC—just less severe than NMC. For maximum longevity, some experts suggest 20-80% for daily use with weekly 100% charges for calibration. However, the practical difference is small, so prioritize calibration.",
-            IsPersonalized = false
+            IsPersonalized = false,
+            References = new List<TipReference>
+            {
+                new() { Title = "LFP vs NMC degradation at high SOC", Source = "Journal of Energy Storage", Year = "2022", Url = "https://doi.org/10.1016/j.est.2022.105016" }
+            }
         });
 
         // LFP calibration recommendation
@@ -384,8 +409,12 @@ public class BatteryCareService
                 Priority = TipPriority.Medium,
                 Icon = "thermometer",
                 Title = "Temperature + High SOC = Faster Degradation",
-                Description = "Research shows battery degradation accelerates significantly when high state of charge is combined with high temperatures. A 2023 study found calendar aging doubles when SOC is above 90% and temperature exceeds 45°C (113°F). In hot climates, consider slightly lower charge limits.",
-                IsPersonalized = false
+                Description = "Research shows battery degradation accelerates significantly when high state of charge is combined with high temperatures. Cells stored at high SOC (90-100%) and elevated temperatures degrade substantially faster than those at moderate conditions. In hot climates, consider slightly lower charge limits.",
+                IsPersonalized = false,
+                References = new List<TipReference>
+                {
+                    new() { Title = "A decade of insights: Calendar aging trends", Source = "Cell Reports Physical Science", Year = "2024", Url = "https://www.sciencedirect.com/science/article/pii/S2542435124005105" }
+                }
             },
             new()
             {
@@ -393,8 +422,12 @@ public class BatteryCareService
                 Priority = TipPriority.Low,
                 Icon = "zap",
                 Title = "Precondition Before DC Fast Charging",
-                Description = "For the fastest DC charging speeds, precondition your battery by navigating to a fast charger in the nav system. This warms or cools the battery to its optimal temperature range, which also reduces stress on the cells during fast charging.",
-                IsPersonalized = false
+                Description = "For faster DC charging speeds, let your vehicle precondition the battery before arriving at a fast charger. Rivian's thermal control system warms or cools the battery to its optimal temperature range, which also reduces stress on the cells during fast charging.",
+                IsPersonalized = false,
+                References = new List<TipReference>
+                {
+                    new() { Title = "How Extreme Weather Affects Performance", Source = "Rivian Support", Url = "https://rivian.com/support/article/how-will-extreme-weather-affect-performance-and-range" }
+                }
             },
             new()
             {
@@ -403,7 +436,11 @@ public class BatteryCareService
                 Icon = "sun",
                 Title = "Park in the Shade When Possible",
                 Description = "High temperatures accelerate battery degradation, especially when combined with a high state of charge. When possible, park in the shade or a garage to keep your battery cooler, particularly in summer months or hot climates.",
-                IsPersonalized = false
+                IsPersonalized = false,
+                References = new List<TipReference>
+                {
+                    new() { Title = "Effect of temperature on battery aging", Source = "Battery University", Url = "https://batteryuniversity.com/article/bu-808-how-to-prolong-lithium-based-batteries" }
+                }
             },
             new()
             {
@@ -411,17 +448,25 @@ public class BatteryCareService
                 Priority = TipPriority.Low,
                 Icon = "gauge",
                 Title = "DC Fast Charging Impact is Minimal",
-                Description = "Contrary to popular belief, recent analysis of ~13,000 EVs found no statistically significant difference in degradation between vehicles that fast-charged frequently and those that rarely did. Don't avoid fast charging when you need it.",
-                IsPersonalized = false
+                Description = "Contrary to popular belief, a Recurrent Auto analysis found no statistically significant difference in range degradation between vehicles that fast-charged over 90% of the time and those that fast-charged under 10% of the time. Don't avoid fast charging when you need it.",
+                IsPersonalized = false,
+                References = new List<TipReference>
+                {
+                    new() { Title = "How Fast Charging Impacts EV Battery Health", Source = "Recurrent Auto", Year = "2024", Url = "https://www.recurrentauto.com/research/impacts-of-fast-charging" }
+                }
             },
             new()
             {
                 Category = TipCategory.Storage,
                 Priority = TipPriority.Low,
                 Icon = "calendar",
-                Title = "Long-Term Storage: 50% SOC",
-                Description = "If storing your vehicle for weeks or longer, keep the battery around 50% state of charge in a cool location. Research shows batteries age slowest around 50% SOC. Avoid leaving it at 100% or below 20% for extended periods.",
-                IsPersonalized = false
+                Title = "Long-Term Storage: 40-50% SOC",
+                Description = "If storing your vehicle for weeks or longer, keep the battery around 40-50% state of charge in a cool location. Research shows batteries age slowest at lower charge levels. Avoid leaving it at 100% or below 20% for extended periods.",
+                IsPersonalized = false,
+                References = new List<TipReference>
+                {
+                    new() { Title = "How to Store Batteries", Source = "Battery University", Url = "https://batteryuniversity.com/article/bu-702-how-to-store-batteries" }
+                }
             },
             new()
             {
@@ -430,7 +475,11 @@ public class BatteryCareService
                 Icon = "battery-charging",
                 Title = "Real-World Degradation is Low",
                 Description = "Modern EV batteries are robust. Geotab's 2024 analysis of 10,000+ EVs shows an average degradation rate of just 1.8% per year, down from 2.3% in 2019. Most EVs retain 85-90% capacity after 100,000 miles under normal use.",
-                IsPersonalized = false
+                IsPersonalized = false,
+                References = new List<TipReference>
+                {
+                    new() { Title = "EV Battery Health and Degradation", Source = "Geotab", Year = "2024", Url = "https://www.geotab.com/blog/ev-battery-health/" }
+                }
             }
         };
     }
@@ -474,6 +523,18 @@ public class BatteryCareTip
     public required string Title { get; set; }
     public required string Description { get; set; }
     public bool IsPersonalized { get; set; }
+    public List<TipReference>? References { get; set; }
+}
+
+/// <summary>
+/// A reference or citation for a battery care tip.
+/// </summary>
+public class TipReference
+{
+    public required string Title { get; set; }
+    public string? Source { get; set; }
+    public string? Url { get; set; }
+    public string? Year { get; set; }
 }
 
 public enum BatteryCellType

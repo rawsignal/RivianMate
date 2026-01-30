@@ -25,6 +25,14 @@ function togglePasswordVisibility(button) {
     }
 }
 
+// Scroll to an element by ID with smooth behavior
+function scrollToElement(elementId) {
+    const element = document.getElementById(elementId);
+    if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
 window.rivianMate = {
     // Get the user's IANA timezone identifier (e.g., "America/New_York")
     getTimeZone: function () {

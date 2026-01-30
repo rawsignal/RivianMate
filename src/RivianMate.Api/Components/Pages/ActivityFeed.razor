@@ -6,6 +6,7 @@
 @using Microsoft.JSInterop
 @using RivianMate.Api.Components.Shared
 @using RivianMate.Core.Entities
+@using RivianMate.Api.Helpers
 @attribute [Authorize]
 @inject ActivityFeedService ActivityFeedService
 @inject VehicleService VehicleService
@@ -13,6 +14,8 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JSRuntime
 @inject ILogger<ActivityFeed> Logger
+@inject VehicleSelectionService VehicleSelectionService
+@implements IDisposable
 
 <PageTitle>Activity Feed - RivianMate</PageTitle>
 
@@ -114,15 +117,15 @@ else
                     if (currentDate != activityDate)
                     {
                         currentDate = activityDate;
-                        <div class="activity-date-group">@FormatDateHeader(activityDate)</div>
+                        <div class="activity-date-group">@DateTimeFormatHelper.FormatDateHeader(activityDate, TimeZoneService.ToLocalTime(DateTime.UtcNow).Date)</div>
                     }
-                    <div class="activity-list-item">
-                        <div class="activity-icon @GetActivityTypeClass(activity.Type)">
-                            <Icon Name="@GetActivityIcon(activity.Type)" Size="18" />
+                    <div class="activity-list-item @(activity.Id == SelectedActivityId ? "highlighted" : "")" id="activity-@activity.Id">
+                        <div class="activity-icon @ActivityTypeHelper.GetCssClass(activity.Type)">
+                            <Icon Name="@ActivityTypeHelper.GetIcon(activity.Type)" Size="18" />
                         </div>
                         <div class="activity-details">
                             <span class="activity-message">@activity.Message</span>
-                            <span class="activity-time">@FormatTime(activity.Timestamp)</span>
+                            <span class="activity-time">@DateTimeFormatHelper.FormatTimeOnly(activity.Timestamp, TimeZoneService)</span>
                         </div>
                     </div>
                 }
@@ -139,6 +142,9 @@ else
 @code {
     [Parameter]
     public Guid? VehicleId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "selected")]
+    public int? SelectedActivityId { get; set; }
 
     private List<ActivityFeedItem>? _activities;
     private Vehicle? _vehicle;
@@ -157,9 +163,6 @@ else
     private int _currentPage = 1;
     private int _totalCount = 0;
 
-    // LocalStorage key (shared with Home.razor)
-    private const string SelectedVehicleKey = "rivianmate_selectedVehicleId";
-
     private bool _hasFilters => !string.IsNullOrEmpty(_selectedType) ||
         _startDate != _defaultStartDate || _endDate.HasValue;
 
@@ -170,40 +173,21 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        TimeZoneService.OnTimeZoneChanged += OnTimeZoneChanged;
+
         // Initialize date filter defaults using user's timezone
         _defaultStartDate = GetLocalToday().AddDays(-30);
         _startDate = _defaultStartDate;
 
         try
         {
-            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-            var userId = Guid.Parse(authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "");
+            var userId = await VehicleSelectionService.GetUserIdAsync(AuthStateProvider);
+            if (userId == Guid.Empty) return;
 
-            // Get all vehicles first
-            var vehicles = await VehicleService.GetVehiclesForUserAsync(userId);
-
-            if (vehicles.Count == 0)
-            {
-                _noVehicles = true;
-                return;
-            }
-
-            // Get vehicle - priority: URL param > localStorage > first vehicle
-            if (VehicleId.HasValue)
-            {
-                _vehicle = await VehicleService.GetVehicleByPublicIdAsync(VehicleId.Value, userId);
-                if (_vehicle == null)
-                {
-                    _notFound = true;
-                    return;
-                }
-            }
-            else
-            {
-                // Try to get last selected vehicle from localStorage
-                _vehicle = await GetLastSelectedVehicleAsync(vehicles);
-                _vehicle ??= vehicles.FirstOrDefault();
-            }
+            var selection = await VehicleSelectionService.ResolveVehicleAsync(userId, VehicleId, JSRuntime);
+            if (selection.NoVehicles) { _noVehicles = true; return; }
+            if (selection.NotFound) { _notFound = true; return; }
+            _vehicle = selection.Vehicle;
 
             if (_vehicle != null)
             {
@@ -218,23 +202,6 @@ else
         {
             _loading = false;
         }
-    }
-
-    private async Task<Vehicle?> GetLastSelectedVehicleAsync(List<Vehicle> vehicles)
-    {
-        try
-        {
-            var savedIdStr = await JSRuntime.InvokeAsync<string?>("rivianMate.storage.get", SelectedVehicleKey);
-            if (int.TryParse(savedIdStr, out var savedId))
-            {
-                return vehicles.FirstOrDefault(v => v.Id == savedId);
-            }
-        }
-        catch
-        {
-            // JS interop can fail during prerendering
-        }
-        return null;
     }
 
     private async Task LoadActivityAsync()
@@ -289,44 +256,33 @@ else
         await LoadActivityAsync();
     }
 
-    private string FormatDateHeader(DateTime date)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        var today = TimeZoneService.ToLocalTime(DateTime.UtcNow).Date;
-        if (date == today) return "Today";
-        if (date == today.AddDays(-1)) return "Yesterday";
-        if (date > today.AddDays(-7)) return date.ToString("dddd");
-        return date.ToString("MMMM d, yyyy");
+        if (firstRender)
+        {
+            // Initialize timezone from localStorage
+            var previousTz = TimeZoneService.TimeZoneId;
+            await TimeZoneService.InitializeAsync();
+            if (previousTz != TimeZoneService.TimeZoneId)
+            {
+                StateHasChanged();
+            }
+
+            // Scroll to selected activity if one was specified
+            if (SelectedActivityId.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("scrollToElement", $"activity-{SelectedActivityId.Value}");
+            }
+        }
     }
 
-    private string FormatTime(DateTime utcTime)
+    private void OnTimeZoneChanged()
     {
-        var localTime = TimeZoneService.ToLocalTime(utcTime);
-        return localTime.ToString("h:mm tt");
+        InvokeAsync(StateHasChanged);
     }
 
-    private static string GetActivityIcon(ActivityType type) => type switch
+    public void Dispose()
     {
-        ActivityType.Closure => "door-open",
-        ActivityType.Gear => "settings",
-        ActivityType.Power => "power",
-        ActivityType.Charging => "zap",
-        ActivityType.Drive => "navigation",
-        ActivityType.Climate => "thermometer",
-        ActivityType.Location => "map-pin",
-        ActivityType.Software => "download",
-        ActivityType.Security => "shield",
-        _ => "activity"
-    };
-
-    private static string GetActivityTypeClass(ActivityType type) => type switch
-    {
-        ActivityType.Closure => "activity-closure",
-        ActivityType.Gear => "activity-gear",
-        ActivityType.Power => "activity-power",
-        ActivityType.Charging => "activity-charging",
-        ActivityType.Drive => "activity-drive",
-        ActivityType.Climate => "activity-climate",
-        ActivityType.Security => "activity-security",
-        _ => ""
-    };
+        TimeZoneService.OnTimeZoneChanged -= OnTimeZoneChanged;
+    }
 }

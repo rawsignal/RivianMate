@@ -10,15 +10,15 @@ namespace RivianMate.Api.Services;
 /// </summary>
 public class DataExportService
 {
-    private readonly RivianMateDbContext _db;
+    private readonly IDbContextFactory<RivianMateDbContext> _dbFactory;
     private readonly ILogger<DataExportService> _logger;
 
     private const int MaxPendingExports = 3;
     private static readonly TimeSpan CooldownPeriod = TimeSpan.FromMinutes(5);
 
-    public DataExportService(RivianMateDbContext db, ILogger<DataExportService> logger)
+    public DataExportService(IDbContextFactory<RivianMateDbContext> dbFactory, ILogger<DataExportService> logger)
     {
-        _db = db;
+        _dbFactory = dbFactory;
         _logger = logger;
     }
 
@@ -33,44 +33,69 @@ public class DataExportService
         if (exportType is not ("Drives" or "Charging" or "BatteryHealth" or "All"))
             return (null, "Invalid export type.");
 
-        // Check rate limits
-        var pendingCount = await _db.DataExports
-            .CountAsync(e => e.UserId == userId
-                && (e.Status == ExportStatus.Pending || e.Status == ExportStatus.Processing), ct);
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
-        if (pendingCount >= MaxPendingExports)
-            return (null, $"You have {pendingCount} exports in progress. Please wait for them to complete.");
+        // Verify vehicle belongs to the requesting user
+        var ownsVehicle = await db.Vehicles
+            .AnyAsync(v => v.Id == vehicleId && v.OwnerId == userId, ct);
 
-        var lastExport = await _db.DataExports
-            .Where(e => e.UserId == userId)
-            .OrderByDescending(e => e.CreatedAt)
-            .FirstOrDefaultAsync(ct);
+        if (!ownsVehicle)
+            return (null, "Vehicle not found.");
 
-        if (lastExport != null && DateTime.UtcNow - lastExport.CreatedAt < CooldownPeriod)
+        // Use a transaction to make rate-limit check + insert atomic
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+        try
         {
-            var remaining = CooldownPeriod - (DateTime.UtcNow - lastExport.CreatedAt);
-            return (null, $"Please wait {remaining.Minutes}m {remaining.Seconds}s before requesting another export.");
+            // Check rate limits (inside transaction to prevent race conditions)
+            var pendingCount = await db.DataExports
+                .CountAsync(e => e.UserId == userId
+                    && (e.Status == ExportStatus.Pending || e.Status == ExportStatus.Processing), ct);
+
+            if (pendingCount >= MaxPendingExports)
+            {
+                await transaction.RollbackAsync(ct);
+                return (null, $"You have {pendingCount} exports in progress. Please wait for them to complete.");
+            }
+
+            var lastExport = await db.DataExports
+                .Where(e => e.UserId == userId)
+                .OrderByDescending(e => e.CreatedAt)
+                .FirstOrDefaultAsync(ct);
+
+            if (lastExport != null && DateTime.UtcNow - lastExport.CreatedAt < CooldownPeriod)
+            {
+                var remaining = CooldownPeriod - (DateTime.UtcNow - lastExport.CreatedAt);
+                await transaction.RollbackAsync(ct);
+                return (null, $"Please wait {remaining.Minutes}m {remaining.Seconds}s before requesting another export.");
+            }
+
+            var export = new DataExport
+            {
+                UserId = userId,
+                VehicleId = vehicleId,
+                ExportType = exportType,
+                Status = ExportStatus.Pending,
+                DownloadToken = Guid.NewGuid(),
+                CreatedAt = DateTime.UtcNow,
+                ExpiresAt = DateTime.UtcNow.AddHours(24)
+            };
+
+            db.DataExports.Add(export);
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+
+            _logger.LogInformation(
+                "Export {ExportId} requested by user {UserId} for vehicle {VehicleId}, type {ExportType}",
+                export.Id, userId, vehicleId, exportType);
+
+            return (export, null);
         }
-
-        var export = new DataExport
+        catch
         {
-            UserId = userId,
-            VehicleId = vehicleId,
-            ExportType = exportType,
-            Status = ExportStatus.Pending,
-            DownloadToken = Guid.NewGuid(),
-            CreatedAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.AddHours(24)
-        };
-
-        _db.DataExports.Add(export);
-        await _db.SaveChangesAsync(ct);
-
-        _logger.LogInformation(
-            "Export {ExportId} requested by user {UserId} for vehicle {VehicleId}, type {ExportType}",
-            export.Id, userId, vehicleId, exportType);
-
-        return (export, null);
+            await transaction.RollbackAsync(ct);
+            throw;
+        }
     }
 
     /// <summary>
@@ -78,7 +103,8 @@ public class DataExportService
     /// </summary>
     public async Task<List<DataExport>> GetExportsForUserAsync(Guid userId, CancellationToken ct = default)
     {
-        return await _db.DataExports
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await db.DataExports
             .AsNoTracking()
             .Where(e => e.UserId == userId)
             .OrderByDescending(e => e.CreatedAt)
@@ -91,7 +117,8 @@ public class DataExportService
     /// </summary>
     public async Task<DataExport?> GetExportForDownloadAsync(Guid downloadToken, Guid userId, CancellationToken ct = default)
     {
-        var export = await _db.DataExports
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var export = await db.DataExports
             .FirstOrDefaultAsync(e => e.DownloadToken == downloadToken && e.UserId == userId, ct);
 
         if (export == null)
@@ -105,7 +132,7 @@ public class DataExportService
 
         // Mark as downloaded
         export.DownloadedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync(ct);
 
         return export;
     }

@@ -145,9 +145,10 @@
     {
         if (firstRender && !_timeZoneInitialized)
         {
+            // Initialize timezone from localStorage (or browser detection as fallback)
             await TimeZoneService.InitializeAsync();
 
-            // Apply user's saved timezone preference as fallback
+            // Sync from DB if user has a saved preference (for new devices/browsers)
             try
             {
                 var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -157,18 +158,17 @@
                     var preferences = await UserPreferencesService.GetPreferencesAsync(userId);
                     if (!string.IsNullOrEmpty(preferences.TimeZoneId))
                     {
-                        TimeZoneService.SetUserPreferredTimeZone(preferences.TimeZoneId);
+                        // This will update localStorage if different from current
+                        await TimeZoneService.SetPreferredTimeZoneAsync(preferences.TimeZoneId);
                     }
                 }
             }
             catch
             {
-                // Ignore errors loading preferences for timezone
+                // Ignore errors - timezone will use localStorage or browser detection
             }
 
             _timeZoneInitialized = true;
-
-            // Trigger re-render so child components use the correct timezone
             StateHasChanged();
         }
     }

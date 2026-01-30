@@ -35,6 +35,11 @@ public class UserLocation : IUserOwnedEntity
     /// </summary>
     public bool IsDefault { get; set; }
 
+    /// <summary>
+    /// Electricity cost per kWh at this location (in user's currency)
+    /// </summary>
+    public double? CostPerKwh { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

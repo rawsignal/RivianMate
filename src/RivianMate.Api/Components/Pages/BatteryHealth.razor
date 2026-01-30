@@ -6,6 +6,7 @@
 @using Microsoft.JSInterop
 @using RivianMate.Api.Components.Shared
 @using RivianMate.Core.Entities
+@using RivianMate.Api.Helpers
 @attribute [Authorize]
 @inject BatteryHealthService BatteryHealthService
 @inject BatteryCareService BatteryCareService
@@ -13,6 +14,9 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JSRuntime
 @inject ILogger<BatteryHealth> Logger
+@inject VehicleSelectionService VehicleSelectionService
+@inject UnitConversionService UnitConversionService
+@inject UserPreferencesService UserPreferencesService
 
 <PageTitle>Battery Health - RivianMate</PageTitle>
 
@@ -59,24 +63,29 @@ else if (_summary == null)
 }
 else
 {
+    // Use best reading from last 30 days (less affected by cold weather)
+    var displayHealthPercent = _summary.BestHealthPercentLast30Days ?? _summary.CurrentHealthPercent;
+    var displayCapacity = _summary.BestCapacityLast30Days ?? _summary.CurrentCapacityKwh;
+    var displayCapacityLost = _summary.OriginalCapacityKwh - displayCapacity;
+
     <!-- Main Health Display -->
     <div class="card mb-8">
         <div style="display: flex; gap: var(--space-8); align-items: center; flex-wrap: wrap;">
-            <!-- Health Ring -->
+            <!-- Health Ring (uses best reading from last 30 days) -->
             <div class="health-ring-container" style="width: 200px; height: 200px; flex-shrink: 0;">
                 <svg width="200" height="200" style="transform: rotate(-90deg);">
                     <circle cx="100" cy="100" r="86" fill="none" stroke="#2D4A3E" stroke-width="14"/>
                     <circle cx="100" cy="100" r="86" fill="none"
-                            stroke="@GetHealthColor(_summary.CurrentHealthPercent)"
+                            stroke="@BatteryHealthHelper.GetHealthColor(displayHealthPercent)"
                             stroke-width="14"
                             stroke-linecap="round"
                             stroke-dasharray="@(2 * Math.PI * 86)"
-                            stroke-dashoffset="@(2 * Math.PI * 86 * (1 - _summary.CurrentHealthPercent / 100))"
+                            stroke-dashoffset="@(2 * Math.PI * 86 * (1 - displayHealthPercent / 100))"
                             style="transition: stroke-dashoffset 1s ease-out;"/>
                 </svg>
                 <div class="health-ring-content">
-                    <span class="health-percent">@_summary.CurrentHealthPercent.ToString("0.0")<span class="health-percent-unit">%</span></span>
-                    <span class="health-status" style="color: @GetHealthColor(_summary.CurrentHealthPercent);">@GetHealthStatus(_summary.CurrentHealthPercent)</span>
+                    <span class="health-percent">@displayHealthPercent.ToString("0.0")<span class="health-percent-unit">%</span></span>
+                    <span class="health-status" style="color: @BatteryHealthHelper.GetHealthColor(displayHealthPercent);">@BatteryHealthHelper.GetHealthStatus(displayHealthPercent)</span>
                 </div>
             </div>
 
@@ -84,22 +93,27 @@ else
             <div style="flex: 1; min-width: 300px;">
                 <div class="grid-3 mb-4">
                     <div class="mini-stat">
-                        <p class="mini-stat-label">Current Capacity</p>
-                        <p class="mini-stat-value">@_summary.CurrentCapacityKwh.ToString("0.0") <span class="mini-stat-unit">kWh</span></p>
+                        <p class="mini-stat-label">Best Recent Capacity</p>
+                        <p class="mini-stat-value">@displayCapacity.ToString("0.0") <span class="mini-stat-unit">kWh</span></p>
                     </div>
                     <div class="mini-stat">
                         <p class="mini-stat-label">Original Capacity</p>
                         <p class="mini-stat-value">@_summary.OriginalCapacityKwh.ToString("0.0") <span class="mini-stat-unit">kWh</span></p>
                     </div>
                     <div class="mini-stat">
-                        <p class="mini-stat-label">Capacity Lost</p>
-                        <p class="mini-stat-value">@_summary.CapacityLostKwh.ToString("0.0") <span class="mini-stat-unit">kWh</span></p>
+                        <p class="mini-stat-label">Est. Capacity Lost</p>
+                        <p class="mini-stat-value">@displayCapacityLost.ToString("0.0") <span class="mini-stat-unit">kWh</span></p>
                     </div>
                 </div>
 
-                <div style="display: flex; gap: var(--space-4); align-items: center;">
-                    <span style="font-size: 0.875rem; color: var(--color-text-muted);">Current Odometer:</span>
-                    <span style="font-weight: 600;">@_summary.CurrentOdometer.ToString("N0") mi</span>
+                <div style="display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;">
+                    <div>
+                        <span style="font-size: 0.875rem; color: var(--color-text-muted);">Current Odometer:</span>
+                        <span style="font-weight: 600;">@_summary.CurrentOdometer.ToString("N0") mi</span>
+                    </div>
+                    <span style="font-size: 0.75rem; color: var(--color-text-muted); font-style: italic;">
+                        Based on best reading from last 30 days
+                    </span>
                 </div>
             </div>
         </div>
@@ -143,9 +157,9 @@ else
                     </div>
                 }
 
-                <ThresholdProjection CurrentHealthPercent="@_summary.CurrentHealthPercent"
+                <ThresholdProjection CurrentHealthPercent="@displayHealthPercent"
                                      ProjectedMilesTo70Percent="@_summary.ProjectedMilesTo70Percent"
-                                     Label="Miles to 70% threshold" />
+                                     Label="Est. miles to 70%" />
 
                 @if (!_summary.DegradationRatePer10kMiles.HasValue)
                 {
@@ -159,49 +173,87 @@ else
             <div class="card-header">
                 <h2 class="card-title">
                     <Icon Name="shield" Size="20" Style="color: var(--color-accent);" />
-                    Warranty Status
+                    Warranty Reference
                 </h2>
             </div>
 
+            @{
+                // Use best reading from last 30 days for warranty comparison (less affected by cold weather)
+                var bestHealthPercent = _summary.BestHealthPercentLast30Days ?? _summary.CurrentHealthPercent;
+                var bestCapacity = _summary.BestCapacityLast30Days ?? _summary.CurrentCapacityKwh;
+            }
+
             <!-- Warranty Progress Bar -->
             <div style="position: relative; height: 12px; background-color: var(--color-border); border-radius: 6px; margin-bottom: var(--space-4); overflow: visible;">
-                <!-- Current Health Fill -->
-                <div style="position: absolute; left: 0; top: 0; height: 100%; width: @Math.Min(_summary.CurrentHealthPercent, 100)%; background-color: @GetHealthColor(_summary.CurrentHealthPercent); border-radius: 6px; transition: width 0.5s ease;"></div>
+                <!-- Best Recent Health Fill -->
+                <div style="position: absolute; left: 0; top: 0; height: 100%; width: @Math.Min(bestHealthPercent, 100)%; background-color: @BatteryHealthHelper.GetHealthColor(bestHealthPercent); border-radius: 6px; transition: width 0.5s ease;"></div>
 
                 <!-- 70% Threshold Marker -->
-                <div style="position: absolute; left: 70%; top: -4px; height: 20px; width: 2px; background-color: var(--color-error);"></div>
+                <div style="position: absolute; left: 70%; top: -4px; height: 20px; width: 2px; background-color: var(--color-warning);"></div>
                 <span style="position: absolute; left: 70%; top: 20px; transform: translateX(-50%); font-size: 0.75rem; color: var(--color-text-muted);">70%</span>
             </div>
 
             <div style="margin-top: var(--space-6);">
                 <p style="font-size: 0.875rem; color: var(--color-text-secondary); margin-bottom: var(--space-3);">
-                    Rivian warrants the battery to retain at least <strong style="color: var(--color-text-primary);">70%</strong>
-                    capacity for <strong style="color: var(--color-text-primary);">8 years</strong> or <strong style="color: var(--color-text-primary);">@_summary.WarrantyMiles.ToString("N0") miles</strong>,
-                    whichever comes first.
+                    Rivian's battery warranty covers capacity retention of at least <strong style="color: var(--color-text-primary);">70%</strong>
+                    for <strong style="color: var(--color-text-primary);">8 years</strong> or <strong style="color: var(--color-text-primary);">@_summary.WarrantyMiles.ToString("N0") miles</strong>,
+                    whichever comes first. See your warranty documentation for complete terms.
                 </p>
 
-                @if (_summary.CurrentHealthPercent >= 70)
+                <!-- Best reading info -->
+                @if (_summary.BestCapacityLast30Days.HasValue)
+                {
+                    <div style="display: flex; flex-wrap: wrap; gap: var(--space-4); margin-bottom: var(--space-3); padding: var(--space-3); background-color: var(--color-surface); border-radius: var(--radius-md);">
+                        <div>
+                            <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 2px;">Best reading (30 days)</p>
+                            <p style="font-size: 1rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">
+                                @bestCapacity.ToString("0.0") kWh
+                                <span style="font-weight: 400; color: var(--color-text-muted);">(@bestHealthPercent.ToString("0.0")%)</span>
+                                @if (_summary.BestCapacityTemperature.HasValue)
+                                {
+                                    <span style="font-size: 0.75rem; font-weight: 400; color: var(--color-text-muted);">
+                                        at @FormatTemperature(_summary.BestCapacityTemperature.Value)
+                                    </span>
+                                }
+                            </p>
+                        </div>
+                        <div>
+                            <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 2px;">Current reading</p>
+                            <p style="font-size: 1rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">
+                                @_summary.CurrentCapacityKwh.ToString("0.0") kWh
+                                <span style="font-weight: 400; color: var(--color-text-muted);">(@_summary.CurrentHealthPercent.ToString("0.0")%)</span>
+                            </p>
+                        </div>
+                    </div>
+                }
+
+                @if (bestHealthPercent >= 70)
                 {
                     <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); background-color: rgba(74, 222, 128, 0.1); border-radius: var(--radius-md); margin-top: var(--space-4);">
                         <span style="color: var(--color-success); font-size: 1.25rem;">✓</span>
-                        <span style="color: var(--color-success); font-weight: 500;">Your battery is above the warranty threshold</span>
+                        <span style="color: var(--color-success); font-weight: 500;">Best recent capacity appears above 70%</span>
                     </div>
                 }
                 else
                 {
-                    <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); background-color: rgba(239, 68, 68, 0.1); border-radius: var(--radius-md); margin-top: var(--space-4);">
-                        <span style="color: var(--color-error); font-size: 1.25rem;">⚠</span>
-                        <span style="color: var(--color-error); font-weight: 500;">Your battery has dropped below the warranty threshold. Contact Rivian support.</span>
+                    <div style="display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); background-color: rgba(251, 191, 36, 0.1); border-radius: var(--radius-md); margin-top: var(--space-4);">
+                        <div style="display: flex; align-items: center; gap: var(--space-2);">
+                            <span style="color: var(--color-warning); font-size: 1.25rem;">ℹ</span>
+                            <span style="color: var(--color-warning); font-weight: 500;">Best recent capacity appears below 70%</span>
+                        </div>
+                        <p style="font-size: 0.8125rem; color: var(--color-text-secondary); margin: 0; padding-left: 1.75rem;">
+                            This is an estimate based on the highest reading in the last 30 days. Factors such as extreme cold,
+                            recent fast charging, or low state of charge can affect reported capacity. If you have concerns about your
+                            battery health, please contact Rivian directly for an official assessment.
+                        </p>
                     </div>
                 }
-
-                @if (_summary.RemainingWarrantyCapacityKwh.HasValue)
-                {
-                    <p style="font-size: 0.875rem; color: var(--color-text-muted); margin-top: var(--space-3);">
-                        Warranty buffer remaining: <strong style="color: var(--color-text-primary);">@_summary.RemainingWarrantyCapacityKwh.Value.ToString("0.0") kWh</strong>
-                    </p>
-                }
             </div>
+
+            <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: var(--space-4); font-style: italic;">
+                Note: All values shown are estimates calculated from vehicle-reported data. Actual battery health may differ.
+                RivianMate is not affiliated with Rivian Automotive.
+            </p>
         </div>
     </div>
 
@@ -251,7 +303,7 @@ else
                 <div class="charge-limit-stats">
                     <div class="charge-stat">
                         <span class="charge-stat-value">@_careAnalysis.AverageChargeLimit.ToString("0")%</span>
-                        <span class="charge-stat-label">Avg Charge Limit</span>
+                        <span class="charge-stat-label">Avg Charge Percent</span>
                     </div>
                     <div class="charge-stat">
                         <span class="charge-stat-value">@_careAnalysis.TotalChargeRecords</span>
@@ -282,6 +334,10 @@ else
                                 @if (tip.IsPersonalized)
                                 {
                                     <span class="personalized-badge">Personalized</span>
+                                }
+                                @if (tip.References?.Any() == true)
+                                {
+                                    <ReferenceTooltip References="@tip.References" />
                                 }
                             </h4>
                             <p class="tip-description">@tip.Description</p>
@@ -374,13 +430,11 @@ else
     private BatteryHealthSummary? _summary;
     private List<RivianMate.Core.Entities.BatteryHealthSnapshot>? _healthHistory;
     private BatteryCareAnalysis? _careAnalysis;
+    private UserPreferences? _userPreferences;
     private bool _loading = true;
     private bool _notFound;
     private bool _noVehicles;
     private Guid _userId;
-
-    // LocalStorage key (shared with Home.razor)
-    private const string SelectedVehicleKey = "rivianmate_selectedVehicleId";
 
     protected override async Task OnInitializedAsync()
     {
@@ -393,40 +447,15 @@ else
 
         try
         {
-            // Get current user ID
-            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (!Guid.TryParse(userIdClaim, out _userId))
-            {
-                return;
-            }
+            _userId = await VehicleSelectionService.GetUserIdAsync(AuthStateProvider);
+            if (_userId == Guid.Empty) return;
 
-            // Get all vehicles first
-            var vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
+            var selection = await VehicleSelectionService.ResolveVehicleAsync(_userId, VehicleId, JSRuntime);
+            if (selection.NoVehicles) { _noVehicles = true; return; }
+            if (selection.NotFound) { _notFound = true; return; }
+            _vehicle = selection.Vehicle;
 
-            if (vehicles.Count == 0)
-            {
-                _noVehicles = true;
-                return;
-            }
-
-            if (VehicleId.HasValue)
-            {
-                // Verify the vehicle belongs to this user via PublicId
-                _vehicle = await VehicleService.GetVehicleByPublicIdAsync(VehicleId.Value, _userId);
-                if (_vehicle == null)
-                {
-                    Logger.LogWarning("User {UserId} attempted to access vehicle {VehiclePublicId} they don't own", _userId, VehicleId);
-                    _notFound = true;
-                    return;
-                }
-            }
-            else
-            {
-                // Try to get last selected vehicle from localStorage
-                _vehicle = await GetLastSelectedVehicleAsync(vehicles);
-                _vehicle ??= vehicles.FirstOrDefault();
-            }
+            _userPreferences = await UserPreferencesService.GetPreferencesAsync(_userId);
 
             if (_vehicle != null)
             {
@@ -445,24 +474,6 @@ else
         }
     }
 
-    private string GetHealthColor(double percent) => percent switch
-    {
-        >= 95 => "#4ADE80",
-        >= 90 => "#7DD87D",
-        >= 85 => "#DEB526",
-        >= 80 => "#F59E0B",
-        _ => "#EF4444"
-    };
-
-    private string GetHealthStatus(double percent) => percent switch
-    {
-        >= 95 => "Excellent",
-        >= 90 => "Very Good",
-        >= 85 => "Good",
-        >= 80 => "Fair",
-        _ => "Needs Attention"
-    };
-
     private string GetTipClass(TipPriority priority) => priority switch
     {
         TipPriority.Warning => "tip-warning",
@@ -472,20 +483,9 @@ else
         _ => "tip-low"
     };
 
-    private async Task<Vehicle?> GetLastSelectedVehicleAsync(List<Vehicle> vehicles)
+    private string FormatTemperature(double celsius)
     {
-        try
-        {
-            var savedIdStr = await JSRuntime.InvokeAsync<string?>("rivianMate.storage.get", SelectedVehicleKey);
-            if (int.TryParse(savedIdStr, out var savedId))
-            {
-                return vehicles.FirstOrDefault(v => v.Id == savedId);
-            }
-        }
-        catch
-        {
-            // JS interop can fail during prerendering
-        }
-        return null;
+        var unit = _userPreferences?.TemperatureUnit ?? RivianMate.Core.Enums.TemperatureUnit.Fahrenheit;
+        return UnitConversionService.FormatTemperature(celsius, unit);
     }
 }

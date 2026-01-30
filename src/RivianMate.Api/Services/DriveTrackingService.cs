@@ -137,7 +137,7 @@ public class DriveTrackingService
             Latitude = state.Latitude.Value,
             Longitude = state.Longitude.Value,
             Altitude = state.Altitude,
-            Speed = state.Speed,
+            Speed = MsToMph(state.Speed),  // Convert m/s to mph
             Heading = state.Heading,
             BatteryLevel = state.BatteryLevel,
             Odometer = state.Odometer,
@@ -237,5 +237,14 @@ public class DriveTrackingService
 
         // Enqueue geocoding job to get start/end addresses
         GeocodeAddressJob.EnqueueForDrive(drive.Id);
+    }
+
+    /// <summary>
+    /// Convert meters per second to miles per hour.
+    /// </summary>
+    private static double? MsToMph(double? metersPerSecond)
+    {
+        if (metersPerSecond == null) return null;
+        return metersPerSecond.Value * 2.23694;
     }
 }

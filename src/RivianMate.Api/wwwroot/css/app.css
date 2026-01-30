@@ -106,6 +106,41 @@ body::before {
     background-size: 200px 200px;
 }
 
+/* ===== Custom Scrollbar ===== */
+/* Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+}
+
+/* Chromium (Chrome, Edge, Safari) */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: var(--radius-lg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: var(--radius-lg);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-moss);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
 /* ===== Typography ===== */
 h1, h2, h3, h4, h5, h6 {
     font-weight: 600;
@@ -761,16 +796,32 @@ a.btn-primary:hover {
 .charging-sessions-list {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: var(--space-2);
 }
 
 .charging-session-item {
     display: flex;
     align-items: flex-start;
-    gap: var(--space-3);
-    padding: var(--space-3);
-    background-color: var(--color-surface);
+    gap: var(--space-2);
+    padding: var(--space-3) 0;
+}
+
+.charging-session-item.clickable {
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+    margin: 0 calc(-1 * var(--space-2));
+    padding: var(--space-3) var(--space-2);
     border-radius: var(--radius-md);
+}
+
+.charging-session-item.clickable:hover {
+    background-color: var(--color-surface-elevated);
+}
+
+.charging-session-item:not(:last-child) {
+    border-bottom: 1px solid var(--color-border);
 }
 
 .session-icon {
@@ -809,7 +860,6 @@ a.btn-primary:hover {
     justify-content: space-between;
     align-items: baseline;
     gap: var(--space-2);
-    margin-bottom: var(--space-1);
 }
 
 .session-location {
@@ -2968,26 +3018,173 @@ select option:checked,
     }
 }
 
+/* Reference Tooltip */
+.reference-tooltip-container {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-left: var(--space-1);
+}
+
+.reference-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background-color: var(--color-surface-elevated);
+    color: var(--color-text-muted);
+    cursor: help;
+    transition: all 0.15s ease;
+}
+
+.reference-icon:hover,
+.reference-icon:focus {
+    background-color: var(--color-accent);
+    color: white;
+}
+
+.reference-tooltip {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 280px;
+    max-width: 360px;
+    padding: var(--space-3);
+    background-color: var(--color-surface-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.15s ease;
+    z-index: 1000;
+}
+
+.reference-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--color-surface-elevated);
+}
+
+.reference-tooltip-container:hover .reference-tooltip,
+.reference-tooltip-container:focus-within .reference-tooltip {
+    opacity: 1;
+    visibility: visible;
+}
+
+.reference-tooltip-header {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-2);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.reference-item {
+    padding: var(--space-2) 0;
+}
+
+.reference-item:not(:last-child) {
+    border-bottom: 1px solid var(--color-border);
+}
+
+.reference-link {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    color: var(--color-text-primary);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+.reference-link:hover {
+    color: var(--color-accent);
+}
+
+.reference-link:hover .reference-title {
+    text-decoration: underline;
+}
+
+.reference-no-link {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.reference-title {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.reference-source {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+/* Position tooltip on the right for items near left edge */
+@media (max-width: 640px) {
+    .reference-tooltip {
+        left: 0;
+        transform: translateX(0);
+        min-width: 240px;
+    }
+
+    .reference-tooltip::after {
+        left: 12px;
+        transform: none;
+    }
+}
+
 /* ===== Drives Card & Page ===== */
 .drives-list {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: var(--space-2);
 }
 
 .drive-item {
     display: flex;
     align-items: flex-start;
-    gap: var(--space-3);
-    padding: var(--space-3);
-    background-color: var(--color-surface);
+    gap: var(--space-2);
+    padding: var(--space-3) 0;
+}
+
+.drive-item.clickable {
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+    margin: 0 calc(-1 * var(--space-2));
+    padding: var(--space-3) var(--space-2);
     border-radius: var(--radius-md);
 }
 
+.drive-item.clickable:hover {
+    background-color: var(--color-surface-elevated);
+}
+
+.drive-item:not(:last-child) {
+    border-bottom: 1px solid var(--color-border);
+}
+
 .drive-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: var(--radius-md);
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3006,7 +3203,6 @@ select option:checked,
     justify-content: space-between;
     align-items: baseline;
     gap: var(--space-2);
-    margin-bottom: var(--space-1);
 }
 
 .drive-distance {
@@ -3034,8 +3230,8 @@ select option:checked,
 .drive-route-vertical {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    margin: var(--space-1) 0;
+    gap: 1px;
+    margin-top: 2px;
     padding-left: 2px;
     position: relative;
 }
@@ -3383,9 +3579,25 @@ select option:checked,
     display: flex;
     align-items: flex-start;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    background-color: var(--color-surface);
+    padding: var(--space-3) 0;
+}
+
+.activity-item.clickable {
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
+    margin: 0 calc(-1 * var(--space-2));
+    padding: var(--space-3) var(--space-2);
     border-radius: var(--radius-md);
+}
+
+.activity-item.clickable:hover {
+    background-color: var(--color-surface-elevated);
+}
+
+.activity-item:not(:last-child) {
+    border-bottom: 1px solid var(--color-border);
 }
 
 .activity-icon {
@@ -3545,6 +3757,21 @@ select option:checked,
     text-transform: uppercase;
     letter-spacing: 0.05em;
     border-bottom: 1px solid var(--color-border);
+}
+
+.activity-list-item.highlighted {
+    background-color: rgba(74, 144, 226, 0.1);
+    border-left: 3px solid var(--color-accent);
+    animation: highlight-pulse 2s ease-out;
+}
+
+@keyframes highlight-pulse {
+    0% {
+        background-color: rgba(74, 144, 226, 0.25);
+    }
+    100% {
+        background-color: rgba(74, 144, 226, 0.1);
+    }
 }
 
 /* ===== Pagination ===== */
@@ -3735,9 +3962,9 @@ select option:checked,
 }
 
 .charging-list-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: var(--radius-md);
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;

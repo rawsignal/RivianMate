@@ -31,6 +31,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="RivianMate.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\RivianMate.Core\RivianMate.Core.csproj" />
     <ProjectReference Include="..\RivianMate.Infrastructure\RivianMate.Infrastructure.csproj" />
     <ProjectReference Include="..\RivianMate.Shared\RivianMate.Shared.csproj" />

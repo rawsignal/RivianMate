@@ -12,7 +12,7 @@
 
 @code {
     /// <summary>
-    /// Current battery health percentage
+    /// Current battery health percentage (estimated)
     /// </summary>
     [Parameter, EditorRequired]
     public double CurrentHealthPercent { get; set; }
@@ -24,23 +24,23 @@
     public double? ProjectedMilesTo70Percent { get; set; }
 
     /// <summary>
-    /// Label text (defaults to "70% Threshold")
+    /// Label text (defaults to "Est. 70% Threshold")
     /// </summary>
     [Parameter]
-    public string Label { get; set; } = "70% Threshold";
+    public string Label { get; set; } = "Est. 70% Threshold";
 
     private string GetIconClass()
     {
-        return CurrentHealthPercent <= 70 ? "red" : "green";
+        return CurrentHealthPercent <= 70 ? "yellow" : "green";
     }
 
     private string GetDisplayValue()
     {
-        // If already at or below 70%, show that clearly
+        // If estimated health appears at or below 70%, show cautiously
         if (CurrentHealthPercent <= 70)
-            return "Below threshold";
+            return "See details";
 
-        // If we have a projection, show it
+        // If we have a projection, show it as an estimate
         if (ProjectedMilesTo70Percent.HasValue)
             return $"~{ProjectedMilesTo70Percent.Value:N0} mi";
 

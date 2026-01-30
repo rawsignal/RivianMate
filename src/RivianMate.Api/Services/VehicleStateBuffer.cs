@@ -275,7 +275,7 @@ public class VehicleStateBuffer
         return false;
     }
 
-    private static bool HasSignificantChange(double? oldValue, double? newValue, double threshold)
+    internal static bool HasSignificantChange(double? oldValue, double? newValue, double threshold)
     {
         if (oldValue == null && newValue == null) return false;
         if (oldValue == null || newValue == null) return true;
@@ -297,7 +297,7 @@ public class VehicleStateBuffer
         return distance >= LocationThresholdMeters;
     }
 
-    private static double CalculateDistanceMeters(double lat1, double lon1, double lat2, double lon2)
+    internal static double CalculateDistanceMeters(double lat1, double lon1, double lat2, double lon2)
     {
         const double R = 6371000; // Earth's radius in meters
 

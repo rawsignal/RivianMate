@@ -6,6 +6,7 @@
 @using RivianMate.Api.Components.Shared
 @using RivianMate.Core.Entities
 @using RivianMate.Core.Enums
+@using RivianMate.Api.Helpers
 @attribute [Authorize]
 @inject VehicleService VehicleService
 @inject TimeZoneService TimeZoneService
@@ -14,6 +15,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject ILogger<Charging> Logger
+@inject VehicleSelectionService VehicleSelectionService
 @implements IAsyncDisposable
 
 <PageTitle>Charging - RivianMate</PageTitle>
@@ -102,13 +104,13 @@ else
                 @foreach (var session in _sessions)
                 {
                     <div class="charging-list-item @(_selectedSession?.Id == session.Id ? "selected" : "")" @onclick="() => SelectSession(session)">
-                        <div class="charging-list-icon @GetChargeTypeClass(session.ChargeType)">
-                            <Icon Name="@GetChargeTypeIcon(session.ChargeType)" Size="18" />
+                        <div class="charging-list-icon @ChargeTypeHelper.GetCssClass(session.ChargeType)">
+                            <Icon Name="@ChargeTypeHelper.GetIcon(session.ChargeType)" Size="18" />
                         </div>
                         <div class="charging-list-content">
                             <div class="charging-list-header">
                                 <span class="charging-list-energy">+@(session.EnergyAddedKwh?.ToString("0.0") ?? "—") kWh</span>
-                                <span class="charging-list-date">@FormatSessionDate(session.StartTime)</span>
+                                <span class="charging-list-date">@DateTimeFormatHelper.FormatRelativeDate(session.StartTime, TimeZoneService)</span>
                             </div>
                             <div class="charging-list-meta">
                                 <span>@GetSessionLocationDisplay(session)</span>
@@ -168,7 +170,7 @@ else
                                     }
                                     else
                                     {
-                                        <span class="badge badge-@GetChargeTypeClass(_selectedSession.ChargeType)">@GetChargeTypeName(_selectedSession.ChargeType)</span>
+                                        <span class="badge badge-@ChargeTypeHelper.GetCssClass(_selectedSession.ChargeType)">@ChargeTypeHelper.GetDisplayName(_selectedSession.ChargeType)</span>
                                     }
                                 </span>
                             </div>
@@ -184,15 +186,15 @@ else
                         <div class="session-detail-grid">
                             <div class="session-detail-item">
                                 <span class="session-detail-label">Started</span>
-                                <span class="session-detail-value">@FormatDateTime(_selectedSession.StartTime)</span>
+                                <span class="session-detail-value">@DateTimeFormatHelper.FormatDateTime(_selectedSession.StartTime, TimeZoneService)</span>
                             </div>
                             <div class="session-detail-item">
                                 <span class="session-detail-label">Ended</span>
-                                <span class="session-detail-value">@(_selectedSession.EndTime.HasValue ? FormatDateTime(_selectedSession.EndTime.Value) : "In Progress")</span>
+                                <span class="session-detail-value">@(_selectedSession.EndTime.HasValue ? DateTimeFormatHelper.FormatDateTime(_selectedSession.EndTime.Value, TimeZoneService) : "In Progress")</span>
                             </div>
                             <div class="session-detail-item">
                                 <span class="session-detail-label">Duration</span>
-                                <span class="session-detail-value">@FormatDuration(_selectedSession.StartTime, _selectedSession.EndTime)</span>
+                                <span class="session-detail-value">@DateTimeFormatHelper.FormatDuration(_selectedSession.StartTime, _selectedSession.EndTime)</span>
                             </div>
                         </div>
                     </div>
@@ -236,18 +238,11 @@ else
                                     <span class="session-detail-label">@(isEstimated ? "Est. Cost" : "Cost")</span>
                                     <span class="session-detail-value session-cost">@FormatCost(sessionCost)</span>
                                 </div>
-                                @if (isEstimated)
-                                {
-                                    <div class="session-detail-item">
-                                        <span class="session-detail-label">Your Rate</span>
-                                        <span class="session-detail-value">@FormatRateWithCurrency()</span>
-                                    </div>
-                                }
                             </div>
                             @if (isEstimated)
                             {
                                 <p style="margin-top: var(--space-2); font-size: 0.7rem; color: var(--color-text-muted);">
-                                    Estimated using your home electricity rate. Configure in Settings.
+                                    Estimated from your location rate. Configure in Settings → Charging Locations.
                                 </p>
                             }
                         </div>
@@ -349,15 +344,15 @@ else
     [Parameter]
     public Guid? VehicleId { get; set; }
 
+    [SupplyParameterFromQuery(Name = "selected")]
+    public int? SelectedSessionId { get; set; }
+
     private List<ChargingSession>? _sessions;
     private ChargingSession? _selectedSession;
     private bool _loading = true;
     private bool _notFound;
     private bool _noVehicles;
     private bool _mapInitialized;
-
-    // LocalStorage key (shared with Home.razor)
-    private const string SelectedVehicleKey = "rivianmate_selectedVehicleId";
     private bool _pendingMapUpdate;
     private double _totalEnergy;
     private int _homeCharges;
@@ -380,11 +375,28 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        TimeZoneService.OnTimeZoneChanged += OnTimeZoneChanged;
         await LoadDataAsync();
+    }
+
+    private void OnTimeZoneChanged()
+    {
+        InvokeAsync(StateHasChanged);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            // Initialize timezone from localStorage
+            var previousTz = TimeZoneService.TimeZoneId;
+            await TimeZoneService.InitializeAsync();
+            if (previousTz != TimeZoneService.TimeZoneId)
+            {
+                StateHasChanged();
+            }
+        }
+
         if (_pendingMapUpdate && _selectedSession?.Latitude != null && _selectedSession?.Longitude != null)
         {
             _pendingMapUpdate = false;
@@ -400,8 +412,8 @@ else
                 await JS.InvokeVoidAsync("chargeMap.setMarker",
                     _selectedSession.Latitude.Value,
                     _selectedSession.Longitude.Value,
-                    _selectedSession.LocationName ?? GetChargeTypeName(_selectedSession.ChargeType),
-                    GetChargeTypeClass(_selectedSession.ChargeType));
+                    _selectedSession.LocationName ?? ChargeTypeHelper.GetDisplayName(_selectedSession.ChargeType),
+                    ChargeTypeHelper.GetCssClass(_selectedSession.ChargeType));
             }
             catch (Exception ex)
             {
@@ -416,13 +428,8 @@ else
 
         try
         {
-            // Get current user ID
-            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (!Guid.TryParse(userIdClaim, out _userId))
-            {
-                return;
-            }
+            _userId = await VehicleSelectionService.GetUserIdAsync(AuthStateProvider);
+            if (_userId == Guid.Empty) return;
 
             // Load user preferences for home electricity rate and currency
             _userPreferences = await UserPreferencesService.GetPreferencesAsync(_userId);
@@ -430,49 +437,22 @@ else
             _currencyCode = _userPreferences?.CurrencyCode ?? "USD";
             _distanceUnit = _userPreferences?.DistanceUnit ?? DistanceUnit.Miles;
 
-            // Get all vehicles first
-            var vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
-
-            if (vehicles.Count == 0)
-            {
-                _noVehicles = true;
-                return;
-            }
-
-            Vehicle? vehicle = null;
-
-            if (VehicleId.HasValue)
-            {
-                // Verify the vehicle belongs to this user via PublicId
-                vehicle = await VehicleService.GetVehicleByPublicIdAsync(VehicleId.Value, _userId);
-                if (vehicle == null)
-                {
-                    Logger.LogWarning("User {UserId} attempted to access vehicle {VehiclePublicId} they don't own", _userId, VehicleId);
-                    _notFound = true;
-                    return;
-                }
-            }
-            else
-            {
-                // Try to get last selected vehicle from localStorage
-                vehicle = await GetLastSelectedVehicleAsync(vehicles);
-                vehicle ??= vehicles.FirstOrDefault();
-            }
+            var selection = await VehicleSelectionService.ResolveVehicleAsync(_userId, VehicleId, JS);
+            if (selection.NoVehicles) { _noVehicles = true; return; }
+            if (selection.NotFound) { _notFound = true; return; }
+            var vehicle = selection.Vehicle;
 
             if (vehicle != null)
             {
                 _internalVehicleId = vehicle.Id;
 
-                // Load all sessions first for summary stats
-                var allSessions = await VehicleService.GetChargingSessionsAsync(vehicle.Id);
-                if (allSessions?.Any() == true)
-                {
-                    _totalSessions = allSessions.Count;
-                    _totalEnergy = allSessions.Sum(s => s.EnergyAddedKwh ?? 0);
-                    _homeCharges = allSessions.Count(s => s.IsHomeCharging == true);
-                    _dcfcCharges = allSessions.Count(s => s.ChargeType == ChargeType.DC_Fast);
-                    _totalCost = allSessions.Sum(s => GetSessionCost(s) ?? 0);
-                }
+                // Load aggregate summary stats (computed in DB, no full data load)
+                var stats = await VehicleService.GetChargingSummaryStatsAsync(vehicle.Id, _homeElectricityRate);
+                _totalSessions = stats.TotalSessions;
+                _totalEnergy = stats.TotalEnergyKwh;
+                _homeCharges = stats.HomeCharges;
+                _dcfcCharges = stats.DcfcCharges;
+                _totalCost = stats.TotalCost;
 
                 // Load paginated sessions for display
                 var (sessions, totalCount) = await VehicleService.GetChargingSessionsPagedAsync(
@@ -482,7 +462,29 @@ else
 
                 if (_sessions?.Any() == true)
                 {
-                    if (_sessions.FirstOrDefault() is { } firstSession)
+                    // If a specific session was requested via query param, try to select it
+                    if (SelectedSessionId.HasValue)
+                    {
+                        var requestedSession = _sessions.FirstOrDefault(s => s.Id == SelectedSessionId.Value);
+                        if (requestedSession != null)
+                        {
+                            await SelectSessionAsync(requestedSession);
+                        }
+                        else
+                        {
+                            // Session not on current page, try to load it directly
+                            var session = await VehicleService.GetChargingSessionByIdAsync(vehicle.Id, SelectedSessionId.Value);
+                            if (session != null)
+                            {
+                                await SelectSessionAsync(session);
+                            }
+                            else if (_sessions.FirstOrDefault() is { } firstSession)
+                            {
+                                await SelectSessionAsync(firstSession);
+                            }
+                        }
+                    }
+                    else if (_sessions.FirstOrDefault() is { } firstSession)
                     {
                         await SelectSessionAsync(firstSession);
                     }
@@ -537,53 +539,6 @@ else
         }
     }
 
-    private string FormatSessionDate(DateTime utcTime)
-    {
-        var localTime = TimeZoneService.ToLocalTime(utcTime);
-        var today = TimeZoneService.ToLocalTime(DateTime.UtcNow).Date;
-        if (localTime.Date == today) return "Today";
-        if (localTime.Date == today.AddDays(-1)) return "Yesterday";
-        return localTime.ToString("MMM d, yyyy");
-    }
-
-    private string FormatDateTime(DateTime utcTime)
-    {
-        var localTime = TimeZoneService.ToLocalTime(utcTime);
-        return localTime.ToString("MMM d, yyyy h:mm tt");
-    }
-
-    private static string FormatDuration(DateTime start, DateTime? end)
-    {
-        if (end == null) return "In progress";
-        var duration = end.Value - start;
-        if (duration.TotalMinutes < 60) return $"{(int)duration.TotalMinutes} min";
-        return $"{(int)duration.TotalHours}h {duration.Minutes}m";
-    }
-
-    private static string GetChargeTypeIcon(ChargeType? type) => type switch
-    {
-        ChargeType.DC_Fast => "charge-l3",
-        ChargeType.AC_Level2 => "charge-l2",
-        ChargeType.AC_Level1 => "charge-l1",
-        _ => "charge-l1"
-    };
-
-    private static string GetChargeTypeClass(ChargeType? type) => type switch
-    {
-        ChargeType.DC_Fast => "dcfc",
-        ChargeType.AC_Level2 => "level2",
-        ChargeType.AC_Level1 => "level1",
-        _ => "level1" // Default to level1 styling for unknown
-    };
-
-    private static string GetChargeTypeName(ChargeType? type) => type switch
-    {
-        ChargeType.DC_Fast => "DC Fast Charge",
-        ChargeType.AC_Level2 => "Level 2",
-        ChargeType.AC_Level1 => "Level 1",
-        _ => "AC Charging" // Don't assume "Home" for unknown charge types
-    };
-
     /// <summary>
     /// Get the display text for a session's location.
     /// Shows location name if available, "Home" if marked as home charging, or charge type.
@@ -599,35 +554,38 @@ else
             return "Home";
 
         // Fall back to charge type
-        return GetChargeTypeName(session.ChargeType);
+        return ChargeTypeHelper.GetDisplayName(session.ChargeType);
     }
 
     /// <summary>
     /// Get the cost for a charging session.
-    /// Uses API-provided cost if available, otherwise estimates for home charging only.
+    /// Uses stored cost (from API or location-based estimate) if available,
+    /// falls back to legacy home electricity rate for old sessions.
     /// </summary>
     private double? GetSessionCost(ChargingSession session)
     {
-        // Use API-provided cost if available
+        // Cost stored on session (from API or location-based estimate)
         if (session.Cost.HasValue)
             return session.Cost.Value;
 
-        // Only estimate cost for home charging (we know the rate)
-        if (session.IsHomeCharging == true && session.EnergyAddedKwh > 0)
+        // Fallback: old sessions with IsHomeCharging but no Cost (pre-migration)
+        if (session.IsHomeCharging == true && session.EnergyAddedKwh > 0 && _homeElectricityRate > 0)
         {
-            // Energy from API is net energy delivered to battery
             return session.EnergyAddedKwh.Value * _homeElectricityRate;
         }
 
-        // No cost available for non-home charging without API data
         return null;
     }
 
     /// <summary>
-    /// Check if the cost is from the API or estimated.
+    /// Check if the cost is estimated (from location rate) rather than API-provided.
     /// </summary>
     private bool IsEstimatedCost(ChargingSession session)
     {
+        // If session has a linked user location, cost is estimated from location rate
+        if (session.UserLocationId != null && session.Cost.HasValue)
+            return true;
+        // Legacy fallback
         return !session.Cost.HasValue && session.IsHomeCharging == true;
     }
 
@@ -643,30 +601,10 @@ else
         return UnitConversionService.FormatRange(miles, _distanceUnit);
     }
 
-    private string FormatRateWithCurrency()
-    {
-        return UnitConversionService.FormatCostPerKwh(_homeElectricityRate, _currencyCode);
-    }
-
-    private async Task<Vehicle?> GetLastSelectedVehicleAsync(List<Vehicle> vehicles)
-    {
-        try
-        {
-            var savedIdStr = await JS.InvokeAsync<string?>("rivianMate.storage.get", SelectedVehicleKey);
-            if (int.TryParse(savedIdStr, out var savedId))
-            {
-                return vehicles.FirstOrDefault(v => v.Id == savedId);
-            }
-        }
-        catch
-        {
-            // JS interop can fail during prerendering
-        }
-        return null;
-    }
-
     public async ValueTask DisposeAsync()
     {
+        TimeZoneService.OnTimeZoneChanged -= OnTimeZoneChanged;
+
         if (_mapInitialized)
         {
             try

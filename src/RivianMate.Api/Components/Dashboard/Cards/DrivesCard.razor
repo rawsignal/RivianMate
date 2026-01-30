@@ -1,4 +1,5 @@
 @using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Helpers
 @using RivianMate.Api.Services
 @using RivianMate.Core.Entities
 @using RivianMate.Core.Enums
@@ -9,14 +10,14 @@
         <div class="drives-list">
             @foreach (var drive in RecentDrives.Take(4))
             {
-                <div class="drive-item">
+                <a href="@GetDriveUrl(drive.Id)" class="drive-item clickable">
                     <div class="drive-icon">
-                        <Icon Name="navigation" Size="16" />
+                        <Icon Name="navigation" Size="14" />
                     </div>
                     <div class="drive-details">
                         <div class="drive-header">
                             <span class="drive-distance">@FormatDistance(drive.DistanceMiles)</span>
-                            <span class="drive-time">@FormatDriveTime(drive.StartTime)</span>
+                            <span class="drive-time">@DateTimeFormatHelper.FormatCardTime(drive.StartTime, TimeZoneService)</span>
                         </div>
                         @if (!string.IsNullOrEmpty(drive.StartAddress) || !string.IsNullOrEmpty(drive.EndAddress))
                         {
@@ -34,7 +35,7 @@
                         <div class="drive-stats">
                             <span>@FormatEfficiency(drive.EfficiencyMilesPerKwh)</span>
                             <span class="drive-stat-separator">·</span>
-                            <span>@FormatDuration(drive.StartTime, drive.EndTime)</span>
+                            <span>@DateTimeFormatHelper.FormatDuration(drive.StartTime, drive.EndTime)</span>
                             @if (drive.AverageSpeedMph.HasValue)
                             {
                                 <span class="drive-stat-separator">·</span>
@@ -42,7 +43,7 @@
                             }
                         </div>
                     </div>
-                </div>
+                </a>
             }
         </div>
     }
@@ -104,21 +105,10 @@
         return $"{converted?.ToString("0") ?? mph.ToString("0")} {unit}";
     }
 
-    private string FormatDriveTime(DateTime utcTime)
+    private string GetDriveUrl(int driveId)
     {
-        // TimeZoneService is always provided by Home.razor, use its timezone conversion
-        var localTime = TimeZoneService?.ToLocalTime(utcTime) ?? utcTime;
-        var today = (TimeZoneService?.ToLocalTime(DateTime.UtcNow) ?? DateTime.UtcNow).Date;
-        if (localTime.Date == today) return $"Today, {localTime:h:mm tt}";
-        if (localTime.Date == today.AddDays(-1)) return $"Yesterday, {localTime:h:mm tt}";
-        return localTime.ToString("MMM d, h:mm tt");
+        var baseUrl = VehiclePublicId.HasValue ? $"/drives/{VehiclePublicId}" : "/drives";
+        return $"{baseUrl}?selected={driveId}";
     }
 
-    private static string FormatDuration(DateTime start, DateTime? end)
-    {
-        if (end == null) return "In progress";
-        var duration = end.Value - start;
-        if (duration.TotalMinutes < 60) return $"{(int)duration.TotalMinutes} min";
-        return $"{(int)duration.TotalHours}h {duration.Minutes}m";
-    }
 }

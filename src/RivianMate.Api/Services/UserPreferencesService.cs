@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using RivianMate.Core.Entities;
 using RivianMate.Core.Enums;
 using RivianMate.Infrastructure.Data;
@@ -37,25 +38,36 @@ public class UserPreferencesService
 {
     private readonly IDbContextFactory<RivianMateDbContext> _dbFactory;
     private readonly ILogger<UserPreferencesService> _logger;
+    private readonly IMemoryCache _cache;
 
-    public UserPreferencesService(IDbContextFactory<RivianMateDbContext> dbFactory, ILogger<UserPreferencesService> logger)
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(2);
+
+    public UserPreferencesService(IDbContextFactory<RivianMateDbContext> dbFactory, ILogger<UserPreferencesService> logger, IMemoryCache cache)
     {
         _dbFactory = dbFactory;
         _logger = logger;
+        _cache = cache;
     }
+
+    private static string CacheKey(Guid userId) => $"prefs:{userId}";
 
     /// <summary>
     /// Gets the user's preferences. Returns default values if no preferences exist yet.
     /// </summary>
     public async Task<UserPreferences> GetPreferencesAsync(Guid userId)
     {
+        var key = CacheKey(userId);
+        if (_cache.TryGetValue(key, out UserPreferences? cached) && cached != null)
+            return cached;
+
         await using var db = await _dbFactory.CreateDbContextAsync();
 
         var preferences = await db.UserPreferences
+            .AsNoTracking()
             .FirstOrDefaultAsync(p => p.UserId == userId);
 
         // Return existing preferences or create new defaults
-        return preferences ?? new UserPreferences
+        var result = preferences ?? new UserPreferences
         {
             UserId = userId,
             DistanceUnit = DistanceUnit.Miles,
@@ -63,6 +75,9 @@ public class UserPreferencesService
             TirePressureUnit = TirePressureUnit.Psi,
             CurrencyCode = "USD"
         };
+
+        _cache.Set(key, result, CacheDuration);
+        return result;
     }
 
     /// <summary>
@@ -96,6 +111,10 @@ public class UserPreferencesService
         }
 
         await db.SaveChangesAsync();
+
+        // Invalidate cache so next read picks up the new values
+        _cache.Remove(CacheKey(preferences.UserId));
+
         _logger.LogInformation("Saved preferences for user {UserId}", preferences.UserId);
     }
 

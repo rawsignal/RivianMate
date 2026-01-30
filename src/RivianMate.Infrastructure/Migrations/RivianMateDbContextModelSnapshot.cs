@@ -275,6 +275,13 @@ namespace RivianMate.Infrastructure.Migrations
                     b.Property<DateTime?>("PrivacyAcceptedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ReferralCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("ReferredByUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
 
@@ -296,6 +303,9 @@ namespace RivianMate.Infrastructure.Migrations
                     b.HasIndex("NormalizedUserName")
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex");
+
+                    b.HasIndex("ReferralCode")
+                        .IsUnique();
 
                     b.ToTable("AspNetUsers", (string)null);
                 });
@@ -505,6 +515,9 @@ namespace RivianMate.Infrastructure.Migrations
                     b.Property<double?>("TemperatureAtStart")
                         .HasColumnType("double precision");
 
+                    b.Property<int?>("UserLocationId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("VehicleId")
                         .HasColumnType("integer");
 
@@ -514,9 +527,79 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.HasIndex("StartTime");
 
+                    b.HasIndex("UserLocationId");
+
                     b.HasIndex("VehicleId", "StartTime");
 
                     b.ToTable("ChargingSessions", (string)null);
+                });
+
+            modelBuilder.Entity("RivianMate.Core.Entities.DataExport", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DownloadToken")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DownloadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExportType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<byte[]>("FileData")
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long?>("FileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("RecordCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("VehicleId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DownloadToken")
+                        .IsUnique();
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.ToTable("DataExports", (string)null);
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.Drive", b =>
@@ -772,6 +855,145 @@ namespace RivianMate.Infrastructure.Migrations
                     b.ToTable("Positions", (string)null);
                 });
 
+            modelBuilder.Entity("RivianMate.Core.Entities.PromoCampaign", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CampaignType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreditsPerReward")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("EndsAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("MaxRedemptionsPerUser")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("StartsAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PromoCampaigns", (string)null);
+                });
+
+            modelBuilder.Entity("RivianMate.Core.Entities.PromoCredit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CampaignId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Credits")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int?>("ReferralId")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignId");
+
+                    b.HasIndex("ReferralId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "ConsumedAt");
+
+                    b.ToTable("PromoCredits", (string)null);
+                });
+
+            modelBuilder.Entity("RivianMate.Core.Entities.Referral", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CampaignId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("QualifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReferralCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("ReferredUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ReferrerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RewardedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignId");
+
+                    b.HasIndex("ReferredUserId");
+
+                    b.HasIndex("ReferrerId");
+
+                    b.HasIndex("ReferredUserId", "Status");
+
+                    b.ToTable("Referrals", (string)null);
+                });
+
             modelBuilder.Entity("RivianMate.Core.Entities.RivianAccount", b =>
                 {
                     b.Property<int>("Id")
@@ -956,6 +1178,9 @@ namespace RivianMate.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<double?>("CostPerKwh")
+                        .HasColumnType("double precision");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1084,6 +1309,9 @@ namespace RivianMate.Infrastructure.Migrations
 
                     b.Property<int>("BatteryPack")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("BuildDate")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1254,7 +1482,7 @@ namespace RivianMate.Infrastructure.Migrations
                     b.Property<bool?>("IsDefrostActive")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("IsInServiceMode")
+                    b.Property<bool?>("IsInServiceMode")
                         .HasColumnType("boolean");
 
                     b.Property<bool?>("IsPetModeActive")
@@ -1462,11 +1690,37 @@ namespace RivianMate.Infrastructure.Migrations
 
             modelBuilder.Entity("RivianMate.Core.Entities.ChargingSession", b =>
                 {
+                    b.HasOne("RivianMate.Core.Entities.UserLocation", "UserLocation")
+                        .WithMany("ChargingSessions")
+                        .HasForeignKey("UserLocationId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("RivianMate.Core.Entities.Vehicle", "Vehicle")
                         .WithMany("ChargingSessions")
                         .HasForeignKey("VehicleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("UserLocation");
+
+                    b.Navigation("Vehicle");
+                });
+
+            modelBuilder.Entity("RivianMate.Core.Entities.DataExport", b =>
+                {
+                    b.HasOne("RivianMate.Core.Entities.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RivianMate.Core.Entities.Vehicle", "Vehicle")
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
 
                     b.Navigation("Vehicle");
                 });
@@ -1491,6 +1745,59 @@ namespace RivianMate.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Drive");
+                });
+
+            modelBuilder.Entity("RivianMate.Core.Entities.PromoCredit", b =>
+                {
+                    b.HasOne("RivianMate.Core.Entities.PromoCampaign", "Campaign")
+                        .WithMany("PromoCredits")
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RivianMate.Core.Entities.Referral", "Referral")
+                        .WithMany()
+                        .HasForeignKey("ReferralId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("RivianMate.Core.Entities.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Campaign");
+
+                    b.Navigation("Referral");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("RivianMate.Core.Entities.Referral", b =>
+                {
+                    b.HasOne("RivianMate.Core.Entities.PromoCampaign", "Campaign")
+                        .WithMany("Referrals")
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RivianMate.Core.Entities.ApplicationUser", "ReferredUser")
+                        .WithMany()
+                        .HasForeignKey("ReferredUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RivianMate.Core.Entities.ApplicationUser", "Referrer")
+                        .WithMany()
+                        .HasForeignKey("ReferrerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Campaign");
+
+                    b.Navigation("ReferredUser");
+
+                    b.Navigation("Referrer");
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.RivianAccount", b =>
@@ -1599,9 +1906,21 @@ namespace RivianMate.Infrastructure.Migrations
                     b.Navigation("Positions");
                 });
 
+            modelBuilder.Entity("RivianMate.Core.Entities.PromoCampaign", b =>
+                {
+                    b.Navigation("PromoCredits");
+
+                    b.Navigation("Referrals");
+                });
+
             modelBuilder.Entity("RivianMate.Core.Entities.RivianAccount", b =>
                 {
                     b.Navigation("Vehicles");
+                });
+
+            modelBuilder.Entity("RivianMate.Core.Entities.UserLocation", b =>
+                {
+                    b.Navigation("ChargingSessions");
                 });
 
             modelBuilder.Entity("RivianMate.Core.Entities.Vehicle", b =>

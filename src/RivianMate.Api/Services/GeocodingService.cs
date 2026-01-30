@@ -214,7 +214,7 @@ public class GeocodingService
         return null;
     }
 
-    private static string BuildShortAddress(string? houseNumber, string? road, string? city, string? state)
+    internal static string BuildShortAddress(string? houseNumber, string? road, string? city, string? state)
     {
         var parts = new List<string>();
 
@@ -246,7 +246,7 @@ public class GeocodingService
         return parts.Count > 0 ? string.Join(", ", parts) : "Unknown location";
     }
 
-    private static string AbbreviateState(string state)
+    internal static string AbbreviateState(string state)
     {
         // Common US state abbreviations
         var abbreviations = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

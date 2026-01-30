@@ -51,7 +51,7 @@ public class UserLocationService
     /// <summary>
     /// Adds a new location for a user.
     /// </summary>
-    public async Task<UserLocation> AddLocationAsync(Guid userId, string name, double latitude, double longitude, bool isDefault = false)
+    public async Task<UserLocation> AddLocationAsync(Guid userId, string name, double latitude, double longitude, bool isDefault = false, double? costPerKwh = null)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
@@ -75,6 +75,7 @@ public class UserLocationService
             Latitude = latitude,
             Longitude = longitude,
             IsDefault = isDefault,
+            CostPerKwh = costPerKwh,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -91,7 +92,7 @@ public class UserLocationService
     /// <summary>
     /// Updates an existing location.
     /// </summary>
-    public async Task<UserLocation?> UpdateLocationAsync(int locationId, Guid userId, string name, double latitude, double longitude, bool? isDefault = null)
+    public async Task<UserLocation?> UpdateLocationAsync(int locationId, Guid userId, string name, double latitude, double longitude, bool? isDefault = null, double? costPerKwh = null)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
 
@@ -124,6 +125,7 @@ public class UserLocationService
         {
             location.IsDefault = isDefault.Value;
         }
+        location.CostPerKwh = costPerKwh;
         location.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
@@ -263,7 +265,7 @@ public class UserLocationService
     /// <summary>
     /// Calculates the distance between two coordinates in meters using the Haversine formula.
     /// </summary>
-    private static double CalculateDistanceMeters(double lat1, double lon1, double lat2, double lon2)
+    internal static double CalculateDistanceMeters(double lat1, double lon1, double lat2, double lon2)
     {
         const double EarthRadiusMeters = 6371000;
 
@@ -281,7 +283,7 @@ public class UserLocationService
         return EarthRadiusMeters * c;
     }
 
-    private static double DegreesToRadians(double degrees)
+    internal static double DegreesToRadians(double degrees)
     {
         return degrees * Math.PI / 180;
     }

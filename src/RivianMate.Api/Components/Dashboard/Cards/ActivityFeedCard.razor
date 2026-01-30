@@ -1,4 +1,5 @@
 @using RivianMate.Api.Components.Shared
+@using RivianMate.Api.Helpers
 @using RivianMate.Api.Services
 @using RivianMate.Core.Entities
 
@@ -8,15 +9,15 @@
         <div class="activity-list">
             @foreach (var activity in RecentActivity.Take(3))
             {
-                <div class="activity-item">
-                    <div class="activity-icon @GetActivityTypeClass(activity.Type)">
-                        <Icon Name="@GetActivityIcon(activity.Type)" Size="14" />
+                <a href="@GetActivityUrl(activity.Id)" class="activity-item clickable">
+                    <div class="activity-icon @ActivityTypeHelper.GetCssClass(activity.Type)">
+                        <Icon Name="@ActivityTypeHelper.GetIcon(activity.Type)" Size="14" />
                     </div>
                     <div class="activity-details">
                         <span class="activity-message">@activity.Message</span>
-                        <span class="activity-time">@FormatTime(activity.Timestamp)</span>
+                        <span class="activity-time">@DateTimeFormatHelper.FormatRelativeTime(activity.Timestamp, TimeZoneService)</span>
                     </div>
-                </div>
+                </a>
             }
         </div>
     }
@@ -51,43 +52,10 @@
         DetailUrl = VehiclePublicId.HasValue ? $"/activity/{VehiclePublicId}" : _definition.DetailUrl
     };
 
-    private static string GetActivityIcon(ActivityType type) => type switch
+    private string GetActivityUrl(int activityId)
     {
-        ActivityType.Closure => "door-open",
-        ActivityType.Gear => "settings",
-        ActivityType.Power => "power",
-        ActivityType.Charging => "zap",
-        ActivityType.Drive => "navigation",
-        ActivityType.Climate => "thermometer",
-        ActivityType.Location => "map-pin",
-        ActivityType.Software => "download",
-        ActivityType.Security => "shield",
-        _ => "activity"
-    };
-
-    private static string GetActivityTypeClass(ActivityType type) => type switch
-    {
-        ActivityType.Closure => "activity-closure",
-        ActivityType.Gear => "activity-gear",
-        ActivityType.Power => "activity-power",
-        ActivityType.Charging => "activity-charging",
-        ActivityType.Drive => "activity-drive",
-        ActivityType.Climate => "activity-climate",
-        ActivityType.Security => "activity-security",
-        _ => ""
-    };
-
-    private string FormatTime(DateTime utcTime)
-    {
-        // TimeZoneService is always provided by Home.razor, use its timezone conversion
-        var localTime = TimeZoneService?.ToLocalTime(utcTime) ?? utcTime;
-        var now = TimeZoneService?.ToLocalTime(DateTime.UtcNow) ?? DateTime.UtcNow;
-        var diff = now - localTime;
-
-        if (diff.TotalMinutes < 1) return "Just now";
-        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
-        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
-        if (localTime.Date == now.Date.AddDays(-1)) return $"Yesterday, {localTime:h:mm tt}";
-        return localTime.ToString("MMM d, h:mm tt");
+        var baseUrl = VehiclePublicId.HasValue ? $"/activity/{VehiclePublicId}" : "/activity";
+        return $"{baseUrl}?selected={activityId}";
     }
+
 }

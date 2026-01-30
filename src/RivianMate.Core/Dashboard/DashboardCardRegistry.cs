@@ -77,7 +77,7 @@ public static class DashboardCardRegistry
             Icon: "battery",
             Section: DashboardSection.MainGrid,
             DefaultOrder: 0,
-            ColSpan: 3
+            ColSpan: 2
         ));
 
         cards.Add("charging", new DashboardCardDefinition(
@@ -85,7 +85,8 @@ public static class DashboardCardRegistry
             Name: "Recent Charging",
             Icon: "zap",
             Section: DashboardSection.MainGrid,
-            DefaultOrder: 1
+            DefaultOrder: 1,
+            ColSpan: 2
         ));
 
         cards.Add("drives", new DashboardCardDefinition(
@@ -160,7 +161,8 @@ public static class DashboardCardRegistry
             Icon: "gift",
             Section: DashboardSection.MainGrid,
             DefaultOrder: 6,
-            RequiredFeature: Features.Referrals
+            RequiredFeature: Features.Referrals,
+            ColSpan: 2
         ));
 
         cards.Add("support", new DashboardCardDefinition(

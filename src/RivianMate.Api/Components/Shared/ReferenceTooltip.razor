@@ -1,0 +1,62 @@
+@* Displays a small info icon with a hover tooltip showing reference sources *@
+
+@if (References?.Any() == true)
+{
+    <span class="reference-tooltip-container">
+        <span class="reference-icon" tabindex="0" aria-label="View sources">
+            <Icon Name="info" Size="14" />
+        </span>
+        <div class="reference-tooltip">
+            <div class="reference-tooltip-header">Sources</div>
+            @foreach (var reference in References)
+            {
+                <div class="reference-item">
+                    @if (!string.IsNullOrEmpty(reference.Url))
+                    {
+                        <a href="@reference.Url" target="_blank" rel="noopener noreferrer" class="reference-link">
+                            <span class="reference-title">@reference.Title</span>
+                            @if (!string.IsNullOrEmpty(reference.Source) || !string.IsNullOrEmpty(reference.Year))
+                            {
+                                <span class="reference-source">
+                                    @if (!string.IsNullOrEmpty(reference.Source))
+                                    {
+                                        @reference.Source
+                                    }
+                                    @if (!string.IsNullOrEmpty(reference.Year))
+                                    {
+                                        <span>(@reference.Year)</span>
+                                    }
+                                </span>
+                            }
+                            <Icon Name="external-link" Size="12" Style="flex-shrink: 0;" />
+                        </a>
+                    }
+                    else
+                    {
+                        <span class="reference-no-link">
+                            <span class="reference-title">@reference.Title</span>
+                            @if (!string.IsNullOrEmpty(reference.Source) || !string.IsNullOrEmpty(reference.Year))
+                            {
+                                <span class="reference-source">
+                                    @if (!string.IsNullOrEmpty(reference.Source))
+                                    {
+                                        @reference.Source
+                                    }
+                                    @if (!string.IsNullOrEmpty(reference.Year))
+                                    {
+                                        <span>(@reference.Year)</span>
+                                    }
+                                </span>
+                            }
+                        </span>
+                    }
+                </div>
+            }
+        </div>
+    </span>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public List<RivianMate.Api.Services.TipReference>? References { get; set; }
+}

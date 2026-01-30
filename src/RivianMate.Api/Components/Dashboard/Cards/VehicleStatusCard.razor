@@ -84,6 +84,18 @@
                 </div>
             }
 
+            <!-- Charger Derate -->
+            @if (HasChargerDerateAlert())
+            {
+                <div class="status-card-row">
+                    <span class="status-card-label">
+                        <Icon Name="alert-triangle" Size="14" />
+                        Charging
+                    </span>
+                    <span class="status-card-value status-warning">@FormatDerateStatus(VehicleState.ChargerDerateStatus)</span>
+                </div>
+            }
+
             <!-- Cold Weather Limits -->
             @if (VehicleState.LimitedAccelCold == true || VehicleState.LimitedRegenCold == true)
             {
@@ -92,7 +104,7 @@
                         <Icon Name="snowflake" Size="14" />
                         Cold
                     </span>
-                    <span class="status-card-value status-warning">Performance Limited</span>
+                    <span class="status-card-value status-warning">@GetColdLimitDescription()</span>
                 </div>
             }
         </div>
@@ -182,4 +194,32 @@
         "enabled" => "status-secure",
         _ => ""
     };
+
+    private bool HasChargerDerateAlert()
+    {
+        var status = VehicleState?.ChargerDerateStatus;
+        return !string.IsNullOrEmpty(status) &&
+               !status.Equals("NONE", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatDerateStatus(string? status)
+    {
+        if (string.IsNullOrEmpty(status)) return "";
+        // Convert SCREAMING_CASE to Title Case (e.g., "BATTERY_TOO_COLD" -> "Battery Too Cold")
+        return string.Join(" ", status.Split('_')
+            .Select(word => word.Length > 0
+                ? char.ToUpper(word[0]) + word[1..].ToLower()
+                : ""));
+    }
+
+    private string GetColdLimitDescription()
+    {
+        if (VehicleState?.LimitedAccelCold == true && VehicleState?.LimitedRegenCold == true)
+            return "Accel & Regen Limited";
+        if (VehicleState?.LimitedAccelCold == true)
+            return "Accel Limited";
+        if (VehicleState?.LimitedRegenCold == true)
+            return "Regen Limited";
+        return "Performance Limited";
+    }
 }

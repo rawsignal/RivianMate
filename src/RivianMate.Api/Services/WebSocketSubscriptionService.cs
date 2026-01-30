@@ -154,11 +154,32 @@ public class WebSocketSubscriptionService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<RivianMateDbContext>();
 
-        // Get all active accounts
+        // Get all active accounts and their vehicles separately to avoid loading ImageData blobs.
+        // The Include(a => a.Vehicles) pattern loads full Vehicle entities including the image
+        // binary on every 30-second refresh cycle, which is wasteful.
         var activeAccounts = await db.RivianAccounts
             .Where(a => a.IsActive && !string.IsNullOrEmpty(a.EncryptedAccessToken))
-            .Include(a => a.Vehicles.Where(v => v.IsActive))
             .ToListAsync(cancellationToken);
+
+        if (activeAccounts.Count > 0)
+        {
+            var accountIds = activeAccounts.Select(a => a.Id).ToList();
+            var vehicles = await db.Vehicles
+                .Where(v => v.IsActive && v.RivianAccountId != null && accountIds.Contains(v.RivianAccountId.Value))
+                .WithoutImageData()
+                .ToListAsync(cancellationToken);
+
+            var vehiclesByAccount = vehicles
+                .Where(v => v.RivianAccountId.HasValue)
+                .GroupBy(v => v.RivianAccountId!.Value)
+                .ToDictionary(g => g.Key, g => (ICollection<Vehicle>)g.ToList());
+
+            foreach (var account in activeAccounts)
+            {
+                if (vehiclesByAccount.TryGetValue(account.Id, out var accountVehicles))
+                    account.Vehicles = accountVehicles;
+            }
+        }
 
         var activeAccountIds = activeAccounts.Select(a => a.Id).ToHashSet();
 
@@ -281,8 +302,10 @@ public class WebSocketSubscriptionService : BackgroundService
                     _logger.LogInformation("Subscribed to vehicle {VehicleName} ({RivianId}) for account {AccountId}",
                         vehicle.Name, vehicle.RivianVehicleId, account.Id);
 
-                    // Fetch vehicle image if we don't have one
-                    if (vehicle.ImageData == null)
+                    // Fetch vehicle image if we don't have one.
+                    // Check ImageUrl (not ImageData) because vehicles are loaded
+                    // via WithoutImageData() projection which excludes the blob.
+                    if (vehicle.ImageUrl == null)
                     {
                         _ = Task.Run(() => FetchVehicleImageAsync(account, vehicle, cancellationToken));
                     }
@@ -370,8 +393,8 @@ public class WebSocketSubscriptionService : BackgroundService
                 // Record battery health snapshot if needed
                 await MaybeRecordBatteryHealthAsync(vehicleId, vehicleState, batteryHealthService, db);
 
-                // Notify UI components about the state change
-                await _stateNotifier.NotifyStateChangedAsync(vehicleId);
+                // Notify UI components about the state change (pass state to avoid re-query)
+                await _stateNotifier.NotifyStateChangedAsync(vehicleId, vehicleState);
             }
             else
             {
@@ -564,6 +587,9 @@ public class WebSocketSubscriptionService : BackgroundService
 
                     _logger.LogInformation("Saved vehicle image for {VehicleId} ({Size} bytes, version {Version})",
                         vehicle.Id, imageData.Length, workingVersion);
+
+                    // Notify UI so the dashboard picks up the new image
+                    await _stateNotifier.NotifyVehiclesChangedAsync();
                 }
             }
         }

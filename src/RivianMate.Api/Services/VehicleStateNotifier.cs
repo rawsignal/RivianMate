@@ -1,3 +1,5 @@
+using RivianMate.Core.Entities;
+
 namespace RivianMate.Api.Services;
 
 /// <summary>
@@ -8,9 +10,9 @@ public class VehicleStateNotifier
 {
     /// <summary>
     /// Event raised when any vehicle's state is updated.
-    /// Parameters: vehicleId (internal ID)
+    /// Parameters: vehicleId (internal ID), vehicleState (the updated state)
     /// </summary>
-    public event Func<int, Task>? OnVehicleStateChanged;
+    public event Func<int, VehicleState, Task>? OnVehicleStateChanged;
 
     /// <summary>
     /// Event raised when a new vehicle is added or vehicle list changes.
@@ -20,11 +22,11 @@ public class VehicleStateNotifier
     /// <summary>
     /// Notify subscribers that a vehicle's state has been updated.
     /// </summary>
-    public async Task NotifyStateChangedAsync(int vehicleId)
+    public async Task NotifyStateChangedAsync(int vehicleId, VehicleState state)
     {
         if (OnVehicleStateChanged != null)
         {
-            await OnVehicleStateChanged.Invoke(vehicleId);
+            await OnVehicleStateChanged.Invoke(vehicleId, state);
         }
     }
 

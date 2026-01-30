@@ -119,9 +119,20 @@ builder.Services.AddHangfireServer(options =>
 });
 
 // === Data Protection (for encrypting tokens) ===
-builder.Services.AddDataProtection()
+var dataProtectionBuilder = builder.Services.AddDataProtection()
     .PersistKeysToDbContext<RivianMateDbContext>()
     .SetApplicationName("RivianMate");
+
+// If a master key is configured, encrypt the Data Protection keys at rest
+// This prevents token decryption even if the database is compromised
+var dpMasterKey = Environment.GetEnvironmentVariable("RIVIANMATE_DP_KEY");
+if (!string.IsNullOrEmpty(dpMasterKey))
+{
+    dataProtectionBuilder.AddKeyManagementOptions(options =>
+    {
+        options.XmlEncryptor = new RivianMate.Api.Security.EnvironmentKeyXmlEncryptor("RIVIANMATE_DP_KEY");
+    });
+}
 
 // === Identity ===
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
@@ -184,6 +195,7 @@ builder.Services.AddHttpClient<NhtsaRecallService>(client =>
 });
 
 // === Application Services ===
+builder.Services.AddMemoryCache();
 builder.Services.AddScoped<SettingsService>();
 builder.Services.AddScoped<LicenseService>();
 builder.Services.AddScoped<FeatureService>();
@@ -192,6 +204,7 @@ builder.Services.AddSingleton<VehicleStateBuffer>(); // Singleton to maintain st
 builder.Services.AddSingleton<VehicleStateNotifier>(); // Singleton to notify UI of state changes
 builder.Services.AddScoped<ActivityFeedService>();
 builder.Services.AddScoped<VehicleService>();
+builder.Services.AddScoped<VehicleSelectionService>();
 builder.Services.AddScoped<BatteryHealthService>();
 builder.Services.AddScoped<BatteryCareService>();
 builder.Services.AddScoped<AccountService>();
@@ -254,6 +267,15 @@ using (var scope = app.Services.CreateScope())
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
     var isSqlite = config["DatabaseProvider"]?.Equals("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
+
+    // Warn if Data Protection master key is not set in production
+    if (string.IsNullOrEmpty(dpMasterKey) && !builder.Environment.IsDevelopment())
+    {
+        logger.LogWarning(
+            "RIVIANMATE_DP_KEY environment variable is not set. " +
+            "Data Protection keys are stored unencrypted in the database. " +
+            "Set this variable to a strong random string to encrypt tokens at rest.");
+    }
 
     if (isSqlite)
     {
@@ -371,6 +393,7 @@ using (var scope = app.Services.CreateScope())
                     Latitude REAL NOT NULL,
                     Longitude REAL NOT NULL,
                     IsDefault INTEGER NOT NULL DEFAULT 0,
+                    CostPerKwh REAL,
                     CreatedAt TEXT NOT NULL,
                     UpdatedAt TEXT NOT NULL,
                     FOREIGN KEY (UserId) REFERENCES {Tables.Users}(Id) ON DELETE CASCADE
@@ -393,6 +416,9 @@ using (var scope = app.Services.CreateScope())
                 logger.LogInformation("Migrated {Count} home locations from {From} to {To}", migrated, Tables.UserPreferences, Tables.UserLocations);
             }
         }
+
+        // Add CostPerKwh to UserLocations for existing databases
+        await AddColumnIfNotExistsAsync(Tables.UserLocations, "CostPerKwh", "REAL");
 
         // Create GeocodingCache table if it doesn't exist
         if (!await TableExistsAsync(Tables.GeocodingCache))
@@ -622,6 +648,10 @@ using (var scope = app.Services.CreateScope())
                         db, Tables.Users, "ReferralCode", "VARCHAR(20)");
                     await AddPostgresColumnIfNotExistsAsync(
                         db, Tables.Users, "ReferredByUserId", "UUID");
+
+                    // Add CostPerKwh to UserLocations if not exists
+                    await AddPostgresColumnIfNotExistsAsync(
+                        db, Tables.UserLocations, "CostPerKwh", "DOUBLE PRECISION");
 
                     logger.LogInformation("Database migrations applied successfully");
 

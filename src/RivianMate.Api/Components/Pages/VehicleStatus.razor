@@ -8,6 +8,7 @@
 @using RivianMate.Api.Components.VehicleStatus
 @using RivianMate.Core.Entities
 @using RivianMate.Core.Enums
+@using RivianMate.Api.Helpers
 @attribute [Authorize]
 @inject VehicleService VehicleService
 @inject TimeZoneService TimeZoneService
@@ -16,6 +17,8 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JSRuntime
 @inject ILogger<VehicleStatus> Logger
+@inject VehicleSelectionService VehicleSelectionService
+@implements IDisposable
 
 <PageTitle>Vehicle Status - RivianMate</PageTitle>
 
@@ -32,7 +35,7 @@
     @if (_currentState != null)
     {
         <p style="color: var(--color-text-muted); margin-top: var(--space-2);">
-            Last updated: @FormatLastUpdated(_currentState.Timestamp)
+            Last updated: @DateTimeFormatHelper.FormatRelativeTime(_currentState.Timestamp, TimeZoneService)
         </p>
     }
 </div>
@@ -168,12 +171,29 @@ else
     private bool _noVehicles;
     private Guid _userId;
 
-    // LocalStorage key (shared with Home.razor)
-    private const string SelectedVehicleKey = "rivianmate_selectedVehicleId";
-
     protected override async Task OnInitializedAsync()
     {
+        TimeZoneService.OnTimeZoneChanged += OnTimeZoneChanged;
         await LoadDataAsync();
+    }
+
+    private void OnTimeZoneChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Initialize timezone from localStorage
+            var previousTz = TimeZoneService.TimeZoneId;
+            await TimeZoneService.InitializeAsync();
+            if (previousTz != TimeZoneService.TimeZoneId)
+            {
+                StateHasChanged();
+            }
+        }
     }
 
     private async Task LoadDataAsync()
@@ -182,40 +202,13 @@ else
 
         try
         {
-            // Get current user ID
-            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (!Guid.TryParse(userIdClaim, out _userId))
-            {
-                return;
-            }
+            _userId = await VehicleSelectionService.GetUserIdAsync(AuthStateProvider);
+            if (_userId == Guid.Empty) return;
 
-            // Get all vehicles first
-            var vehicles = await VehicleService.GetVehiclesForUserAsync(_userId);
-
-            if (vehicles.Count == 0)
-            {
-                _noVehicles = true;
-                return;
-            }
-
-            if (VehicleId.HasValue)
-            {
-                // Verify the vehicle belongs to this user via PublicId
-                _vehicle = await VehicleService.GetVehicleByPublicIdAsync(VehicleId.Value, _userId);
-                if (_vehicle == null)
-                {
-                    Logger.LogWarning("User {UserId} attempted to access vehicle {VehiclePublicId} they don't own", _userId, VehicleId);
-                    _notFound = true;
-                    return;
-                }
-            }
-            else
-            {
-                // Try to get last selected vehicle from localStorage
-                _vehicle = await GetLastSelectedVehicleAsync(vehicles);
-                _vehicle ??= vehicles.FirstOrDefault();
-            }
+            var selection = await VehicleSelectionService.ResolveVehicleAsync(_userId, VehicleId, JSRuntime);
+            if (selection.NoVehicles) { _noVehicles = true; return; }
+            if (selection.NotFound) { _notFound = true; return; }
+            _vehicle = selection.Vehicle;
 
             if (_vehicle != null)
             {
@@ -233,18 +226,6 @@ else
         {
             _loading = false;
         }
-    }
-
-    private string FormatLastUpdated(DateTime utcTime)
-    {
-        var localTime = TimeZoneService.ToLocalTime(utcTime);
-        var now = TimeZoneService.ToLocalTime(DateTime.UtcNow);
-        var diff = now - localTime;
-
-        if (diff.TotalMinutes < 1) return "Just now";
-        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes} min ago";
-        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
-        return localTime.ToString("MMM d, h:mm tt");
     }
 
     private string GetVehicleImageSrc()
@@ -272,20 +253,8 @@ else
         _ => ""
     };
 
-    private async Task<Vehicle?> GetLastSelectedVehicleAsync(List<Vehicle> vehicles)
+    public void Dispose()
     {
-        try
-        {
-            var savedIdStr = await JSRuntime.InvokeAsync<string?>("rivianMate.storage.get", SelectedVehicleKey);
-            if (int.TryParse(savedIdStr, out var savedId))
-            {
-                return vehicles.FirstOrDefault(v => v.Id == savedId);
-            }
-        }
-        catch
-        {
-            // JS interop can fail during prerendering
-        }
-        return null;
+        TimeZoneService.OnTimeZoneChanged -= OnTimeZoneChanged;
     }
 }
